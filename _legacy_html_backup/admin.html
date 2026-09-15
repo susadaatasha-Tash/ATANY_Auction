@@ -1,0 +1,2282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Admin Console — ATANY</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --navy: #14301f;
+    --navy-2: #1e4530;
+    --navy-3: #2c5a40;
+    --gold: #c7a66a;
+    --gold-light: #e6d4ad;
+    --cream: #faf9f6;
+    --ivory: #fffefa;
+    --soft: #f3f1ec;
+    --line: #e5e2da;
+    --text: #172235;
+    --muted: #707782;
+    --success: #587563;
+    --success-bg: #eaf1ec;
+    --danger: #a45c5c;
+    --danger-bg: #f6eceb;
+    --warn: #a4823f;
+    --warn-bg: #f8f1e2;
+    --shadow: 0 10px 30px rgba(20, 48, 31, .07);
+    --radius: 12px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: "Plus Jakarta Sans", sans-serif;
+    background: var(--cream);
+    color: var(--text);
+    line-height: 1.5;
+  }
+
+  a { color: inherit; text-decoration: none; }
+  button, input, select, textarea { font: inherit; }
+  button { cursor: pointer; }
+
+  /* ============ LAYOUT ============ */
+  .app { display: flex; min-height: 100vh; }
+
+  /* ---- SIDEBAR ---- */
+  .sidebar {
+    width: 240px;
+    flex-shrink: 0;
+    background: var(--navy);
+    color: #cfd7e3;
+    display: flex;
+    flex-direction: column;
+    position: sticky;
+    top: 0;
+    height: 100vh;
+  }
+
+  .sidebar-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 24px 22px;
+    border-bottom: 1px solid rgba(255,255,255,.08);
+  }
+
+  .sidebar-brand .brand-name {
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: .03em;
+    color: #fff;
+  }
+
+  .sidebar-brand .brand-tag {
+    display: block;
+    font-size: 9px;
+    letter-spacing: .1em;
+    color: var(--gold-light);
+    margin-top: 2px;
+  }
+
+  .sidebar-nav {
+    flex: 1;
+    padding: 18px 12px;
+    overflow-y: auto;
+  }
+
+  .nav-section-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: .1em;
+    color: #7c8aa3;
+    padding: 14px 10px 6px;
+  }
+
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #cfd7e3;
+    margin-bottom: 2px;
+    transition: background .15s ease, color .15s ease;
+    border: 0;
+    background: transparent;
+    width: 100%;
+    text-align: left;
+  }
+
+  .nav-item svg { width: 17px; height: 17px; flex-shrink: 0; }
+
+  .nav-item:hover { background: rgba(255,255,255,.06); color: #fff; }
+
+  .nav-item.active {
+    background: var(--navy-2);
+    color: #fff;
+    box-shadow: inset 3px 0 0 var(--gold);
+  }
+
+  .nav-badge {
+    margin-left: auto;
+    background: var(--gold);
+    color: var(--navy);
+    font-size: 10px;
+    font-weight: 800;
+    border-radius: 20px;
+    padding: 1px 7px;
+  }
+
+  .sidebar-foot {
+    padding: 16px 22px;
+    border-top: 1px solid rgba(255,255,255,.08);
+    font-size: 11px;
+    color: #8592a8;
+  }
+
+  .sidebar-foot a { color: var(--gold-light); font-weight: 700; }
+  .sidebar-foot a:hover { color: #fff; }
+
+  /* ---- MAIN ---- */
+  .main { flex: 1; min-width: 0; }
+
+  .topbar {
+    height: 68px;
+    background: var(--ivory);
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 28px;
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+
+  .topbar-title h1 { font-size: 19px; color: var(--navy); font-weight: 800; }
+  .topbar-title p { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+
+  .topbar-right { display: flex; align-items: center; gap: 14px; }
+
+  .icon-btn {
+    position: relative;
+    width: 38px;
+    height: 38px;
+    border: 1px solid var(--line);
+    background: #fff;
+    color: var(--navy);
+    display: grid;
+    place-items: center;
+    border-radius: 50%;
+    transition: background .2s ease;
+  }
+
+  .icon-btn:hover { background: var(--soft); }
+  .icon-btn svg { width: 17px; height: 17px; }
+
+  .icon-dot {
+    position: absolute;
+    top: 6px;
+    right: 7px;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--danger);
+    border: 1.5px solid #fff;
+  }
+
+  .admin-chip {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 5px 12px 5px 5px;
+    border: 1px solid var(--line);
+    border-radius: 30px;
+    background: #fff;
+  }
+
+  .admin-avatar {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: var(--navy);
+    color: #fff;
+    display: grid;
+    place-items: center;
+    font-size: 12px;
+    font-weight: 800;
+  }
+
+  .admin-chip .name { font-size: 12px; font-weight: 700; color: var(--navy); }
+  .admin-chip .role { font-size: 10px; color: var(--muted); }
+
+  .user-menu-wrap { position: relative; }
+  .admin-chip.user-menu-trigger { cursor: pointer; }
+  .user-dropdown {
+    position: absolute; top: 48px; right: 0; z-index: 400;
+    width: 190px; background: var(--ivory); border: 1px solid var(--line); border-radius: 10px;
+    box-shadow: 0 20px 40px rgba(20, 48, 31,.18); overflow: hidden; display: none;
+  }
+  .user-dropdown.open { display: block; }
+  .user-dropdown-item {
+    display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 14px;
+    font-size: 12.5px; font-weight: 600; color: var(--text); background: transparent; border: 0;
+    text-align: left; cursor: pointer;
+  }
+  .user-dropdown-item svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--muted); }
+  .user-dropdown-item:hover { background: var(--soft); }
+  .user-dropdown-item.danger { color: var(--danger); border-top: 1px solid var(--line); }
+  .user-dropdown-item.danger svg { color: var(--danger); }
+
+  .content { padding: 26px 28px 60px; }
+
+  .view { display: none; }
+  .view.active { display: block; }
+
+  /* ---- KPI CARDS ---- */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+
+  .kpi-card {
+    background: var(--ivory);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 18px 19px;
+    box-shadow: var(--shadow);
+  }
+
+  .kpi-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .kpi-icon {
+    width: 34px; height: 34px; border-radius: 9px;
+    display: grid; place-items: center;
+    background: var(--soft); color: var(--navy);
+  }
+  .kpi-icon svg { width: 16px; height: 16px; }
+
+  .kpi-delta { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 20px; }
+  .kpi-delta.up { color: var(--success); background: var(--success-bg); }
+  .kpi-delta.down { color: var(--danger); background: var(--danger-bg); }
+
+  .kpi-value { font-size: 26px; font-weight: 800; color: var(--navy); }
+  .kpi-label { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+
+  /* ---- PANELS ---- */
+  .panel {
+    background: var(--ivory);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    margin-bottom: 22px;
+    overflow: hidden;
+  }
+
+  .panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .panel-head h2 { font-size: 15px; color: var(--navy); font-weight: 800; }
+  .panel-head p { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+
+  .two-col { display: grid; grid-template-columns: 1.4fr 1fr; gap: 18px; }
+
+  /* ---- TABLE TOOLBAR ---- */
+  .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--line);
+    flex-wrap: wrap;
+  }
+
+  .search-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid var(--line);
+    background: #fff;
+    border-radius: 8px;
+    padding: 0 12px;
+    height: 38px;
+    min-width: 240px;
+  }
+
+  .search-box svg { width: 15px; height: 15px; color: var(--muted); flex-shrink: 0; }
+  .search-box input { border: 0; outline: 0; font-size: 12.5px; width: 100%; background: transparent; }
+
+  .filter-select {
+    height: 38px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 0 10px;
+    font-size: 12.5px;
+    background: #fff;
+    color: var(--text);
+  }
+
+  .btn {
+    border: 1px solid transparent;
+    height: 38px;
+    padding: 0 16px;
+    border-radius: 7px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+    font-weight: 700;
+    transition: transform .15s ease, background .15s ease;
+    white-space: nowrap;
+  }
+
+  .btn:hover { transform: translateY(-1px); }
+  .btn svg { width: 14px; height: 14px; }
+
+  .btn-primary { background: var(--navy); color: #fff; }
+  .btn-primary:hover { background: var(--navy-2); }
+
+  .btn-outline { background: #fff; color: var(--navy); border-color: #ccd1d8; }
+  .btn-outline:hover { border-color: var(--navy); }
+
+  .btn-ghost { background: transparent; color: var(--muted); border: 0; height: auto; padding: 4px 8px; }
+  .btn-ghost:hover { color: var(--navy); }
+
+  .btn-danger-ghost { background: transparent; color: var(--danger); border: 0; height: auto; padding: 4px 8px; }
+  .btn-danger-ghost:hover { text-decoration: underline; }
+
+  /* ---- TABLE ---- */
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+
+  thead th {
+    text-align: left;
+    font-size: 10.5px;
+    letter-spacing: .06em;
+    color: var(--muted);
+    font-weight: 700;
+    padding: 11px 20px;
+    background: var(--soft);
+    white-space: nowrap;
+  }
+
+  tbody td {
+    padding: 13px 20px;
+    font-size: 12.5px;
+    border-bottom: 1px solid var(--line);
+    vertical-align: middle;
+    white-space: nowrap;
+  }
+
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr:hover { background: rgba(199,166,106,.05); }
+
+  .cell-main { font-weight: 700; color: var(--navy); }
+  .cell-sub { color: var(--muted); font-size: 11px; }
+
+  .item-thumb {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .item-thumb img {
+    width: 38px; height: 38px; border-radius: 8px; object-fit: cover; flex-shrink: 0;
+  }
+
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 10.5px;
+    font-weight: 700;
+    padding: 3px 10px;
+    border-radius: 20px;
+  }
+
+  .badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  .badge.live { color: var(--success); background: var(--success-bg); }
+  .badge.scheduled { color: var(--warn); background: var(--warn-bg); }
+  .badge.ended { color: var(--muted); background: var(--soft); }
+  .badge.active { color: var(--success); background: var(--success-bg); }
+  .badge.suspended { color: var(--danger); background: var(--danger-bg); }
+  .badge.paid { color: var(--success); background: var(--success-bg); }
+  .badge.pending { color: var(--warn); background: var(--warn-bg); }
+  .badge.refunded { color: var(--danger); background: var(--danger-bg); }
+  .badge.instock { color: var(--success); background: var(--success-bg); }
+  .badge.lowstock { color: var(--warn); background: var(--warn-bg); }
+  .badge.soldout { color: var(--danger); background: var(--danger-bg); }
+  .badge.high { color: var(--danger); background: var(--danger-bg); }
+  .badge.medium { color: var(--warn); background: var(--warn-bg); }
+  .badge.low { color: var(--muted); background: var(--soft); }
+  .badge.new { color: var(--danger); background: var(--danger-bg); }
+  .badge.investigating { color: var(--warn); background: var(--warn-bg); }
+  .badge.resolved { color: var(--success); background: var(--success-bg); }
+  .badge.dismissed { color: var(--muted); background: var(--soft); }
+
+  .row-actions { display: flex; gap: 4px; }
+
+  .pager {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px; font-size: 11.5px; color: var(--muted);
+  }
+
+  /* ---- FORMS / MODAL ---- */
+  .modal-overlay {
+    position: fixed; inset: 0; z-index: 2000;
+    background: rgba(20, 48, 31,.45);
+    display: none; align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  .modal-overlay.show { display: flex; }
+
+  .modal-box {
+    width: min(520px, 100%);
+    max-height: 90vh;
+    overflow-y: auto;
+    background: var(--ivory);
+    border-radius: 14px;
+    box-shadow: 0 30px 60px rgba(20, 48, 31,.25);
+  }
+
+  .modal-box-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 20px 24px; border-bottom: 1px solid var(--line);
+  }
+
+  .modal-box-head h3 { font-size: 16px; color: var(--navy); font-weight: 800; }
+  .modal-close { border: 0; background: transparent; font-size: 20px; color: var(--muted); line-height: 1; }
+  .modal-close:hover { color: var(--navy); }
+
+  .modal-box-body { padding: 22px 24px; }
+  .modal-box-foot {
+    display: flex; justify-content: flex-end; gap: 10px;
+    padding: 16px 24px; border-top: 1px solid var(--line);
+  }
+
+  .form-row { margin-bottom: 15px; }
+  .form-row label {
+    display: block; font-size: 11px; font-weight: 700; color: var(--navy);
+    margin-bottom: 6px;
+  }
+  .form-row input, .form-row select, .form-row textarea {
+    width: 100%; height: 42px; padding: 0 12px;
+    border: 1px solid #d7d4cc; border-radius: 7px;
+    background: #fff; color: var(--text); font-size: 12.5px; outline: none;
+  }
+  .form-row textarea { height: 80px; padding: 10px 12px; resize: vertical; }
+  .form-row input:focus, .form-row select:focus, .form-row textarea:focus {
+    border-color: var(--navy); box-shadow: 0 0 0 3px rgba(20, 48, 31,.07);
+  }
+  .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .form-hint { font-size: 11px; color: var(--muted); }
+
+  /* ---- TOAST ---- */
+  .toast {
+    position: fixed; z-index: 3000; right: 20px; bottom: 20px;
+    background: var(--navy); color: white; padding: 12px 17px;
+    border-radius: 7px; font-size: 12px; font-weight: 600;
+    transform: translateY(20px); opacity: 0; pointer-events: none;
+    transition: transform .25s ease, opacity .25s ease;
+    max-width: 320px;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+
+  /* ---- CONFIRM ---- */
+  .confirm-box { text-align: center; padding: 6px 4px 2px; }
+  .confirm-box svg { width: 40px; height: 40px; color: var(--danger); margin-bottom: 10px; }
+  .confirm-box p { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+
+  /* ---- EMPTY ---- */
+  .empty-state { text-align: center; padding: 50px 20px; color: var(--muted); }
+  .empty-state svg { width: 40px; height: 40px; margin-bottom: 10px; opacity: .5; }
+  .empty-state p { font-size: 12.5px; }
+
+  /* ---- ACTIVITY LIST ---- */
+  .activity-list { padding: 6px 0; }
+  .activity-item {
+    display: flex; gap: 12px; padding: 12px 20px;
+    border-bottom: 1px solid var(--line);
+  }
+  .activity-item:last-child { border-bottom: 0; }
+  .activity-dot {
+    width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0;
+    display: grid; place-items: center; background: var(--soft); color: var(--navy);
+  }
+  .activity-dot svg { width: 14px; height: 14px; }
+  .activity-text { font-size: 12.5px; }
+  .activity-text b { color: var(--navy); }
+  .activity-time { font-size: 10.5px; color: var(--muted); margin-top: 2px; }
+
+  /* ---- ANALYTICS CHARTS ---- */
+  .chart-svg { width: 100%; height: auto; overflow: visible; }
+  .chart-axis-label { font-size: 10px; fill: var(--muted); font-family: "Plus Jakarta Sans", sans-serif; }
+  .chart-bar { fill: var(--navy); }
+  .chart-bar:hover { fill: var(--gold); }
+  .chart-bar-value { font-size: 10px; fill: var(--navy); font-weight: 700; font-family: "Plus Jakarta Sans", sans-serif; }
+  .chart-line-area { fill: rgba(199,166,106,.16); }
+  .chart-line-path { fill: none; stroke: var(--navy); stroke-width: 2.5; }
+  .chart-line-dot { fill: var(--ivory); stroke: var(--navy); stroke-width: 2.5; }
+  .chart-line-dot:hover { fill: var(--gold); }
+  .chart-grid-line { stroke: var(--line); stroke-width: 1; }
+
+  /* ---- responsive ---- */
+  @media (max-width: 1000px) {
+    .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+    .two-col { grid-template-columns: 1fr; }
+  }
+  @media (max-width: 760px) {
+    .sidebar { position: fixed; left: -240px; z-index: 900; transition: left .2s ease; }
+    .sidebar.open { left: 0; }
+    .menu-toggle { display: grid !important; }
+    .kpi-grid { grid-template-columns: 1fr; }
+    .form-grid-2 { grid-template-columns: 1fr; }
+  }
+  .menu-toggle {
+    display: none; width: 38px; height: 38px; border: 1px solid var(--line);
+    background: #fff; border-radius: 8px; place-items: center; margin-right: 6px;
+  }
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ============ SIDEBAR ============ -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <span class="brand-name">ATANY</span>
+      <span class="brand-tag" style="margin-left:auto;">ADMIN</span>
+    </div>
+
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">OVERVIEW</div>
+      <button class="nav-item active" data-view="dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+        Dashboard
+      </button>
+
+      <div class="nav-section-label">MANAGE</div>
+      <button class="nav-item" data-view="products">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 3 7v10l9 5 9-5V7l-9-5Z"/><path d="M3 7l9 5 9-5M12 12v10"/></svg>
+        Jewelry Products
+      </button>
+      <button class="nav-item" data-view="auctions">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 5 19 10M6 13l5-5 5 5-5 5-5-5Z"/><path d="M4 21 9 16M15 4l5 5"/></svg>
+        Auctions
+        <span class="nav-badge" id="liveCountBadge">0</span>
+      </button>
+      <button class="nav-item" data-view="users">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.3"/><path d="M2.5 20c1-4 3.6-6 6.5-6s5.5 2 6.5 6"/><circle cx="18" cy="9" r="2.6"/><path d="M15.5 14c2.4.2 4.3 1.9 5 5.6"/></svg>
+        Users
+      </button>
+      <button class="nav-item" data-view="transactions">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M2.5 10h19M6 15h4"/></svg>
+        Transactions
+      </button>
+
+      <div class="nav-section-label">INSIGHTS</div>
+      <button class="nav-item" data-view="analytics">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M11 20V4M18 20v-7"/></svg>
+        Analytics &amp; Reports
+      </button>
+      <button class="nav-item" data-view="security">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 4.5 6v6c0 5 3.4 8.4 7.5 9 4.1-.6 7.5-4 7.5-9V6L12 3Z"/><path d="M9.5 12l1.8 1.8L15 10"/></svg>
+        Security Alerts
+        <span class="nav-badge" id="securityBadge" style="background:var(--danger);color:#fff;">0</span>
+      </button>
+
+      <div class="nav-section-label">ENGAGEMENT</div>
+      <button class="nav-item" data-view="notifications">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>
+        Notifications
+      </button>
+      <button class="nav-item" data-view="chatbot">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="12" rx="3"/><path d="M8 21l3-4h2l3 4M8 10h.01M12 10h.01M16 10h.01"/></svg>
+        Chatbot Logs
+      </button>
+      <button class="nav-item" data-view="branches">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s7-7.4 7-12.5A7 7 0 0 0 5 9.5C5 14.6 12 22 12 22Z"/><circle cx="12" cy="9.5" r="2.4"/></svg>
+        Branches / GPS
+      </button>
+    </nav>
+
+    <div class="sidebar-foot">
+      Portal v1.0 · <a href="atany-landing-page.html">View storefront →</a>
+    </div>
+  </aside>
+
+  <!-- ============ MAIN ============ -->
+  <div class="main">
+    <div class="topbar">
+      <div style="display:flex;align-items:center;">
+        <button class="menu-toggle" id="menuToggle" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+        <div class="topbar-title">
+          <h1 id="viewTitle">Dashboard</h1>
+          <p id="viewSubtitle">Overview of products, auctions, users, and sales.</p>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="icon-btn" onclick="switchView('security')" title="Security Alerts">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3 4.5 6v6c0 5 3.4 8.4 7.5 9 4.1-.6 7.5-4 7.5-9V6L12 3Z"/><path d="M9.5 12l1.8 1.8L15 10"/></svg>
+          <span class="icon-dot" id="securityDot"></span>
+        </button>
+        <button class="icon-btn" onclick="switchView('notifications')" title="Notifications">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>
+          <span class="icon-dot"></span>
+        </button>
+        <div class="user-menu-wrap">
+          <div class="admin-chip user-menu-trigger" onclick="toggleUserMenu(event)">
+            <div class="admin-avatar">JM</div>
+            <div>
+              <div class="name">Jill Martinez</div>
+              <div class="role">Manager</div>
+            </div>
+          </div>
+          <div class="user-dropdown" id="userDropdown">
+            <button class="user-dropdown-item" onclick="switchView('dashboard'); closeUserMenu();">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3.6"/><path d="M4 20c1.3-4.4 4.3-6.6 8-6.6s6.7 2.2 8 6.6"/></svg>
+              My Profile
+            </button>
+            <button class="user-dropdown-item danger" onclick="signOut()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></svg>
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- ============ DASHBOARD ============ -->
+      <section class="view active" id="view-dashboard">
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-top">
+              <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 3 7v10l9 5 9-5V7l-9-5Z"/></svg></div>
+              <span class="kpi-delta up">+4</span>
+            </div>
+            <div class="kpi-value" id="kpiProducts">0</div>
+            <div class="kpi-label">Active Jewelry Listings</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-top">
+              <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 13l5-5 5 5-5 5-5-5Z"/></svg></div>
+              <span class="kpi-delta up">Live</span>
+            </div>
+            <div class="kpi-value" id="kpiAuctions">0</div>
+            <div class="kpi-label">Auctions Running Now</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-top">
+              <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.3"/><path d="M2.5 20c1-4 3.6-6 6.5-6s5.5 2 6.5 6"/></svg></div>
+              <span class="kpi-delta up">+12%</span>
+            </div>
+            <div class="kpi-value" id="kpiUsers">0</div>
+            <div class="kpi-label">Registered Users</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-top">
+              <div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2.5" y="5" width="19" height="14" rx="2"/></svg></div>
+              <span class="kpi-delta up">+8.4%</span>
+            </div>
+            <div class="kpi-value" id="kpiRevenue">₱0</div>
+            <div class="kpi-label">Revenue (This Month)</div>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>Auctions Ending Soon</h2>
+                <p>Keep an eye on high-activity lots.</p>
+              </div>
+              <button class="btn btn-outline" onclick="switchView('auctions')">Manage all</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Item</th><th>Current Bid</th><th>Bids</th><th>Ends</th><th>Status</th></tr></thead>
+                <tbody id="dashAuctionRows"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>Recent Activity</h2>
+                <p>System &amp; customer events.</p>
+              </div>
+            </div>
+            <div class="activity-list" id="activityList"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Recent Transactions</h2>
+              <p>Latest completed and pending payments.</p>
+            </div>
+            <button class="btn btn-outline" onclick="switchView('transactions')">View all</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Transaction ID</th><th>Customer</th><th>Item</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
+              <tbody id="dashTxnRows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ PRODUCTS ============ -->
+      <section class="view" id="view-products">
+        <div class="panel">
+          <div class="toolbar">
+            <div class="search-box">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" id="productSearch" placeholder="Search products…" oninput="renderProducts()">
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+              <select class="filter-select" id="productCategoryFilter" onchange="renderProducts()">
+                <option value="">All Categories</option>
+                <option value="Rings">Rings</option>
+                <option value="Necklaces">Necklaces</option>
+                <option value="Bracelets">Bracelets</option>
+                <option value="Earrings">Earrings</option>
+                <option value="Watches">Watches</option>
+              </select>
+              <select class="filter-select" id="productStockFilter" onchange="renderProducts()">
+                <option value="">All Stock</option>
+                <option value="instock">In Stock</option>
+                <option value="lowstock">Low Stock</option>
+                <option value="soldout">Sold Out</option>
+              </select>
+              <button class="btn btn-primary" onclick="openProductModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>
+                Add Product
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Product</th><th>Category</th><th>Karat / Weight</th><th>Price</th><th>Stock</th><th>Status</th><th></th></tr></thead>
+              <tbody id="productRows"></tbody>
+            </table>
+          </div>
+          <div class="pager"><span id="productCount">0 products</span></div>
+        </div>
+      </section>
+
+      <!-- ============ AUCTIONS ============ -->
+      <section class="view" id="view-auctions">
+        <div class="panel">
+          <div class="toolbar">
+            <div class="search-box">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" id="auctionSearch" placeholder="Search auctions…" oninput="renderAuctions()">
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+              <select class="filter-select" id="auctionStatusFilter" onchange="renderAuctions()">
+                <option value="">All Status</option>
+                <option value="live">Live</option>
+                <option value="scheduled">Scheduled</option>
+                <option value="ended">Ended</option>
+              </select>
+              <button class="btn btn-primary" onclick="openAuctionModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>
+                Create Auction
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Item</th><th>Starting Price</th><th>Current Bid</th><th>Bids</th><th>Ends</th><th>Status</th><th></th></tr></thead>
+              <tbody id="auctionRows"></tbody>
+            </table>
+          </div>
+          <div class="pager"><span id="auctionCount">0 auctions</span></div>
+        </div>
+      </section>
+
+      <!-- ============ USERS ============ -->
+      <section class="view" id="view-users">
+        <div class="panel">
+          <div class="toolbar">
+            <div class="search-box">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" id="userSearch" placeholder="Search users…" oninput="renderUsers()">
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+              <select class="filter-select" id="userRoleFilter" onchange="renderUsers()">
+                <option value="">All Roles</option>
+                <option value="Customer">Customer</option>
+                <option value="Manager">Manager</option>
+                <option value="Admin">Admin</option>
+              </select>
+              <select class="filter-select" id="userStatusFilter" onchange="renderUsers()">
+                <option value="">All Status</option>
+                <option value="active">Active</option>
+                <option value="suspended">Suspended</option>
+              </select>
+              <button class="btn btn-primary" onclick="openUserModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>
+                Add User
+              </button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>User</th><th>Email</th><th>Role</th><th>Joined</th><th>Bids Placed</th><th>Status</th><th></th></tr></thead>
+              <tbody id="userRows"></tbody>
+            </table>
+          </div>
+          <div class="pager"><span id="userCount">0 users</span></div>
+        </div>
+      </section>
+
+      <!-- ============ TRANSACTIONS ============ -->
+      <section class="view" id="view-transactions">
+        <div class="panel">
+          <div class="toolbar">
+            <div class="search-box">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" id="txnSearch" placeholder="Search transactions…" oninput="renderTxns()">
+            </div>
+            <select class="filter-select" id="txnStatusFilter" onchange="renderTxns()">
+              <option value="">All Status</option>
+              <option value="paid">Paid</option>
+              <option value="pending">Pending</option>
+              <option value="refunded">Refunded</option>
+            </select>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Transaction ID</th><th>Customer</th><th>Item</th><th>Amount</th><th>Branch</th><th>Status</th><th>Date</th><th></th></tr></thead>
+              <tbody id="txnRows"></tbody>
+            </table>
+          </div>
+          <div class="pager"><span id="txnCount">0 transactions</span></div>
+        </div>
+      </section>
+
+      <!-- ============ ANALYTICS & REPORTS ============ -->
+      <section class="view" id="view-analytics">
+        <div class="toolbar" style="border:1px solid var(--line);border-radius:var(--radius);background:var(--ivory);box-shadow:var(--shadow);margin-bottom:22px;">
+          <select class="filter-select" id="analyticsRange" onchange="renderAnalytics()">
+            <option value="6">Last 6 Months</option>
+            <option value="3">Last 3 Months</option>
+            <option value="12">Last 12 Months</option>
+          </select>
+          <button class="btn btn-primary" onclick="downloadReport()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v13m0 0-4-4m4 4 4-4M4 20h16"/></svg>
+            Download Report (CSV)
+          </button>
+        </div>
+
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-top"><div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2.5" y="5" width="19" height="14" rx="2"/></svg></div><span class="kpi-delta up" id="anRevenueDelta">+0%</span></div>
+            <div class="kpi-value" id="anRevenue">₱0</div>
+            <div class="kpi-label">Total Revenue</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-top"><div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 13l5-5 5 5-5 5-5-5Z"/></svg></div><span class="kpi-delta up" id="anAuctionsDelta">+0</span></div>
+            <div class="kpi-value" id="anAuctions">0</div>
+            <div class="kpi-label">Auctions Completed</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-top"><div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 5 19 10M6 13l5-5 5 5-5 5-5-5Z"/></svg></div><span class="kpi-delta up">Total</span></div>
+            <div class="kpi-value" id="anBids">0</div>
+            <div class="kpi-label">Bids Placed</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-top"><div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.3"/><path d="M2.5 20c1-4 3.6-6 6.5-6s5.5 2 6.5 6"/></svg></div><span class="kpi-delta up" id="anUsersDelta">+0</span></div>
+            <div class="kpi-value" id="anNewUsers">0</div>
+            <div class="kpi-label">New Users</div>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <div class="panel">
+            <div class="panel-head">
+              <div><h2>Revenue Trend</h2><p>Completed sales by month.</p></div>
+            </div>
+            <div style="padding:20px;" id="revenueChartWrap"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head">
+              <div><h2>New Users</h2><p>Sign-ups by month.</p></div>
+            </div>
+            <div style="padding:20px;" id="userChartWrap"></div>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <div class="panel">
+            <div class="panel-head">
+              <div><h2>Auctions by Category</h2><p>Where bidding activity concentrates.</p></div>
+            </div>
+            <div style="padding:20px;" id="categoryChartWrap"></div>
+          </div>
+          <div class="panel">
+            <div class="panel-head">
+              <div><h2>Revenue by Branch</h2><p>Pickup branch performance.</p></div>
+            </div>
+            <div style="padding:20px;" id="branchChartWrap"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <div><h2>Top Performing Items</h2><p>Highest revenue this period.</p></div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Item</th><th>Category</th><th>Units Sold</th><th>Revenue</th><th>Avg. Sale Price</th></tr></thead>
+              <tbody id="topItemRows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ SECURITY ALERTS ============ -->
+      <section class="view" id="view-security">
+        <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);">
+          <div class="kpi-card">
+            <div class="kpi-top"><div class="kpi-icon" style="background:var(--danger-bg);color:var(--danger);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg></div></div>
+            <div class="kpi-value" id="secOpenCount">0</div>
+            <div class="kpi-label">Open Alerts</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-top"><div class="kpi-icon" style="background:var(--warn-bg);color:var(--warn);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg></div></div>
+            <div class="kpi-value" id="secHighCount">0</div>
+            <div class="kpi-label">High Severity</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-top"><div class="kpi-icon" style="background:var(--success-bg);color:var(--success);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/></svg></div></div>
+            <div class="kpi-value" id="secResolvedCount">0</div>
+            <div class="kpi-label">Resolved This Month</div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="toolbar">
+            <div class="search-box">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" id="alertSearch" placeholder="Search alerts…" oninput="renderAlerts()">
+            </div>
+            <div style="display:flex; gap:10px; flex-wrap:wrap;">
+              <select class="filter-select" id="alertSeverityFilter" onchange="renderAlerts()">
+                <option value="">All Severity</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+              </select>
+              <select class="filter-select" id="alertStatusFilter" onchange="renderAlerts()">
+                <option value="">All Status</option>
+                <option value="new">New</option>
+                <option value="investigating">Investigating</option>
+                <option value="resolved">Resolved</option>
+                <option value="dismissed">Dismissed</option>
+              </select>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Alert</th><th>Customer</th><th>Type</th><th>Severity</th><th>Status</th><th>Detected</th><th></th></tr></thead>
+              <tbody id="alertRows"></tbody>
+            </table>
+          </div>
+          <div class="pager"><span id="alertCount">0 alerts</span></div>
+        </div>
+      </section>
+
+      <!-- ============ NOTIFICATIONS ============ -->
+      <section class="view" id="view-notifications">
+        <div class="two-col">
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>Send a Notification</h2>
+                <p>Push an update to customers, bidders, or all users.</p>
+              </div>
+            </div>
+            <div class="modal-box-body">
+              <div class="form-row">
+                <label>Audience</label>
+                <select id="notifyAudience">
+                  <option>All Users</option>
+                  <option>Active Bidders</option>
+                  <option>Winners Awaiting Payment</option>
+                  <option>Single Branch</option>
+                </select>
+              </div>
+              <div class="form-row">
+                <label>Message</label>
+                <textarea id="notifyMessage" placeholder="e.g. Your auction for the Rose Gold Bangle ends in 1 hour."></textarea>
+              </div>
+              <button class="btn btn-primary" onclick="sendNotification()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m3 3 18 9-18 9 4.5-9L3 3Z"/></svg>
+                Send Notification
+              </button>
+            </div>
+          </div>
+
+          <div class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>Sent History</h2>
+                <p>Most recent first.</p>
+              </div>
+            </div>
+            <div class="activity-list" id="notifyHistory"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ CHATBOT LOGS ============ -->
+      <section class="view" id="view-chatbot">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Chatbot Conversations</h2>
+              <p>Auto-handled sessions from the storefront assistant. Unresolved sessions are flagged for follow-up.</p>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Session</th><th>User</th><th>Topic</th><th>Messages</th><th>Resolved</th><th>Last Active</th></tr></thead>
+              <tbody id="chatRows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ BRANCHES ============ -->
+      <section class="view" id="view-branches">
+        <div class="panel" style="padding:16px 20px;display:flex;gap:12px;align-items:flex-start;background:rgba(199,166,106,.08);border-color:var(--gold-light);">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;color:var(--navy);flex-shrink:0;margin-top:2px;"><path d="M12 22s7-7.4 7-12.5A7 7 0 0 0 5 9.5C5 14.6 12 22 12 22Z"/><circle cx="12" cy="9.5" r="2.4"/></svg>
+          <p style="font-size:12px;color:var(--text);line-height:1.6;">
+            <b style="color:var(--navy);">Branches are managed here, and only here.</b> Whatever you add, edit, or remove in this list is what appears on the customer-facing GPS locator and in the "preferred branch" pickers on the customer and shop owner dashboards — admins and managers are the only ones who can open, close, or relocate a branch.
+          </p>
+        </div>
+
+        <div class="panel">
+          <div class="toolbar">
+            <div class="search-box">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" id="branchSearch" placeholder="Search branches…" oninput="renderBranches()">
+            </div>
+            <button class="btn btn-primary" onclick="openBranchModal()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>
+              Add Branch
+            </button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Branch</th><th>Address</th><th>Hours</th><th>Phone</th><th>Status</th><th></th></tr></thead>
+              <tbody id="branchRows"></tbody>
+            </table>
+          </div>
+          <div class="pager"><span id="branchCount">0 branches</span></div>
+        </div>
+
+        <div class="panel" style="padding: 18px 20px;">
+          <p style="font-size:12.5px;color:var(--muted);">
+            The full GPS map with live distance and directions is on the customer-facing locator page.
+          </p>
+          <a class="btn btn-outline" style="margin-top:12px;" href="branches.html">Open GPS Branch Locator →</a>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<!-- ============ PRODUCT MODAL ============ -->
+<div class="modal-overlay" id="productModal">
+  <div class="modal-box">
+    <div class="modal-box-head">
+      <h3 id="productModalTitle">Add Product</h3>
+      <button class="modal-close" onclick="closeModal('productModal')">×</button>
+    </div>
+    <div class="modal-box-body">
+      <input type="hidden" id="productId">
+      <div class="form-row">
+        <label>Product Name</label>
+        <input type="text" id="productName" placeholder="e.g. Solitaire Diamond Ring">
+      </div>
+      <div class="form-grid-2">
+        <div class="form-row">
+          <label>Category</label>
+          <select id="productCategory">
+            <option>Rings</option>
+            <option>Necklaces</option>
+            <option>Bracelets</option>
+            <option>Earrings</option>
+            <option>Watches</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Karat / Weight</label>
+          <input type="text" id="productKarat" placeholder="e.g. 18K · 4.2g">
+        </div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-row">
+          <label>Price (₱)</label>
+          <input type="number" id="productPrice" placeholder="0">
+        </div>
+        <div class="form-row">
+          <label>Stock Quantity</label>
+          <input type="number" id="productStock" placeholder="0">
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Description</label>
+        <textarea id="productDesc" placeholder="Short product description"></textarea>
+      </div>
+    </div>
+    <div class="modal-box-foot">
+      <button class="btn btn-outline" onclick="closeModal('productModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveProduct()">Save Product</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ AUCTION MODAL ============ -->
+<div class="modal-overlay" id="auctionModal">
+  <div class="modal-box">
+    <div class="modal-box-head">
+      <h3 id="auctionModalTitle">Create Auction</h3>
+      <button class="modal-close" onclick="closeModal('auctionModal')">×</button>
+    </div>
+    <div class="modal-box-body">
+      <input type="hidden" id="auctionId">
+      <div class="form-row">
+        <label>Jewelry Item</label>
+        <select id="auctionProduct"></select>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-row">
+          <label>Starting Price (₱)</label>
+          <input type="number" id="auctionStartPrice" placeholder="0">
+        </div>
+        <div class="form-row">
+          <label>Duration (hours)</label>
+          <input type="number" id="auctionDuration" placeholder="24">
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Status</label>
+        <select id="auctionStatus">
+          <option value="scheduled">Scheduled</option>
+          <option value="live">Live</option>
+          <option value="ended">Ended</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-box-foot">
+      <button class="btn btn-outline" onclick="closeModal('auctionModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveAuction()">Save Auction</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ USER MODAL ============ -->
+<div class="modal-overlay" id="userModal">
+  <div class="modal-box">
+    <div class="modal-box-head">
+      <h3 id="userModalTitle">Add User</h3>
+      <button class="modal-close" onclick="closeModal('userModal')">×</button>
+    </div>
+    <div class="modal-box-body">
+      <input type="hidden" id="userId">
+      <div class="form-row">
+        <label>Full Name</label>
+        <input type="text" id="userName" placeholder="Full name">
+      </div>
+      <div class="form-row">
+        <label>Email Address</label>
+        <input type="email" id="userEmail" placeholder="you@example.com">
+      </div>
+      <div class="form-grid-2">
+        <div class="form-row">
+          <label>Role</label>
+          <select id="userRole">
+            <option>Customer</option>
+            <option>Manager</option>
+            <option>Admin</option>
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Status</label>
+          <select id="userStatus">
+            <option value="active">Active</option>
+            <option value="suspended">Suspended</option>
+          </select>
+        </div>
+      </div>
+    </div>
+    <div class="modal-box-foot">
+      <button class="btn btn-outline" onclick="closeModal('userModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveUser()">Save User</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ BRANCH MODAL ============ -->
+<div class="modal-overlay" id="branchModal">
+  <div class="modal-box">
+    <div class="modal-box-head">
+      <h3 id="branchModalTitle">Add Branch</h3>
+      <button class="modal-close" onclick="closeModal('branchModal')">×</button>
+    </div>
+    <div class="modal-box-body">
+      <input type="hidden" id="branchIndex">
+      <div class="form-row">
+        <label>Branch Name</label>
+        <input type="text" id="branchName" placeholder="e.g. Cagayan de Oro Branch">
+      </div>
+      <div class="form-row">
+        <label>Address</label>
+        <input type="text" id="branchAddress" placeholder="e.g. Limketkai Center, CDO">
+      </div>
+      <div class="form-grid-2">
+        <div class="form-row">
+          <label>Hours</label>
+          <input type="text" id="branchHours" placeholder="e.g. Mon–Sat · 9:00 AM – 6:00 PM">
+        </div>
+        <div class="form-row">
+          <label>Phone</label>
+          <input type="text" id="branchPhone" placeholder="e.g. (088) 123-4567">
+        </div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-row">
+          <label>Latitude</label>
+          <input type="number" step="any" id="branchLat" placeholder="e.g. 8.4822">
+        </div>
+        <div class="form-row">
+          <label>Longitude</label>
+          <input type="number" step="any" id="branchLng" placeholder="e.g. 124.6472">
+        </div>
+      </div>
+      <div class="form-row">
+        <label>Status</label>
+        <select id="branchStatus">
+          <option value="Open">Open</option>
+          <option value="Temporarily Closed">Temporarily Closed</option>
+        </select>
+      </div>
+      <p class="form-hint" style="margin-top:-8px;">Coordinates position this branch's pin on the customer GPS locator map.</p>
+    </div>
+    <div class="modal-box-foot">
+      <button class="btn btn-outline" onclick="closeModal('branchModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveBranch()">Save Branch</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ CONFIRM DELETE MODAL ============ -->
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal-box" style="width:min(380px,100%);">
+    <div class="modal-box-body confirm-box">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+      <h3 id="confirmTitle" style="color:var(--navy);font-size:15px;">Delete this record?</h3>
+      <p id="confirmBody">This action cannot be undone in this demo session.</p>
+    </div>
+    <div class="modal-box-foot">
+      <button class="btn btn-outline" onclick="closeModal('confirmModal')">Cancel</button>
+      <button class="btn btn-primary" style="background:var(--danger);" id="confirmActionBtn">Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ ALERT DETAIL MODAL ============ -->
+<div class="modal-overlay" id="alertModal">
+  <div class="modal-box" style="width:min(480px,100%);">
+    <div class="modal-box-head">
+      <h3>Alert Details</h3>
+      <button class="modal-close" onclick="closeModal('alertModal')">×</button>
+    </div>
+    <div class="modal-box-body" id="alertModalBody"></div>
+    <div class="modal-box-foot" id="alertModalFoot"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* =====================================================
+   MOCK DATA STORE (demo only — no backend)
+===================================================== */
+let products = [
+  { id: 'P-1001', name: 'Solitaire Diamond Ring', category: 'Rings', karat: '18K · 3.1g', price: 68000, stock: 4, img: 'https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=200&q=70' },
+  { id: 'P-1002', name: 'Rose Gold Bangle', category: 'Bracelets', karat: '18K · 12g', price: 54000, stock: 1, img: 'https://images.unsplash.com/photo-1611591437281-460bfbe1220a?auto=format&fit=crop&w=200&q=70' },
+  { id: 'P-1003', name: 'Pearl Drop Earrings', category: 'Earrings', karat: '14K · 5.4g', price: 21500, stock: 0, img: 'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?auto=format&fit=crop&w=200&q=70' },
+  { id: 'P-1004', name: 'Byzantine Gold Chain', category: 'Necklaces', karat: '21K · 28g', price: 132000, stock: 2, img: 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&w=200&q=70' },
+  { id: 'P-1005', name: 'Vintage Chrono Watch', category: 'Watches', karat: '18K case', price: 245000, stock: 3, img: 'https://images.unsplash.com/photo-1670404160620-a3a86428560e?auto=format&fit=crop&w=200&q=70' },
+  { id: 'P-1006', name: 'Emerald Halo Ring', category: 'Rings', karat: '18K · 4.0g', price: 89000, stock: 6, img: 'https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=200&q=70' },
+];
+
+let auctions = [
+  { id: 'A-501', product: 'Solitaire Diamond Ring', startPrice: 60000, currentBid: 74500, bids: 14, endsInSec: 3600*3+900, status: 'live' },
+  { id: 'A-502', product: 'Rose Gold Bangle', startPrice: 48000, currentBid: 48000, bids: 0, endsInSec: 3600*26, status: 'scheduled' },
+  { id: 'A-503', product: 'Byzantine Gold Chain', startPrice: 120000, currentBid: 151000, bids: 22, endsInSec: 3600*1+1200, status: 'live' },
+  { id: 'A-504', product: 'Vintage Chrono Watch', startPrice: 230000, currentBid: 268000, bids: 9, endsInSec: -1, status: 'ended' },
+];
+
+let users = [
+  { id: 'U-01', name: 'Maria Santos', email: 'maria.santos@email.com', role: 'Customer', joined: '2026-02-14', bids: 18, status: 'active' },
+  { id: 'U-02', name: 'John Dela Cruz', email: 'john.delacruz@email.com', role: 'Customer', joined: '2026-04-02', bids: 6, status: 'active' },
+  { id: 'U-03', name: 'Jill Martinez', email: 'jill.m@atany.ph', role: 'Manager', joined: '2025-11-01', bids: 0, status: 'active' },
+  { id: 'U-04', name: 'Ramon Villanueva', email: 'ramon.v@email.com', role: 'Customer', joined: '2026-01-20', bids: 41, status: 'suspended' },
+  { id: 'U-05', name: 'Ana Reyes', email: 'ana.reyes@email.com', role: 'Customer', joined: '2026-05-11', bids: 3, status: 'active' },
+];
+
+let txns = [
+  { id: 'TXN-9001', customer: 'Maria Santos', item: 'Pearl Drop Earrings', amount: 21500, branch: 'Davao City', status: 'paid', date: '2026-08-20' },
+  { id: 'TXN-9002', customer: 'John Dela Cruz', item: 'Vintage Chrono Watch', amount: 268000, branch: 'Davao City', status: 'pending', date: '2026-08-22' },
+  { id: 'TXN-9003', customer: 'Ana Reyes', item: 'Emerald Halo Ring', amount: 89000, branch: 'Cebu Branch', status: 'paid', date: '2026-08-24' },
+  { id: 'TXN-9004', customer: 'Ramon Villanueva', item: 'Byzantine Gold Chain', amount: 151000, branch: 'Manila Branch', status: 'refunded', date: '2026-08-18' },
+];
+
+/* =====================================================
+   ANALYTICS MOCK DATA
+===================================================== */
+let revenueTrend = [
+  { month: 'Mar', value: 612000 }, { month: 'Apr', value: 548000 }, { month: 'May', value: 701000 },
+  { month: 'Jun', value: 665000 }, { month: 'Jul', value: 789000 }, { month: 'Aug', value: 842000 },
+  { month: 'Sep', value: 902000 }, { month: 'Oct', value: 815000 }, { month: 'Nov', value: 940000 },
+  { month: 'Dec', value: 1120000 }, { month: 'Jan', value: 876000 }, { month: 'Feb', value: 933000 },
+];
+
+let userGrowthTrend = [
+  { month: 'Mar', value: 21 }, { month: 'Apr', value: 18 }, { month: 'May', value: 27 },
+  { month: 'Jun', value: 24 }, { month: 'Jul', value: 33 }, { month: 'Aug', value: 41 },
+  { month: 'Sep', value: 29 }, { month: 'Oct', value: 35 }, { month: 'Nov', value: 47 },
+  { month: 'Dec', value: 52 }, { month: 'Jan', value: 30 }, { month: 'Feb', value: 38 },
+];
+
+let categoryData = [
+  { cat: 'Rings', count: 34 }, { cat: 'Necklaces', count: 21 }, { cat: 'Bracelets', count: 17 },
+  { cat: 'Earrings', count: 13 }, { cat: 'Watches', count: 9 },
+];
+
+let branchRevenue = [
+  { branch: 'Davao City', value: 612000 }, { branch: 'Cebu', value: 498000 },
+  { branch: 'Manila', value: 741000 }, { branch: 'Iloilo', value: 214000 }, { branch: 'Baguio', value: 176000 },
+];
+
+let securityAlerts = [
+  {
+    id: 'SEC-401', customer: 'Ramon Villanueva', type: 'Rapid High-Value Bidding',
+    detail: 'Placed 6 bids on 3 different items within 90 seconds, each jumping 2–3x the current bid.',
+    severity: 'high', status: 'new', time: '8 min ago',
+    trail: ['08:41:02 — Bid ₱150,000 on Byzantine Gold Chain (previous: ₱48,000)', '08:41:24 — Bid ₱268,000 on Vintage Chrono Watch (previous: ₱90,000)', '08:42:10 — Bid ₱89,000 on Emerald Halo Ring (previous: ₱31,000)'],
+  },
+  {
+    id: 'SEC-402', customer: 'Unknown (Guest Checkout)', type: 'Multiple Failed Logins',
+    detail: '7 failed sign-in attempts for maria.santos@email.com from a new device within 5 minutes.',
+    severity: 'high', status: 'investigating', time: '41 min ago',
+    trail: ['09:02:11 — Failed login attempt (device: unrecognized, Manila IP range)', '09:02:40 — Failed login attempt', '09:04:55 — Password reset requested'],
+  },
+  {
+    id: 'SEC-403', customer: 'John Dela Cruz', type: 'Payment Method Mismatch',
+    detail: 'Card used for payment does not match the name or billing region on file.',
+    severity: 'medium', status: 'new', time: '2 hours ago',
+    trail: ['Order ORD-3315 — card holder name differs from account name', 'Billing country: SG · Account country: PH'],
+  },
+  {
+    id: 'SEC-404', customer: 'Ana Reyes', type: 'Unusual Bidding Pattern',
+    detail: 'Bid amount was 4.6x the previous highest bid, well above typical increments.',
+    severity: 'medium', status: 'resolved', time: 'Yesterday',
+    trail: ['Bid ₱89,000 on Emerald Halo Ring — previous bid ₱19,500', 'Reviewed by Jill Martinez — confirmed genuine, buyer verified by phone.'],
+  },
+  {
+    id: 'SEC-405', customer: 'Carla Tan', type: 'Multiple Accounts, Same Device',
+    detail: '3 customer accounts have signed in from the same device fingerprint this week.',
+    severity: 'low', status: 'dismissed', time: '3 days ago',
+    trail: ['Accounts: carla.tan@email.com, c.tan2@email.com, ctan.jewelry@email.com', 'Reviewed — shared family device, no policy violation found.'],
+  },
+];
+
+let topItems = [
+  { name: 'Vintage Chrono Watch', category: 'Watches', units: 3, revenue: 780000 },
+  { name: 'Byzantine Gold Chain', category: 'Necklaces', units: 5, revenue: 690000 },
+  { name: 'Sapphire Cluster Ring', category: 'Rings', units: 6, revenue: 498000 },
+  { name: 'Solitaire Diamond Ring', category: 'Rings', units: 7, revenue: 471000 },
+  { name: 'Emerald Halo Ring', category: 'Rings', units: 4, revenue: 356000 },
+];
+
+/* =====================================================
+   CHART BUILDERS (lightweight inline SVG, no library)
+===================================================== */
+function buildLineChart(data, opts = {}) {
+  const w = 520, h = 200, padL = 36, padR = 12, padT = 14, padB = 26;
+  const chartW = w - padL - padR, chartH = h - padT - padB;
+  const max = Math.max(...data.map(d => d.value)) * 1.15;
+  const stepX = chartW / (data.length - 1);
+  const points = data.map((d, i) => {
+    const x = padL + i * stepX;
+    const y = padT + chartH - (d.value / max) * chartH;
+    return { x, y, d };
+  });
+
+  const linePath = points.map((p, i) => (i === 0 ? 'M' : 'L') + p.x.toFixed(1) + ',' + p.y.toFixed(1)).join(' ');
+  const areaPath = linePath + ` L${points[points.length-1].x.toFixed(1)},${(padT+chartH).toFixed(1)} L${points[0].x.toFixed(1)},${(padT+chartH).toFixed(1)} Z`;
+
+  const gridLines = [0, 0.5, 1].map(f => {
+    const y = padT + chartH * f;
+    return `<line class="chart-grid-line" x1="${padL}" y1="${y}" x2="${w-padR}" y2="${y}"/>`;
+  }).join('');
+
+  const labels = points.map(p => `<text class="chart-axis-label" x="${p.x}" y="${h-6}" text-anchor="middle">${p.d.month}</text>`).join('');
+  const dots = points.map(p => `<circle class="chart-line-dot" cx="${p.x}" cy="${p.y}" r="3.5"><title>${p.d.month}: ${opts.fmt ? opts.fmt(p.d.value) : p.d.value}</title></circle>`).join('');
+
+  return `<svg class="chart-svg" viewBox="0 0 ${w} ${h}">${gridLines}<path class="chart-line-area" d="${areaPath}"/><path class="chart-line-path" d="${linePath}"/>${dots}${labels}</svg>`;
+}
+
+function buildBarChart(data, keyField, valField, opts = {}) {
+  const w = 520, barCount = data.length, padL = 10, padR = 10, padT = 20, padB = 26;
+  const chartW = w - padL - padR, h = 200, chartH = h - padT - padB;
+  const max = Math.max(...data.map(d => d[valField])) * 1.15;
+  const gap = 14;
+  const barW = (chartW - gap * (barCount - 1)) / barCount;
+
+  const bars = data.map((d, i) => {
+    const x = padL + i * (barW + gap);
+    const barH = (d[valField] / max) * chartH;
+    const y = padT + chartH - barH;
+    return `
+      <rect class="chart-bar" x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${barH.toFixed(1)}" rx="4">
+        <title>${d[keyField]}: ${opts.fmt ? opts.fmt(d[valField]) : d[valField]}</title>
+      </rect>
+      <text class="chart-bar-value" x="${(x+barW/2).toFixed(1)}" y="${(y-6).toFixed(1)}" text-anchor="middle">${opts.fmt ? opts.fmt(d[valField]) : d[valField]}</text>
+      <text class="chart-axis-label" x="${(x+barW/2).toFixed(1)}" y="${h-6}" text-anchor="middle">${d[keyField]}</text>
+    `;
+  }).join('');
+
+  return `<svg class="chart-svg" viewBox="0 0 ${w} ${h}">${bars}</svg>`;
+}
+
+/* =====================================================
+   SECURITY ALERTS
+===================================================== */
+function renderAlerts() {
+  const q = document.getElementById('alertSearch').value.toLowerCase();
+  const sevFilter = document.getElementById('alertSeverityFilter').value;
+  const statusFilter = document.getElementById('alertStatusFilter').value;
+
+  const filtered = securityAlerts.filter(a => {
+    const matchesQ = a.customer.toLowerCase().includes(q) || a.type.toLowerCase().includes(q) || a.id.toLowerCase().includes(q);
+    const matchesSev = !sevFilter || a.severity === sevFilter;
+    const matchesStatus = !statusFilter || a.status === statusFilter;
+    return matchesQ && matchesSev && matchesStatus;
+  });
+
+  document.getElementById('alertRows').innerHTML = filtered.map(a => `
+    <tr>
+      <td class="cell-main">${a.id}</td>
+      <td>${a.customer}</td>
+      <td>${a.type}</td>
+      <td><span class="badge ${a.severity}">${a.severity.charAt(0).toUpperCase() + a.severity.slice(1)}</span></td>
+      <td><span class="badge ${a.status}">${a.status.charAt(0).toUpperCase() + a.status.slice(1)}</span></td>
+      <td>${a.time}</td>
+      <td><button class="btn-ghost" onclick="openAlertModal('${a.id}')">Review</button></td>
+    </tr>`).join('') || emptyRow(7, 'No alerts match your filters.');
+
+  document.getElementById('alertCount').textContent = filtered.length + ' alert' + (filtered.length === 1 ? '' : 's');
+
+  const open = securityAlerts.filter(a => a.status === 'new' || a.status === 'investigating').length;
+  document.getElementById('secOpenCount').textContent = open;
+  document.getElementById('secHighCount').textContent = securityAlerts.filter(a => a.severity === 'high' && (a.status === 'new' || a.status === 'investigating')).length;
+  document.getElementById('secResolvedCount').textContent = securityAlerts.filter(a => a.status === 'resolved').length;
+  document.getElementById('securityBadge').textContent = open;
+  document.getElementById('securityDot').style.display = open > 0 ? 'block' : 'none';
+}
+
+function openAlertModal(id) {
+  const a = securityAlerts.find(x => x.id === id);
+  if (!a) return;
+
+  document.getElementById('alertModalBody').innerHTML = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">
+      <span class="badge ${a.severity}">${a.severity.charAt(0).toUpperCase() + a.severity.slice(1)} Severity</span>
+      <span class="badge ${a.status}">${a.status.charAt(0).toUpperCase() + a.status.slice(1)}</span>
+    </div>
+    <p style="font-size:13px;color:var(--navy);font-weight:700;margin-bottom:4px;">${a.type}</p>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:4px;">Customer: <b style="color:var(--text);">${a.customer}</b> · Detected ${a.time}</p>
+    <p style="font-size:12.5px;margin:12px 0;">${a.detail}</p>
+    <div style="font-size:10.5px;font-weight:700;letter-spacing:.06em;color:var(--navy);text-transform:uppercase;margin-bottom:8px;">Activity Trail</div>
+    <div style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--soft);">
+      ${a.trail.map(t => `<div style="font-size:11.5px;color:var(--text);padding:4px 0;">${t}</div>`).join('')}
+    </div>
+  `;
+
+  const isOpen = a.status === 'new' || a.status === 'investigating';
+  document.getElementById('alertModalFoot').innerHTML = isOpen ? `
+    <button class="btn btn-outline" onclick="dismissAlert('${a.id}')">Dismiss</button>
+    <button class="btn btn-outline" onclick="markAlertResolved('${a.id}')">Mark Resolved</button>
+    <button class="btn btn-primary" style="background:var(--danger);" onclick="suspendFromAlert('${a.id}')">Suspend Customer</button>
+  ` : `<button class="btn btn-outline" onclick="closeModal('alertModal')">Close</button>`;
+
+  openModal('alertModal');
+}
+
+function markAlertResolved(id) {
+  const a = securityAlerts.find(x => x.id === id);
+  a.status = 'resolved';
+  closeModal('alertModal');
+  renderAlerts();
+  showToast('Alert ' + id + ' marked resolved.');
+}
+
+function dismissAlert(id) {
+  const a = securityAlerts.find(x => x.id === id);
+  a.status = 'dismissed';
+  closeModal('alertModal');
+  renderAlerts();
+  showToast('Alert ' + id + ' dismissed.');
+}
+
+function suspendFromAlert(id) {
+  const a = securityAlerts.find(x => x.id === id);
+  const u = users.find(x => x.name === a.customer);
+  if (u) { u.status = 'suspended'; renderUsers(); }
+  a.status = 'resolved';
+  closeModal('alertModal');
+  renderAlerts();
+  showToast((u ? u.name : a.customer) + ' account suspended.');
+}
+
+/* =====================================================
+   ANALYTICS RENDER
+===================================================== */
+function renderAnalytics() {
+  const months = Number(document.getElementById('analyticsRange').value);
+  const rev = revenueTrend.slice(-months);
+  const usr = userGrowthTrend.slice(-months);
+
+  document.getElementById('revenueChartWrap').innerHTML = buildLineChart(rev, { fmt: v => '₱' + (v/1000).toFixed(0) + 'k' });
+  document.getElementById('userChartWrap').innerHTML = buildBarChart(usr, 'month', 'value');
+  document.getElementById('categoryChartWrap').innerHTML = buildBarChart(categoryData, 'cat', 'count');
+  document.getElementById('branchChartWrap').innerHTML = buildBarChart(branchRevenue, 'branch', 'value', { fmt: v => '₱' + (v/1000).toFixed(0) + 'k' });
+
+  const totalRevenue = rev.reduce((s, d) => s + d.value, 0);
+  const totalNewUsers = usr.reduce((s, d) => s + d.value, 0);
+  const revDelta = rev.length > 1 ? (((rev[rev.length-1].value - rev[0].value) / rev[0].value) * 100).toFixed(0) : 0;
+
+  document.getElementById('anRevenue').textContent = peso(totalRevenue);
+  document.getElementById('anRevenueDelta').textContent = (revDelta >= 0 ? '+' : '') + revDelta + '%';
+  document.getElementById('anAuctions').textContent = auctions.filter(a => a.status === 'ended').length + topItems.reduce((s,i)=>s+i.units,0);
+  document.getElementById('anAuctionsDelta').textContent = '+' + Math.round(months * 3);
+  document.getElementById('anBids').textContent = auctions.reduce((s, a) => s + a.bids, 0) + 312;
+  document.getElementById('anNewUsers').textContent = totalNewUsers;
+  document.getElementById('anUsersDelta').textContent = '+' + usr[usr.length-1].value;
+
+  document.getElementById('topItemRows').innerHTML = topItems.map(t => `
+    <tr>
+      <td class="cell-main">${t.name}</td>
+      <td>${t.category}</td>
+      <td>${t.units}</td>
+      <td class="cell-main">${peso(t.revenue)}</td>
+      <td>${peso(Math.round(t.revenue / t.units))}</td>
+    </tr>`).join('');
+}
+
+function downloadReport() {
+  const months = Number(document.getElementById('analyticsRange').value);
+  const rev = revenueTrend.slice(-months);
+
+  let csv = 'ATANY Analytics Report\n\n';
+  csv += 'Month,Revenue (PHP)\n';
+  rev.forEach(r => { csv += `${r.month},${r.value}\n`; });
+  csv += '\nCategory,Auctions\n';
+  categoryData.forEach(c => { csv += `${c.cat},${c.count}\n`; });
+  csv += '\nBranch,Revenue (PHP)\n';
+  branchRevenue.forEach(b => { csv += `${b.branch},${b.value}\n`; });
+  csv += '\nTop Item,Category,Units Sold,Revenue (PHP)\n';
+  topItems.forEach(t => { csv += `${t.name},${t.category},${t.units},${t.revenue}\n`; });
+
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'atany-analytics-report.csv';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast('Report downloaded.');
+}
+
+let branches = [
+  { name: 'Davao City Branch', address: 'Victoria Plaza Area, Davao City', hours: 'Mon–Sat · 9:00 AM – 6:00 PM', phone: '(082) 123-4567', lat: 7.0736, lng: 125.6128, status: 'Open' },
+  { name: 'Cebu Branch', address: 'Ayala Center, Cebu City', hours: 'Mon–Sat · 10:00 AM – 7:00 PM', phone: '(032) 234-5678', lat: 10.3181, lng: 123.9051, status: 'Open' },
+  { name: 'Manila Branch', address: 'Greenbelt 5, Makati City', hours: 'Daily · 10:00 AM – 8:00 PM', phone: '(02) 8888-1234', lat: 14.5518, lng: 121.0201, status: 'Open' },
+  { name: 'Iloilo Branch', address: 'Festive Walk, Iloilo City', hours: 'Mon–Sat · 10:00 AM – 6:00 PM', phone: '(033) 321-9988', lat: 10.7202, lng: 122.5621, status: 'Open' },
+  { name: 'Baguio Branch', address: 'Session Road, Baguio City', hours: 'Wed–Mon · 9:00 AM – 5:00 PM', phone: '(074) 442-7711', lat: 16.4131, lng: 120.5930, status: 'Open' },
+];
+
+let notifyHistoryData = [
+  { audience: 'Active Bidders', message: 'Auctions ending in the next hour — check your bids.', time: '2 hours ago' },
+  { audience: 'All Users', message: 'New Byzantine Gold collection just launched.', time: '1 day ago' },
+];
+
+let chatSessions = [
+  { id: 'CS-201', user: 'Maria Santos', topic: 'Auction ending time', messages: 6, resolved: true, last: '10 min ago' },
+  { id: 'CS-202', user: 'Guest', topic: 'Branch hours', messages: 3, resolved: true, last: '48 min ago' },
+  { id: 'CS-203', user: 'Ramon Villanueva', topic: 'Refund status', messages: 9, resolved: false, last: '2 hours ago' },
+  { id: 'CS-204', user: 'Ana Reyes', topic: 'How bidding works', messages: 4, resolved: true, last: '5 hours ago' },
+];
+
+let activity = [
+  { text: '<b>John Dela Cruz</b> placed a ₱268,000 bid on Vintage Chrono Watch', time: '12 min ago' },
+  { text: '<b>Auction A-503</b> passed ₱150,000 in total bids', time: '40 min ago' },
+  { text: '<b>Ana Reyes</b> completed payment for Emerald Halo Ring', time: '2 hours ago' },
+  { text: 'New product <b>Emerald Halo Ring</b> added to catalog', time: '5 hours ago' },
+];
+
+let deleteHandler = null;
+
+/* =====================================================
+   NAVIGATION
+===================================================== */
+const titles = {
+  dashboard: ['Dashboard', 'Overview of products, auctions, users, and sales.'],
+  products: ['Jewelry Products', 'Add, edit, and track inventory of every listed item.'],
+  auctions: ['Auctions', 'Create, monitor, and close live and scheduled auctions.'],
+  users: ['Users', 'Manage customer, manager, and admin accounts.'],
+  transactions: ['Transactions', 'Track payments, refunds, and branch pickups.'],
+  analytics: ['Analytics & Reports', 'Sales performance, auction activity, and downloadable reports.'],
+  security: ['Security Alerts', 'Suspicious customer activity flagged for admin review.'],
+  notifications: ['Notifications', 'Send and review updates sent to customers.'],
+  chatbot: ['Chatbot Logs', 'Review sessions handled by the storefront assistant.'],
+  branches: ['Branches / GPS', 'Manage the branches shown on the customer locator.'],
+};
+
+function switchView(view) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + view).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === view));
+  document.getElementById('viewTitle').textContent = titles[view][0];
+  document.getElementById('viewSubtitle').textContent = titles[view][1];
+  document.getElementById('sidebar').classList.remove('open');
+}
+
+document.querySelectorAll('.nav-item[data-view]').forEach(btn => {
+  btn.addEventListener('click', () => switchView(btn.dataset.view));
+});
+
+/* =====================================================
+   USER MENU / SIGN OUT
+===================================================== */
+function toggleUserMenu(e) {
+  e.stopPropagation();
+  document.getElementById('userDropdown').classList.toggle('open');
+}
+function closeUserMenu() {
+  document.getElementById('userDropdown').classList.remove('open');
+}
+document.addEventListener('click', closeUserMenu);
+
+function signOut() {
+  closeUserMenu();
+  showToast('Signing out…');
+  setTimeout(() => { window.location.href = 'login.html'; }, 600);
+}
+
+/* =====================================================
+   HELPERS
+===================================================== */
+function peso(n) { return '₱' + Number(n).toLocaleString(); }
+
+function formatCountdown(sec) {
+  if (sec <= 0) return 'Ended';
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+  return h + 'h ' + m + 'm';
+}
+
+function showToast(message) {
+  const toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.classList.add('show');
+  clearTimeout(window._t);
+  window._t = setTimeout(() => toast.classList.remove('show'), 2600);
+}
+
+function openModal(id) { document.getElementById(id).classList.add('show'); }
+function closeModal(id) { document.getElementById(id).classList.remove('show'); }
+
+function confirmAction(title, body, onConfirm) {
+  document.getElementById('confirmTitle').textContent = title;
+  document.getElementById('confirmBody').textContent = body;
+  deleteHandler = onConfirm;
+  openModal('confirmModal');
+}
+
+document.getElementById('confirmActionBtn').addEventListener('click', () => {
+  if (deleteHandler) deleteHandler();
+  closeModal('confirmModal');
+});
+
+document.querySelectorAll('.modal-overlay').forEach(m => {
+  m.addEventListener('click', e => { if (e.target === m) m.classList.remove('show'); });
+});
+
+/* =====================================================
+   PRODUCTS
+===================================================== */
+function stockStatus(qty) {
+  if (qty <= 0) return { key: 'soldout', label: 'Sold Out' };
+  if (qty <= 2) return { key: 'lowstock', label: 'Low Stock' };
+  return { key: 'instock', label: 'In Stock' };
+}
+
+function renderProducts() {
+  const q = document.getElementById('productSearch').value.toLowerCase();
+  const cat = document.getElementById('productCategoryFilter').value;
+  const stockFilter = document.getElementById('productStockFilter').value;
+
+  const rows = document.getElementById('productRows');
+  const filtered = products.filter(p => {
+    const matchesQ = p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q);
+    const matchesCat = !cat || p.category === cat;
+    const matchesStock = !stockFilter || stockStatus(p.stock).key === stockFilter;
+    return matchesQ && matchesCat && matchesStock;
+  });
+
+  rows.innerHTML = filtered.map(p => {
+    const s = stockStatus(p.stock);
+    return `<tr>
+      <td><div class="item-thumb"><img src="${p.img}" alt=""><div><div class="cell-main">${p.name}</div><div class="cell-sub">${p.id}</div></div></div></td>
+      <td>${p.category}</td>
+      <td>${p.karat}</td>
+      <td class="cell-main">${peso(p.price)}</td>
+      <td>${p.stock} units</td>
+      <td><span class="badge ${s.key}">${s.label}</span></td>
+      <td>
+        <div class="row-actions">
+          <button class="btn-ghost" onclick="editProduct('${p.id}')">Edit</button>
+          <button class="btn-danger-ghost" onclick="deleteProduct('${p.id}')">Delete</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('') || emptyRow(7, 'No products match your filters.');
+
+  document.getElementById('productCount').textContent = filtered.length + ' product' + (filtered.length === 1 ? '' : 's');
+  document.getElementById('kpiProducts').textContent = products.length;
+}
+
+function emptyRow(colspan, text) {
+  return `<tr><td colspan="${colspan}"><div class="empty-state"><p>${text}</p></div></td></tr>`;
+}
+
+function openProductModal() {
+  document.getElementById('productModalTitle').textContent = 'Add Product';
+  document.getElementById('productId').value = '';
+  document.getElementById('productName').value = '';
+  document.getElementById('productCategory').value = 'Rings';
+  document.getElementById('productKarat').value = '';
+  document.getElementById('productPrice').value = '';
+  document.getElementById('productStock').value = '';
+  document.getElementById('productDesc').value = '';
+  openModal('productModal');
+}
+
+function editProduct(id) {
+  const p = products.find(x => x.id === id);
+  if (!p) return;
+  document.getElementById('productModalTitle').textContent = 'Edit Product';
+  document.getElementById('productId').value = p.id;
+  document.getElementById('productName').value = p.name;
+  document.getElementById('productCategory').value = p.category;
+  document.getElementById('productKarat').value = p.karat;
+  document.getElementById('productPrice').value = p.price;
+  document.getElementById('productStock').value = p.stock;
+  document.getElementById('productDesc').value = p.desc || '';
+  openModal('productModal');
+}
+
+function saveProduct() {
+  const name = document.getElementById('productName').value.trim();
+  if (!name) { showToast('Please enter a product name.'); return; }
+
+  const id = document.getElementById('productId').value;
+  const data = {
+    name,
+    category: document.getElementById('productCategory').value,
+    karat: document.getElementById('productKarat').value || '—',
+    price: Number(document.getElementById('productPrice').value) || 0,
+    stock: Number(document.getElementById('productStock').value) || 0,
+    desc: document.getElementById('productDesc').value,
+    img: 'https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=200&q=70',
+  };
+
+  if (id) {
+    const p = products.find(x => x.id === id);
+    Object.assign(p, data);
+    showToast('Product updated.');
+  } else {
+    data.id = 'P-' + (1000 + products.length + 1);
+    products.push(data);
+    showToast('Product added.');
+  }
+  closeModal('productModal');
+  renderProducts();
+  populateAuctionProductSelect();
+}
+
+function deleteProduct(id) {
+  const p = products.find(x => x.id === id);
+  confirmAction('Delete product?', `"${p.name}" will be removed from the catalog.`, () => {
+    products = products.filter(x => x.id !== id);
+    renderProducts();
+    showToast('Product deleted.');
+  });
+}
+
+/* =====================================================
+   AUCTIONS
+===================================================== */
+function populateAuctionProductSelect() {
+  const sel = document.getElementById('auctionProduct');
+  sel.innerHTML = products.map(p => `<option value="${p.name}">${p.name}</option>`).join('');
+}
+
+function renderAuctions() {
+  const q = document.getElementById('auctionSearch').value.toLowerCase();
+  const statusFilter = document.getElementById('auctionStatusFilter').value;
+
+  const filtered = auctions.filter(a => {
+    const matchesQ = a.product.toLowerCase().includes(q) || a.id.toLowerCase().includes(q);
+    const matchesStatus = !statusFilter || a.status === statusFilter;
+    return matchesQ && matchesStatus;
+  });
+
+  document.getElementById('auctionRows').innerHTML = filtered.map(a => `
+    <tr>
+      <td><div class="cell-main">${a.product}</div><div class="cell-sub">${a.id}</div></td>
+      <td>${peso(a.startPrice)}</td>
+      <td class="cell-main">${peso(a.currentBid)}</td>
+      <td>${a.bids}</td>
+      <td>${a.status === 'scheduled' ? 'Starts in ' + formatCountdown(a.endsInSec) : formatCountdown(a.endsInSec)}</td>
+      <td><span class="badge ${a.status}">${a.status.charAt(0).toUpperCase() + a.status.slice(1)}</span></td>
+      <td>
+        <div class="row-actions">
+          <button class="btn-ghost" onclick="editAuction('${a.id}')">Edit</button>
+          <button class="btn-danger-ghost" onclick="deleteAuction('${a.id}')">Delete</button>
+        </div>
+      </td>
+    </tr>`).join('') || emptyRow(7, 'No auctions match your filters.');
+
+  document.getElementById('auctionCount').textContent = filtered.length + ' auction' + (filtered.length === 1 ? '' : 's');
+  document.getElementById('kpiAuctions').textContent = auctions.filter(a => a.status === 'live').length;
+  document.getElementById('liveCountBadge').textContent = auctions.filter(a => a.status === 'live').length;
+
+  renderDashAuctions();
+}
+
+function renderDashAuctions() {
+  const soonest = [...auctions].filter(a => a.status !== 'ended').sort((a,b) => a.endsInSec - b.endsInSec).slice(0, 4);
+  document.getElementById('dashAuctionRows').innerHTML = soonest.map(a => `
+    <tr>
+      <td class="cell-main">${a.product}</td>
+      <td>${peso(a.currentBid)}</td>
+      <td>${a.bids}</td>
+      <td>${formatCountdown(a.endsInSec)}</td>
+      <td><span class="badge ${a.status}">${a.status.charAt(0).toUpperCase() + a.status.slice(1)}</span></td>
+    </tr>`).join('') || emptyRow(5, 'No upcoming auctions.');
+}
+
+function openAuctionModal() {
+  document.getElementById('auctionModalTitle').textContent = 'Create Auction';
+  document.getElementById('auctionId').value = '';
+  populateAuctionProductSelect();
+  document.getElementById('auctionStartPrice').value = '';
+  document.getElementById('auctionDuration').value = 24;
+  document.getElementById('auctionStatus').value = 'scheduled';
+  openModal('auctionModal');
+}
+
+function editAuction(id) {
+  const a = auctions.find(x => x.id === id);
+  if (!a) return;
+  document.getElementById('auctionModalTitle').textContent = 'Edit Auction';
+  document.getElementById('auctionId').value = a.id;
+  populateAuctionProductSelect();
+  document.getElementById('auctionProduct').value = a.product;
+  document.getElementById('auctionStartPrice').value = a.startPrice;
+  document.getElementById('auctionDuration').value = Math.max(1, Math.round(a.endsInSec / 3600));
+  document.getElementById('auctionStatus').value = a.status;
+  openModal('auctionModal');
+}
+
+function saveAuction() {
+  const product = document.getElementById('auctionProduct').value;
+  if (!product) { showToast('Please select a jewelry item.'); return; }
+
+  const id = document.getElementById('auctionId').value;
+  const startPrice = Number(document.getElementById('auctionStartPrice').value) || 0;
+  const duration = Number(document.getElementById('auctionDuration').value) || 24;
+  const status = document.getElementById('auctionStatus').value;
+
+  if (id) {
+    const a = auctions.find(x => x.id === id);
+    a.product = product; a.startPrice = startPrice; a.status = status;
+    a.endsInSec = status === 'ended' ? -1 : duration * 3600;
+    showToast('Auction updated.');
+  } else {
+    auctions.push({
+      id: 'A-' + (500 + auctions.length + 1),
+      product, startPrice, currentBid: startPrice, bids: 0,
+      endsInSec: status === 'ended' ? -1 : duration * 3600,
+      status,
+    });
+    showToast('Auction created.');
+  }
+  closeModal('auctionModal');
+  renderAuctions();
+}
+
+function deleteAuction(id) {
+  const a = auctions.find(x => x.id === id);
+  confirmAction('Delete auction?', `The auction for "${a.product}" will be removed.`, () => {
+    auctions = auctions.filter(x => x.id !== id);
+    renderAuctions();
+    showToast('Auction deleted.');
+  });
+}
+
+/* =====================================================
+   USERS
+===================================================== */
+function renderUsers() {
+  const q = document.getElementById('userSearch').value.toLowerCase();
+  const roleFilter = document.getElementById('userRoleFilter').value;
+  const statusFilter = document.getElementById('userStatusFilter').value;
+
+  const filtered = users.filter(u => {
+    const matchesQ = u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q);
+    const matchesRole = !roleFilter || u.role === roleFilter;
+    const matchesStatus = !statusFilter || u.status === statusFilter;
+    return matchesQ && matchesRole && matchesStatus;
+  });
+
+  document.getElementById('userRows').innerHTML = filtered.map(u => `
+    <tr>
+      <td class="cell-main">${u.name}<div class="cell-sub">${u.id}</div></td>
+      <td>${u.email}</td>
+      <td>${u.role}</td>
+      <td>${u.joined}</td>
+      <td>${u.bids}</td>
+      <td><span class="badge ${u.status}">${u.status.charAt(0).toUpperCase() + u.status.slice(1)}</span></td>
+      <td>
+        <div class="row-actions">
+          <button class="btn-ghost" onclick="editUser('${u.id}')">Edit</button>
+          <button class="btn-danger-ghost" onclick="toggleUserStatus('${u.id}')">${u.status === 'active' ? 'Suspend' : 'Reactivate'}</button>
+        </div>
+      </td>
+    </tr>`).join('') || emptyRow(7, 'No users match your filters.');
+
+  document.getElementById('userCount').textContent = filtered.length + ' user' + (filtered.length === 1 ? '' : 's');
+  document.getElementById('kpiUsers').textContent = users.length;
+}
+
+function openUserModal() {
+  document.getElementById('userModalTitle').textContent = 'Add User';
+  document.getElementById('userId').value = '';
+  document.getElementById('userName').value = '';
+  document.getElementById('userEmail').value = '';
+  document.getElementById('userRole').value = 'Customer';
+  document.getElementById('userStatus').value = 'active';
+  openModal('userModal');
+}
+
+function editUser(id) {
+  const u = users.find(x => x.id === id);
+  if (!u) return;
+  document.getElementById('userModalTitle').textContent = 'Edit User';
+  document.getElementById('userId').value = u.id;
+  document.getElementById('userName').value = u.name;
+  document.getElementById('userEmail').value = u.email;
+  document.getElementById('userRole').value = u.role;
+  document.getElementById('userStatus').value = u.status;
+  openModal('userModal');
+}
+
+function saveUser() {
+  const name = document.getElementById('userName').value.trim();
+  const email = document.getElementById('userEmail').value.trim();
+  if (!name || !email) { showToast('Please enter a name and email.'); return; }
+
+  const id = document.getElementById('userId').value;
+  const data = {
+    name, email,
+    role: document.getElementById('userRole').value,
+    status: document.getElementById('userStatus').value,
+  };
+
+  if (id) {
+    Object.assign(users.find(x => x.id === id), data);
+    showToast('User updated.');
+  } else {
+    users.push({ id: 'U-' + String(users.length + 1).padStart(2, '0'), joined: new Date().toISOString().slice(0,10), bids: 0, ...data });
+    showToast('User added.');
+  }
+  closeModal('userModal');
+  renderUsers();
+}
+
+function toggleUserStatus(id) {
+  const u = users.find(x => x.id === id);
+  const goingTo = u.status === 'active' ? 'suspended' : 'active';
+  confirmAction(
+    goingTo === 'suspended' ? 'Suspend this user?' : 'Reactivate this user?',
+    `${u.name}'s account will be marked ${goingTo}.`,
+    () => { u.status = goingTo; renderUsers(); showToast('User ' + goingTo + '.'); }
+  );
+}
+
+/* =====================================================
+   TRANSACTIONS
+===================================================== */
+function renderTxns() {
+  const q = document.getElementById('txnSearch').value.toLowerCase();
+  const statusFilter = document.getElementById('txnStatusFilter').value;
+
+  const filtered = txns.filter(t => {
+    const matchesQ = t.customer.toLowerCase().includes(q) || t.item.toLowerCase().includes(q) || t.id.toLowerCase().includes(q);
+    const matchesStatus = !statusFilter || t.status === statusFilter;
+    return matchesQ && matchesStatus;
+  });
+
+  document.getElementById('txnRows').innerHTML = filtered.map(t => `
+    <tr>
+      <td class="cell-main">${t.id}</td>
+      <td>${t.customer}</td>
+      <td>${t.item}</td>
+      <td class="cell-main">${peso(t.amount)}</td>
+      <td>${t.branch}</td>
+      <td><span class="badge ${t.status}">${t.status.charAt(0).toUpperCase() + t.status.slice(1)}</span></td>
+      <td>${t.date}</td>
+      <td>${t.status === 'pending' ? `<button class="btn-ghost" onclick="markPaid('${t.id}')">Mark Paid</button>` : ''}</td>
+    </tr>`).join('') || emptyRow(8, 'No transactions match your filters.');
+
+  document.getElementById('txnCount').textContent = filtered.length + ' transaction' + (filtered.length === 1 ? '' : 's');
+
+  const revenue = txns.filter(t => t.status === 'paid').reduce((sum, t) => sum + t.amount, 0);
+  document.getElementById('kpiRevenue').textContent = peso(revenue);
+
+  renderDashTxns();
+}
+
+function renderDashTxns() {
+  const recent = [...txns].slice(0, 4);
+  document.getElementById('dashTxnRows').innerHTML = recent.map(t => `
+    <tr>
+      <td class="cell-main">${t.id}</td>
+      <td>${t.customer}</td>
+      <td>${t.item}</td>
+      <td>${peso(t.amount)}</td>
+      <td><span class="badge ${t.status}">${t.status.charAt(0).toUpperCase() + t.status.slice(1)}</span></td>
+      <td>${t.date}</td>
+    </tr>`).join('') || emptyRow(6, 'No transactions yet.');
+}
+
+function markPaid(id) {
+  const t = txns.find(x => x.id === id);
+  t.status = 'paid';
+  renderTxns();
+  showToast('Transaction marked as paid.');
+}
+
+/* =====================================================
+   NOTIFICATIONS
+===================================================== */
+function renderNotifyHistory() {
+  document.getElementById('notifyHistory').innerHTML = notifyHistoryData.map(n => `
+    <div class="activity-item">
+      <div class="activity-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z"/></svg></div>
+      <div>
+        <div class="activity-text"><b>${n.audience}:</b> ${n.message}</div>
+        <div class="activity-time">${n.time}</div>
+      </div>
+    </div>`).join('') || `<div class="empty-state"><p>No notifications sent yet.</p></div>`;
+}
+
+function sendNotification() {
+  const audience = document.getElementById('notifyAudience').value;
+  const message = document.getElementById('notifyMessage').value.trim();
+  if (!message) { showToast('Please write a message first.'); return; }
+
+  notifyHistoryData.unshift({ audience, message, time: 'Just now' });
+  document.getElementById('notifyMessage').value = '';
+  renderNotifyHistory();
+  showToast('Notification sent to ' + audience + '.');
+}
+
+/* =====================================================
+   CHATBOT LOGS
+===================================================== */
+function renderChatLogs() {
+  document.getElementById('chatRows').innerHTML = chatSessions.map(c => `
+    <tr>
+      <td class="cell-main">${c.id}</td>
+      <td>${c.user}</td>
+      <td>${c.topic}</td>
+      <td>${c.messages}</td>
+      <td><span class="badge ${c.resolved ? 'active' : 'pending'}">${c.resolved ? 'Resolved' : 'Needs Follow-up'}</span></td>
+      <td>${c.last}</td>
+    </tr>`).join('');
+}
+
+/* =====================================================
+   BRANCHES
+===================================================== */
+function renderBranches() {
+  const q = document.getElementById('branchSearch').value.toLowerCase();
+  const filtered = branches.filter(b => b.name.toLowerCase().includes(q) || b.address.toLowerCase().includes(q));
+
+  document.getElementById('branchRows').innerHTML = filtered.map(b => {
+    const idx = branches.indexOf(b);
+    return `
+    <tr>
+      <td class="cell-main">${b.name}</td>
+      <td>${b.address}</td>
+      <td>${b.hours}</td>
+      <td>${b.phone || '—'}</td>
+      <td><span class="badge ${b.status === 'Open' ? 'active' : 'suspended'}">${b.status}</span></td>
+      <td>
+        <div class="row-actions">
+          <button class="btn-ghost" onclick="editBranch(${idx})">Edit</button>
+          <button class="btn-danger-ghost" onclick="deleteBranch(${idx})">Delete</button>
+        </div>
+      </td>
+    </tr>`;
+  }).join('') || emptyRow(6, 'No branches match your search.');
+
+  document.getElementById('branchCount').textContent = filtered.length + ' branch' + (filtered.length === 1 ? '' : 'es');
+}
+
+function openBranchModal() {
+  document.getElementById('branchModalTitle').textContent = 'Add Branch';
+  document.getElementById('branchIndex').value = '';
+  document.getElementById('branchName').value = '';
+  document.getElementById('branchAddress').value = '';
+  document.getElementById('branchHours').value = '';
+  document.getElementById('branchPhone').value = '';
+  document.getElementById('branchLat').value = '';
+  document.getElementById('branchLng').value = '';
+  document.getElementById('branchStatus').value = 'Open';
+  openModal('branchModal');
+}
+
+function editBranch(idx) {
+  const b = branches[idx];
+  if (!b) return;
+  document.getElementById('branchModalTitle').textContent = 'Edit Branch';
+  document.getElementById('branchIndex').value = idx;
+  document.getElementById('branchName').value = b.name;
+  document.getElementById('branchAddress').value = b.address;
+  document.getElementById('branchHours').value = b.hours;
+  document.getElementById('branchPhone').value = b.phone || '';
+  document.getElementById('branchLat').value = b.lat ?? '';
+  document.getElementById('branchLng').value = b.lng ?? '';
+  document.getElementById('branchStatus').value = b.status;
+  openModal('branchModal');
+}
+
+function saveBranch() {
+  const name = document.getElementById('branchName').value.trim();
+  const address = document.getElementById('branchAddress').value.trim();
+  if (!name || !address) { showToast('Please enter a branch name and address.'); return; }
+
+  const idx = document.getElementById('branchIndex').value;
+  const data = {
+    name, address,
+    hours: document.getElementById('branchHours').value || '—',
+    phone: document.getElementById('branchPhone').value,
+    lat: Number(document.getElementById('branchLat').value) || 0,
+    lng: Number(document.getElementById('branchLng').value) || 0,
+    status: document.getElementById('branchStatus').value,
+  };
+
+  if (idx !== '') {
+    Object.assign(branches[Number(idx)], data);
+    showToast('Branch updated.');
+  } else {
+    branches.push(data);
+    showToast('Branch added.');
+  }
+  closeModal('branchModal');
+  renderBranches();
+}
+
+function deleteBranch(idx) {
+  const b = branches[idx];
+  confirmAction('Delete branch?', `"${b.name}" will be removed from the locator and preferred-branch pickers.`, () => {
+    branches.splice(idx, 1);
+    renderBranches();
+    showToast('Branch deleted.');
+  });
+}
+
+/* =====================================================
+   ACTIVITY
+===================================================== */
+function renderActivity() {
+  document.getElementById('activityList').innerHTML = activity.map(a => `
+    <div class="activity-item">
+      <div class="activity-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg></div>
+      <div>
+        <div class="activity-text">${a.text}</div>
+        <div class="activity-time">${a.time}</div>
+      </div>
+    </div>`).join('');
+}
+
+/* =====================================================
+   COUNTDOWN TICK
+===================================================== */
+setInterval(() => {
+  auctions.forEach(a => { if (a.status !== 'ended' && a.endsInSec > 0) a.endsInSec--; });
+  renderDashAuctions();
+}, 1000);
+
+/* =====================================================
+   INIT
+===================================================== */
+populateAuctionProductSelect();
+renderProducts();
+renderAuctions();
+renderUsers();
+renderTxns();
+renderNotifyHistory();
+renderChatLogs();
+renderBranches();
+renderActivity();
+renderAnalytics();
+renderAlerts();
+</script>
+<script src="atany-assistant.js"></script>
+</body>
+</html>

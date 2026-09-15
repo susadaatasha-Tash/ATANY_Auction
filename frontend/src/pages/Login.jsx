@@ -1,0 +1,100 @@
+// frontend/src/pages/Login.jsx
+// Premium login page — polished card, demo buttons, role-based redirect
+import { useState, useEffect, useRef } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Eye, EyeOff } from 'lucide-react';
+import { supabase } from '../shared/lib/supabaseClient';
+import { useAuth } from '../shared/hooks/useAuth';
+import { useToast } from '../shared/components/Toast';
+import { AssistantWidget } from '../shared/components/AssistantWidget';
+
+export default function Login() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const showToast = useToast();
+  const navigate = useNavigate();
+  const { user, role, preferredBranchId } = useAuth();
+  const redirectedRef = useRef(false);
+
+  useEffect(() => {
+    if (!user || !role || redirectedRef.current) return;
+    redirectedRef.current = true;
+    showToast('Welcome back — redirecting…');
+    setTimeout(() => {
+      if (role === 'admin') navigate('/admin', { replace: true });
+      else if (role === 'shop_owner') navigate('/shop', { replace: true });
+      else if (!preferredBranchId) navigate('/select-branch', { replace: true });
+      else navigate('/customer', { replace: true });
+    }, 300);
+  }, [user, role, preferredBranchId, navigate, showToast]);
+
+  const handle = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+    setBusy(false);
+    if (error) {
+      if (error.message?.toLowerCase().includes('email not confirmed')) {
+        await supabase.auth.resend({ type: 'signup', email });
+        return showToast('Please verify your email first — we just resent the verification link.');
+      }
+      return showToast(error.message);
+    }
+  };
+
+  return (
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--cream)' }}>
+      <div style={{ padding: 22, textAlign: 'center', borderBottom: '1px solid var(--line)', background: 'var(--ivory)' }}>
+        <Link to="/" style={{ fontSize: 22, fontWeight: 800, letterSpacing: '.03em', color: 'var(--navy)' }}>ATANY</Link>
+      </div>
+      <main style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 20px' }}>
+        <div style={{ width: 'min(420px,100%)', background: 'var(--ivory)', border: '1px solid var(--line)', borderRadius: 14, padding: '36px 32px', boxShadow: 'var(--shadow)' }}>
+          <div style={{ color: 'var(--gold)', fontSize: 11, fontWeight: 700, letterSpacing: '.12em', marginBottom: 10 }}>WELCOME BACK</div>
+          <h1 style={{ fontSize: 28, color: 'var(--navy)', marginBottom: 6, fontWeight: 800 }}>Sign In</h1>
+          <p style={{ color: 'var(--muted)', fontSize: 12.5, marginBottom: 24 }}>Access your bids, favorites, and purchases.</p>
+          <form onSubmit={handle}>
+            <div className="form-row"><label>Email Address</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required /></div>
+            <div className="form-row"><label>Password</label>
+              <div style={{ position: 'relative' }}>
+                <input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter your password" required style={{ paddingRight: 42 }} />
+                <button
+                  type="button"
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  onClick={() => setShowPassword(v => !v)}
+                  style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', width: 32, height: 32, display: 'grid', placeItems: 'center', border: 'none', background: 'transparent', color: 'var(--muted)', cursor: 'pointer', borderRadius: 6 }}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20, fontSize: 11.5 }}>
+              <label style={{ display: 'flex', gap: 6, color: 'var(--muted)' }}><input type="checkbox" /> Remember me</label>
+              <a href="#" onClick={(e) => { e.preventDefault(); showToast('Password reset coming soon.'); }} style={{ color: 'var(--navy)', fontWeight: 700 }}>Forgot password?</a>
+            </div>
+            <button type="submit" className="btn btn-primary" disabled={busy} style={{ width: '100%', minHeight: 46 }}>{busy ? 'Signing in…' : 'Sign In'}</button>
+          </form>
+
+          <div style={{ marginTop: 18, padding: 14, background: 'var(--soft)', borderRadius: 10, fontSize: 11 }}>
+            <div style={{ fontWeight: 700, marginBottom: 8, color: 'var(--navy)' }}>Demo accounts (one-click):</div>
+            {[
+              ['Customer', 'maria.santos@email.com', 'Customer123!'],
+              ['Shop Owner', 'contact@goldenheritage.ph', 'ShopOwner123!'],
+              ['Admin', 'admin@atany.ph', 'Admin123!'],
+            ].map(([label, em, pw]) => (
+              <button key={em} type="button" className="btn btn-outline" style={{ width: '100%', marginTop: 6, justifyContent: 'space-between' }} onClick={() => { setEmail(em); setPassword(pw); }}>
+                <span style={{ fontWeight: 700 }}>{label}</span><span style={{ fontSize: 10, color: 'var(--muted)' }}>{em}</span>
+              </button>
+            ))}
+            <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 8 }}>Real Supabase Auth — these accounts were created via <code>node backend/src/db/seedDemoUsers.js</code></div>
+          </div>
+
+          <p style={{ textAlign: 'center', marginTop: 22, fontSize: 12, color: 'var(--muted)' }}>New to ATANY? <Link to="/signup" style={{ color: 'var(--navy)', fontWeight: 700 }}>Create an account</Link></p>
+          <Link to="/" style={{ display: 'block', textAlign: 'center', marginTop: 18, fontSize: 11.5, color: 'var(--muted)' }}>&larr; Back to home</Link>
+        </div>
+      </main>
+      <AssistantWidget mode="customer" />
+    </div>
+  );
+}

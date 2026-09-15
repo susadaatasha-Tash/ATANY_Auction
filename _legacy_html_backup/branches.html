@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Find a Branch — ATANY</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+<style>
+  :root {
+    --navy: #14301f;
+    --navy-2: #1e4530;
+    --gold: #c7a66a;
+    --gold-light: #e6d4ad;
+    --cream: #faf9f6;
+    --ivory: #fffefa;
+    --soft: #f3f1ec;
+    --line: #e5e2da;
+    --text: #172235;
+    --muted: #707782;
+    --success: #587563;
+    --success-bg: #eaf1ec;
+    --shadow: 0 10px 30px rgba(20, 48, 31, .07);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: "Plus Jakarta Sans", sans-serif;
+    background: var(--cream);
+    color: var(--text);
+    line-height: 1.6;
+  }
+
+  a { color: inherit; text-decoration: none; }
+  button, input { font: inherit; }
+  button { cursor: pointer; }
+
+  .header {
+    position: sticky;
+    top: 0;
+    z-index: 500;
+    background: rgba(255, 255, 252, .94);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .container { width: min(1180px, calc(100% - 40px)); margin-inline: auto; }
+
+  .nav {
+    height: 74px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .brand-name { font-size: 24px; font-weight: 800; letter-spacing: .03em; color: var(--navy); }
+
+  .btn {
+    border: 1px solid transparent;
+    min-height: 40px;
+    padding: 0 18px;
+    border-radius: 7px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+    font-weight: 700;
+    transition: transform .15s ease, background .15s ease;
+  }
+  .btn:hover { transform: translateY(-1px); }
+  .btn svg { width: 14px; height: 14px; }
+  .btn-primary { background: var(--navy); color: #fff; box-shadow: 0 7px 18px rgba(20, 48, 31,.14); }
+  .btn-primary:hover { background: var(--navy-2); }
+  .btn-outline { background: #fff; color: var(--navy); border-color: #ccd1d8; }
+  .btn-outline:hover { border-color: var(--navy); }
+
+  .page-head {
+    padding: 40px 0 22px;
+    text-align: center;
+  }
+  .eyebrow { color: var(--gold); font-size: 11px; font-weight: 700; letter-spacing: .12em; margin-bottom: 10px; }
+  .page-head h1 { font-size: clamp(30px, 4vw, 42px); color: var(--navy); font-weight: 700; margin-bottom: 10px; }
+  .page-head p { color: var(--muted); font-size: 13.5px; max-width: 520px; margin: 0 auto; }
+
+  .locator-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    background: var(--ivory);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    margin-bottom: 20px;
+  }
+
+  .search-box {
+    flex: 1;
+    min-width: 220px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid var(--line);
+    background: #fff;
+    border-radius: 8px;
+    padding: 0 13px;
+    height: 42px;
+  }
+  .search-box svg { width: 15px; height: 15px; color: var(--muted); flex-shrink: 0; }
+  .search-box input { border: 0; outline: 0; font-size: 13px; width: 100%; background: transparent; }
+
+  .locate-status {
+    font-size: 11.5px;
+    color: var(--muted);
+    padding: 0 4px;
+  }
+
+  .locator-layout {
+    display: grid;
+    grid-template-columns: 360px 1fr;
+    gap: 20px;
+    padding-bottom: 60px;
+  }
+
+  .branch-list {
+    background: var(--ivory);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    max-height: 620px;
+    overflow-y: auto;
+  }
+
+  .branch-card {
+    padding: 18px 20px;
+    border-bottom: 1px solid var(--line);
+    cursor: pointer;
+    transition: background .15s ease;
+  }
+  .branch-card:last-child { border-bottom: 0; }
+  .branch-card:hover { background: rgba(199,166,106,.06); }
+  .branch-card.active { background: rgba(199,166,106,.1); box-shadow: inset 3px 0 0 var(--gold); }
+
+  .branch-card-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+  .branch-card h3 { font-size: 14.5px; color: var(--navy); font-weight: 800; }
+
+  .distance-chip {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--success);
+    background: var(--success-bg);
+    padding: 3px 9px;
+    border-radius: 20px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .branch-card p { font-size: 12px; color: var(--muted); margin-bottom: 3px; }
+  .branch-card .hours { display: flex; align-items: center; gap: 5px; }
+  .branch-card .hours svg { width: 12px; height: 12px; }
+
+  .branch-card-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .branch-card-actions .btn { height: 32px; padding: 0 12px; font-size: 11px; }
+
+  .map-panel {
+    background: var(--ivory);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+    position: relative;
+  }
+
+  #map { width: 100%; height: 620px; }
+
+  .map-note {
+    position: absolute;
+    left: 14px;
+    bottom: 14px;
+    z-index: 400;
+    background: rgba(255,255,252,.95);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: 11px;
+    color: var(--muted);
+    max-width: 260px;
+  }
+
+  .leaflet-popup-content { font-family: "Plus Jakarta Sans", sans-serif; font-size: 12.5px; }
+  .leaflet-popup-content b { color: var(--navy); }
+
+  .toast {
+    position: fixed; z-index: 3000; right: 20px; bottom: 20px;
+    background: var(--navy); color: white; padding: 12px 17px;
+    border-radius: 7px; font-size: 12px; font-weight: 600;
+    transform: translateY(20px); opacity: 0; pointer-events: none;
+    transition: transform .25s ease, opacity .25s ease;
+    max-width: 320px;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+
+  @media (max-width: 860px) {
+    .locator-layout { grid-template-columns: 1fr; }
+    #map { height: 380px; }
+    .branch-list { max-height: none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="header">
+  <div class="container nav">
+    <a href="atany-landing-page.html" class="brand-name">ATANY</a>
+    <a href="atany-landing-page.html" class="btn btn-outline">← Back to home</a>
+  </div>
+</header>
+
+<div class="container page-head">
+  <div class="eyebrow">CONVENIENT PICKUP</div>
+  <h1>Find Your Nearest Branch</h1>
+  <p>Locate an ATANY branch, check live distance from where you are, and get directions to claim or view jewelry in person.</p>
+</div>
+
+<div class="container">
+  <div class="locator-toolbar">
+    <div class="search-box">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+      <input type="text" id="branchSearch" placeholder="Search by city or branch name…" oninput="renderBranchList()">
+    </div>
+    <button class="btn btn-primary" onclick="locateUser()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+      Use My Location
+    </button>
+    <span class="locate-status" id="locateStatus">Location not shared yet — distances are approximate.</span>
+  </div>
+
+  <div class="locator-layout">
+    <div class="branch-list" id="branchList"></div>
+
+    <div class="map-panel">
+      <div id="map"></div>
+      <div class="map-note">Map data © OpenStreetMap contributors · Pins mark ATANY branch locations</div>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+/* =====================================================
+   BRANCH DATA
+===================================================== */
+const branches = [
+  {
+    id: 'davao',
+    name: 'Davao City Branch',
+    address: 'Victoria Plaza Area, Davao City',
+    hours: 'Mon–Sat · 9:00 AM – 6:00 PM',
+    phone: '(082) 123-4567',
+    lat: 7.0736, lng: 125.6128,
+  },
+  {
+    id: 'cebu',
+    name: 'Cebu Branch',
+    address: 'Ayala Center, Cebu City',
+    hours: 'Mon–Sat · 10:00 AM – 7:00 PM',
+    phone: '(032) 234-5678',
+    lat: 10.3181, lng: 123.9051,
+  },
+  {
+    id: 'manila',
+    name: 'Manila Branch',
+    address: 'Greenbelt 5, Makati City',
+    hours: 'Daily · 10:00 AM – 8:00 PM',
+    phone: '(02) 8888-1234',
+    lat: 14.5518, lng: 121.0201,
+  },
+  {
+    id: 'iloilo',
+    name: 'Iloilo Branch',
+    address: 'Festive Walk, Iloilo City',
+    hours: 'Mon–Sat · 10:00 AM – 6:00 PM',
+    phone: '(033) 321-9988',
+    lat: 10.7202, lng: 122.5621,
+  },
+  {
+    id: 'baguio',
+    name: 'Baguio Branch',
+    address: 'Session Road, Baguio City',
+    hours: 'Wed–Mon · 9:00 AM – 5:00 PM',
+    phone: '(074) 442-7711',
+    lat: 16.4131, lng: 120.5930,
+  },
+];
+
+let userLocation = null; // { lat, lng }
+let activeBranchId = null;
+let map, markers = {}, userMarker = null;
+
+/* =====================================================
+   MAP INIT
+===================================================== */
+function initMap() {
+  map = L.map('map', { zoomControl: true }).setView([12.5, 122.0], 5.4);
+
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+    maxZoom: 18,
+  }).addTo(map);
+
+  const goldIcon = L.divIcon({
+    className: 'atany-pin',
+    html: `<div style="width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:#14301f;border:2px solid #c7a66a;box-shadow:0 3px 8px rgba(20, 48, 31,.35);"></div>`,
+    iconSize: [26, 26],
+    iconAnchor: [13, 26],
+  });
+
+  branches.forEach(b => {
+    const marker = L.marker([b.lat, b.lng], { icon: goldIcon }).addTo(map);
+    marker.bindPopup(`<b>${b.name}</b><br>${b.address}<br>${b.hours}`);
+    marker.on('click', () => selectBranch(b.id, true));
+    markers[b.id] = marker;
+  });
+}
+
+/* =====================================================
+   DISTANCE (Haversine)
+===================================================== */
+function distanceKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180) * Math.cos(lat2*Math.PI/180) * Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+/* =====================================================
+   GEOLOCATION
+===================================================== */
+function locateUser() {
+  const status = document.getElementById('locateStatus');
+  if (!navigator.geolocation) {
+    status.textContent = 'Geolocation isn\'t supported on this device.';
+    return;
+  }
+  status.textContent = 'Locating you…';
+
+  navigator.geolocation.getCurrentPosition(
+    pos => {
+      userLocation = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      status.textContent = 'Location shared — distances below are live.';
+
+      if (userMarker) map.removeLayer(userMarker);
+      userMarker = L.circleMarker([userLocation.lat, userLocation.lng], {
+        radius: 8, color: '#c7a66a', fillColor: '#14301f', fillOpacity: 1, weight: 3,
+      }).addTo(map).bindPopup('Your location');
+
+      map.setView([userLocation.lat, userLocation.lng], 6);
+      renderBranchList();
+      showToast('Location found — showing distances.');
+    },
+    err => {
+      status.textContent = 'Couldn\'t get your location. Showing branches without distance.';
+      showToast('Location access denied or unavailable.');
+    }
+  );
+}
+
+/* =====================================================
+   BRANCH LIST
+===================================================== */
+function renderBranchList() {
+  const q = document.getElementById('branchSearch').value.toLowerCase();
+
+  let list = branches
+    .filter(b => b.name.toLowerCase().includes(q) || b.address.toLowerCase().includes(q))
+    .map(b => ({
+      ...b,
+      dist: userLocation ? distanceKm(userLocation.lat, userLocation.lng, b.lat, b.lng) : null,
+    }));
+
+  if (userLocation) list.sort((a, b) => a.dist - b.dist);
+
+  document.getElementById('branchList').innerHTML = list.map(b => `
+    <div class="branch-card ${b.id === activeBranchId ? 'active' : ''}" onclick="selectBranch('${b.id}')">
+      <div class="branch-card-top">
+        <h3>${b.name}</h3>
+        ${b.dist !== null ? `<span class="distance-chip">${b.dist < 1 ? '<1' : b.dist.toFixed(1)} km</span>` : ''}
+      </div>
+      <p>◇ ${b.address}</p>
+      <p class="hours">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+        ${b.hours}
+      </p>
+      <p>☎ ${b.phone}</p>
+      <div class="branch-card-actions">
+        <a class="btn btn-primary" href="https://www.openstreetmap.org/directions?to=${b.lat}%2C${b.lng}" target="_blank" rel="noopener">Get Directions</a>
+        <button class="btn btn-outline" onclick="event.stopPropagation(); showToast('Reserved a pickup slot at ${b.name.replace(/'/g, "\\'")} (demo).')">Reserve Pickup</button>
+      </div>
+    </div>
+  `).join('') || `<div style="padding:30px 20px;text-align:center;color:var(--muted);font-size:12.5px;">No branches match your search.</div>`;
+}
+
+function selectBranch(id, fromMap) {
+  activeBranchId = id;
+  const b = branches.find(x => x.id === id);
+  renderBranchList();
+  if (!fromMap) {
+    map.setView([b.lat, b.lng], 12, { animate: true });
+    markers[id].openPopup();
+  }
+  document.querySelector(`.branch-card.active`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+/* =====================================================
+   TOAST
+===================================================== */
+function showToast(message) {
+  const toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.classList.add('show');
+  clearTimeout(window._t);
+  window._t = setTimeout(() => toast.classList.remove('show'), 2600);
+}
+
+/* =====================================================
+   INIT
+===================================================== */
+initMap();
+renderBranchList();
+</script>
+<script src="atany-assistant.js"></script>
+</body>
+</html>

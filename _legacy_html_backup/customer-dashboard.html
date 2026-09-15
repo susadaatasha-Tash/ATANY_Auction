@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>My Account — ATANY</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --navy: #14301f; --navy-2: #1e4530; --navy-3: #2c5a40;
+    --gold: #c7a66a; --gold-light: #e6d4ad;
+    --cream: #faf9f6; --ivory: #fffefa; --soft: #f3f1ec; --line: #e5e2da;
+    --text: #172235; --muted: #707782;
+    --success: #587563; --success-bg: #eaf1ec;
+    --danger: #a45c5c; --danger-bg: #f6eceb;
+    --warn: #a4823f; --warn-bg: #f8f1e2;
+    --shadow: 0 10px 30px rgba(20, 48, 31, .07);
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: "Plus Jakarta Sans", sans-serif; background: var(--cream); color: var(--text); line-height: 1.5; }
+  a { color: inherit; text-decoration: none; }
+  button, input, select, textarea { font: inherit; }
+  button { cursor: pointer; }
+
+  .app { display: flex; min-height: 100vh; }
+
+  .sidebar { width: 240px; flex-shrink: 0; background: var(--navy); color: #cfd7e3; display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; }
+  .sidebar-brand { display: flex; align-items: center; gap: 10px; padding: 24px 22px; border-bottom: 1px solid rgba(255,255,255,.08); }
+  .sidebar-brand .brand-name { font-size: 20px; font-weight: 800; letter-spacing: .03em; color: #fff; }
+  .sidebar-brand .brand-tag { display: block; font-size: 9px; letter-spacing: .1em; color: var(--gold-light); margin-top: 2px; }
+  .sidebar-nav { flex: 1; padding: 18px 12px; overflow-y: auto; }
+  .nav-section-label { font-size: 10px; font-weight: 700; letter-spacing: .1em; color: #7c8aa3; padding: 14px 10px 6px; }
+  .nav-item { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: 8px; font-size: 13px; font-weight: 600; color: #cfd7e3; margin-bottom: 2px; transition: background .15s ease, color .15s ease; border: 0; background: transparent; width: 100%; text-align: left; }
+  .nav-item svg { width: 17px; height: 17px; flex-shrink: 0; }
+  .nav-item:hover { background: rgba(255,255,255,.06); color: #fff; }
+  .nav-item.active { background: var(--navy-2); color: #fff; box-shadow: inset 3px 0 0 var(--gold); }
+  .nav-badge { margin-left: auto; background: var(--gold); color: var(--navy); font-size: 10px; font-weight: 800; border-radius: 20px; padding: 1px 7px; }
+  .sidebar-foot { padding: 16px 22px; border-top: 1px solid rgba(255,255,255,.08); font-size: 11px; color: #8592a8; }
+  .sidebar-foot a { color: var(--gold-light); font-weight: 700; }
+  .sidebar-foot a:hover { color: #fff; }
+
+  .main { flex: 1; min-width: 0; }
+  .topbar { height: 68px; background: var(--ivory); border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; padding: 0 28px; position: sticky; top: 0; z-index: 50; }
+  .topbar-title h1 { font-size: 19px; color: var(--navy); font-weight: 800; }
+  .topbar-title p { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+  .topbar-right { display: flex; align-items: center; gap: 14px; }
+  .icon-btn { position: relative; width: 38px; height: 38px; border: 1px solid var(--line); background: #fff; color: var(--navy); display: grid; place-items: center; border-radius: 50%; }
+  .icon-btn:hover { background: var(--soft); }
+  .icon-btn svg { width: 17px; height: 17px; }
+  .icon-dot { position: absolute; top: 6px; right: 7px; width: 7px; height: 7px; border-radius: 50%; background: var(--danger); border: 1.5px solid #fff; }
+  .admin-chip { display: flex; align-items: center; gap: 9px; padding: 5px 12px 5px 5px; border: 1px solid var(--line); border-radius: 30px; background: #fff; }
+  .admin-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--navy); color: #fff; display: grid; place-items: center; font-size: 12px; font-weight: 800; }
+  .admin-chip .name { font-size: 12px; font-weight: 700; color: var(--navy); }
+  .admin-chip .role { font-size: 10px; color: var(--muted); }
+
+  .user-menu-wrap { position: relative; }
+  .admin-chip.user-menu-trigger { cursor: pointer; }
+  .user-dropdown { position: absolute; top: 48px; right: 0; z-index: 400; width: 190px; background: var(--ivory); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 20px 40px rgba(20, 48, 31,.18); overflow: hidden; display: none; }
+  .user-dropdown.open { display: block; }
+  .user-dropdown-item { display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 14px; font-size: 12.5px; font-weight: 600; color: var(--text); background: transparent; border: 0; text-align: left; cursor: pointer; }
+  .user-dropdown-item svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--muted); }
+  .user-dropdown-item:hover { background: var(--soft); }
+  .user-dropdown-item.danger { color: var(--danger); border-top: 1px solid var(--line); }
+  .user-dropdown-item.danger svg { color: var(--danger); }
+
+  .content { padding: 26px 28px 60px; }
+  .view { display: none; }
+  .view.active { display: block; }
+
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+  .kpi-card { background: var(--ivory); border: 1px solid var(--line); border-radius: var(--radius); padding: 18px 19px; box-shadow: var(--shadow); }
+  .kpi-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .kpi-icon { width: 34px; height: 34px; border-radius: 9px; display: grid; place-items: center; background: var(--soft); color: var(--navy); }
+  .kpi-icon svg { width: 16px; height: 16px; }
+  .kpi-delta { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 20px; }
+  .kpi-delta.up { color: var(--success); background: var(--success-bg); }
+  .kpi-value { font-size: 26px; font-weight: 800; color: var(--navy); }
+  .kpi-label { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+
+  .panel { background: var(--ivory); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 22px; overflow: hidden; }
+  .panel-head { display: flex; align-items: center; justify-content: space-between; padding: 18px 20px; border-bottom: 1px solid var(--line); }
+  .panel-head h2 { font-size: 15px; color: var(--navy); font-weight: 800; }
+  .panel-head p { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .two-col { display: grid; grid-template-columns: 1.4fr 1fr; gap: 18px; }
+
+  .toolbar { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 16px 20px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .search-box { display: flex; align-items: center; gap: 8px; border: 1px solid var(--line); background: #fff; border-radius: 8px; padding: 0 12px; height: 38px; min-width: 220px; }
+  .search-box svg { width: 15px; height: 15px; color: var(--muted); flex-shrink: 0; }
+  .search-box input { border: 0; outline: 0; font-size: 12.5px; width: 100%; background: transparent; }
+  .filter-select { height: 38px; border: 1px solid var(--line); border-radius: 8px; padding: 0 10px; font-size: 12.5px; background: #fff; color: var(--text); }
+
+  .btn { border: 1px solid transparent; height: 38px; padding: 0 16px; border-radius: 7px; display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 700; transition: transform .15s ease, background .15s ease; white-space: nowrap; }
+  .btn:hover { transform: translateY(-1px); }
+  .btn svg { width: 14px; height: 14px; }
+  .btn-primary { background: var(--navy); color: #fff; }
+  .btn-primary:hover { background: var(--navy-2); }
+  .btn-outline { background: #fff; color: var(--navy); border-color: #ccd1d8; }
+  .btn-outline:hover { border-color: var(--navy); }
+  .btn-ghost { background: transparent; color: var(--muted); border: 0; height: auto; padding: 4px 8px; }
+  .btn-ghost:hover { color: var(--navy); }
+  .btn-danger-ghost { background: transparent; color: var(--danger); border: 0; height: auto; padding: 4px 8px; }
+  .btn-danger-ghost:hover { text-decoration: underline; }
+
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th { text-align: left; font-size: 10.5px; letter-spacing: .06em; color: var(--muted); font-weight: 700; padding: 11px 20px; background: var(--soft); white-space: nowrap; }
+  tbody td { padding: 13px 20px; font-size: 12.5px; border-bottom: 1px solid var(--line); vertical-align: middle; white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: 0; }
+  tbody tr:hover { background: rgba(199,166,106,.05); }
+  .cell-main { font-weight: 700; color: var(--navy); }
+  .cell-sub { color: var(--muted); font-size: 11px; }
+  .item-thumb { display: flex; align-items: center; gap: 10px; }
+  .item-thumb img { width: 38px; height: 38px; border-radius: 8px; object-fit: cover; flex-shrink: 0; }
+
+  .badge { display: inline-flex; align-items: center; gap: 5px; font-size: 10.5px; font-weight: 700; padding: 3px 10px; border-radius: 20px; }
+  .badge::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .badge.winning { color: var(--success); background: var(--success-bg); }
+  .badge.medium { color: var(--warn); background: var(--warn-bg); }
+  .badge.outbid { color: var(--danger); background: var(--danger-bg); }
+  .badge.won { color: var(--success); background: var(--success-bg); }
+  .badge.lost { color: var(--muted); background: var(--soft); }
+  .badge.paid { color: var(--success); background: var(--success-bg); }
+  .badge.pending { color: var(--warn); background: var(--warn-bg); }
+  .badge.readypickup { color: var(--warn); background: var(--warn-bg); }
+  .badge.completed { color: var(--success); background: var(--success-bg); }
+
+  .pager { display: flex; align-items: center; justify-content: space-between; padding: 14px 20px; font-size: 11.5px; color: var(--muted); }
+  .empty-state { text-align: center; padding: 50px 20px; color: var(--muted); }
+  .empty-state svg { width: 40px; height: 40px; margin-bottom: 10px; opacity: .5; }
+  .empty-state p { font-size: 12.5px; }
+
+  .activity-list { padding: 6px 0; }
+  .activity-item { display: flex; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--line); }
+  .activity-item:last-child { border-bottom: 0; }
+  .activity-dot { width: 30px; height: 30px; border-radius: 50%; flex-shrink: 0; display: grid; place-items: center; background: var(--soft); color: var(--navy); }
+  .activity-dot svg { width: 14px; height: 14px; }
+  .activity-text { font-size: 12.5px; }
+  .activity-text b { color: var(--navy); }
+  .activity-time { font-size: 10.5px; color: var(--muted); margin-top: 2px; }
+
+  /* Watchlist grid */
+  .watch-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; padding: 20px; }
+  .watch-card { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: #fff; }
+  .watch-card img { width: 100%; height: 130px; object-fit: cover; display: block; }
+  .watch-card-body { padding: 13px 14px; }
+  .watch-card-body h4 { font-size: 13px; color: var(--navy); font-weight: 700; margin-bottom: 4px; }
+  .watch-card-body .price { font-size: 12.5px; color: var(--muted); margin-bottom: 8px; }
+  .watch-card-body .price b { color: var(--navy); }
+  .watch-card-actions { display: flex; gap: 6px; }
+  .watch-card-actions .btn { flex: 1; height: 32px; font-size: 11px; padding: 0 8px; justify-content: center; }
+
+  .live-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 10px; font-weight: 800; letter-spacing: .04em; color: #fff; background: var(--danger); padding: 3px 9px; border-radius: 20px; position: absolute; top: 10px; left: 10px; z-index: 2; }
+  .live-tag.scheduled { background: var(--warn); }
+  .heart-btn { position: absolute; top: 10px; right: 10px; z-index: 2; width: 30px; height: 30px; border-radius: 50%; border: 0; background: rgba(255,255,255,.92); display: grid; place-items: center; cursor: pointer; box-shadow: 0 3px 8px rgba(20, 48, 31,.18); transition: transform .15s ease; }
+  .heart-btn:hover { transform: scale(1.08); }
+  .heart-btn svg { width: 16px; height: 16px; color: var(--muted); transition: color .15s ease; }
+  .heart-btn.saved svg { color: var(--danger); fill: var(--danger); }
+  .heart-btn-lg { width: 40px; height: 40px; }
+  .heart-btn-lg svg { width: 19px; height: 19px; }
+  .live-dot { width: 6px; height: 6px; border-radius: 50%; background: #fff; animation: pulse-dot 1.2s infinite; }
+  .scheduled .live-dot { animation: none; }
+  @keyframes pulse-dot { 0%,100% { opacity: 1; } 50% { opacity: .3; } }
+  .watch-card { position: relative; }
+  .live-meta { display: flex; justify-content: space-between; font-size: 10.5px; color: var(--muted); margin-bottom: 8px; }
+  .bid-box { display: flex; gap: 6px; margin-top: 4px; }
+  .bid-box input { flex: 1; height: 32px; border: 1px solid #d7d4cc; border-radius: 6px; padding: 0 9px; font-size: 11.5px; outline: none; }
+  .bid-box input:focus { border-color: var(--navy); }
+  .bid-box button { height: 32px; padding: 0 12px; font-size: 11px; }
+
+  /* Auction detail modal */
+  .modal-overlay { position: fixed; inset: 0; z-index: 2000; background: rgba(20, 48, 31,.5); display: none; align-items: center; justify-content: center; padding: 20px; }
+  .modal-overlay.show { display: flex; }
+  .modal-box { background: var(--ivory); border-radius: 16px; box-shadow: 0 30px 60px rgba(20, 48, 31,.3); max-height: 90vh; overflow-y: auto; }
+  .modal-box-head { display: flex; align-items: center; justify-content: space-between; padding: 20px 24px; border-bottom: 1px solid var(--line); }
+  .modal-box-head h3 { font-size: 16px; color: var(--navy); font-weight: 800; }
+  .modal-close { border: 0; background: transparent; font-size: 20px; color: var(--muted); line-height: 1; cursor: pointer; }
+  .modal-close:hover { color: var(--navy); }
+  .modal-box-body { padding: 22px 24px; }
+  .modal-box-foot { display: flex; justify-content: flex-end; gap: 10px; padding: 16px 24px; border-top: 1px solid var(--line); }
+  .modal-box.detail-box { width: min(640px, 100%); position: relative; }
+  .detail-img-wrap { position: relative; }
+  .detail-img-wrap img { width: 100%; height: 280px; object-fit: cover; display: block; }
+  .detail-close { position: absolute; top: 14px; right: 14px; width: 34px; height: 34px; border-radius: 50%; border: 0; background: rgba(20, 48, 31,.55); color: #fff; font-size: 18px; display: grid; place-items: center; cursor: pointer; z-index: 3; }
+  .detail-close:hover { background: rgba(20, 48, 31,.8); }
+  .detail-body { padding: 22px 26px 26px; }
+  .detail-body h2 { font-size: 21px; color: var(--navy); font-weight: 800; margin-bottom: 4px; }
+  .detail-sub { font-size: 12px; color: var(--muted); margin-bottom: 16px; }
+  .detail-stats { display: flex; gap: 22px; margin-bottom: 18px; flex-wrap: wrap; }
+  .detail-stat b { display: block; font-size: 18px; color: var(--navy); font-weight: 800; }
+  .detail-stat span { font-size: 10.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+  .detail-desc { font-size: 12.5px; color: var(--text); line-height: 1.6; margin-bottom: 20px; }
+  .detail-bidbox { display: flex; gap: 8px; margin-bottom: 24px; }
+  .detail-bidbox input { flex: 1; height: 44px; border: 1px solid #d7d4cc; border-radius: 8px; padding: 0 14px; font-size: 13px; outline: none; }
+  .detail-bidbox input:focus { border-color: var(--navy); }
+  .detail-bidbox button { height: 44px; padding: 0 20px; }
+  .detail-section-label { font-size: 11px; font-weight: 800; letter-spacing: .06em; color: var(--navy); text-transform: uppercase; margin-bottom: 10px; }
+  .bidder-list { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .bidder-row { display: flex; align-items: center; gap: 11px; padding: 11px 14px; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+  .bidder-row:last-child { border-bottom: 0; }
+  .bidder-row.you { background: rgba(199,166,106,.08); }
+  .bidder-avatar { width: 30px; height: 30px; border-radius: 50%; background: var(--soft); color: var(--navy); display: grid; place-items: center; font-size: 11px; font-weight: 800; flex-shrink: 0; }
+  .bidder-row.you .bidder-avatar { background: var(--navy); color: #fff; }
+  .bidder-name { font-weight: 700; color: var(--navy); }
+  .bidder-time { font-size: 10.5px; color: var(--muted); }
+  .bidder-amount { margin-left: auto; font-weight: 800; color: var(--navy); }
+  .bidder-row.leader .bidder-amount { color: var(--success); }
+
+  /* Payment modal */
+  .pay-box { width: min(440px, 100%); }
+  .pay-summary { background: var(--soft); border-radius: 10px; padding: 14px 16px; margin-bottom: 18px; }
+  .pay-summary-row { display: flex; justify-content: space-between; font-size: 12.5px; padding: 4px 0; color: var(--text); }
+  .pay-summary-row.total { border-top: 1px dashed #d7d4cc; margin-top: 6px; padding-top: 9px; font-weight: 800; color: var(--navy); font-size: 13.5px; }
+  .pickup-note { display: flex; gap: 9px; background: var(--warn-bg); border-radius: 10px; padding: 12px 14px; font-size: 11.5px; color: #6b5626; margin-bottom: 18px; line-height: 1.5; }
+  .pickup-note svg { width: 16px; height: 16px; flex-shrink: 0; margin-top: 1px; color: var(--warn); }
+  .pay-methods { display: grid; gap: 8px; margin-bottom: 18px; }
+  .pay-method { display: flex; align-items: center; gap: 11px; border: 1px solid var(--line); border-radius: 9px; padding: 11px 13px; cursor: pointer; font-size: 12.5px; font-weight: 600; color: var(--text); }
+  .pay-method:hover { border-color: #ccd1d8; }
+  .pay-method.selected { border-color: var(--navy); background: rgba(20, 48, 31,.04); }
+  .pay-method input { accent-color: var(--navy); }
+  .pay-method svg { width: 17px; height: 17px; color: var(--navy); flex-shrink: 0; }
+  .pay-success { text-align: center; padding: 10px 4px; }
+  .pay-success svg { width: 46px; height: 46px; color: var(--success); margin-bottom: 12px; }
+  .pay-success h3 { color: var(--navy); font-size: 16px; margin-bottom: 6px; }
+  .pay-success p { font-size: 12.5px; color: var(--muted); margin-bottom: 4px; }
+
+  /* Account settings form */
+  .form-row { margin-bottom: 15px; }
+  .form-row label { display: block; font-size: 11px; font-weight: 700; color: var(--navy); margin-bottom: 6px; }
+  .form-row input, .form-row select { width: 100%; height: 42px; padding: 0 12px; border: 1px solid #d7d4cc; border-radius: 7px; background: #fff; color: var(--text); font-size: 12.5px; outline: none; }
+  .form-row input:focus { border-color: var(--navy); box-shadow: 0 0 0 3px rgba(20, 48, 31,.07); }
+  .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+  .toast { position: fixed; z-index: 3000; right: 20px; bottom: 20px; background: var(--navy); color: white; padding: 12px 17px; border-radius: 7px; font-size: 12px; font-weight: 600; transform: translateY(20px); opacity: 0; pointer-events: none; transition: transform .25s ease, opacity .25s ease; max-width: 320px; }
+  .toast.show { transform: translateY(0); opacity: 1; }
+
+  @media (max-width: 1000px) { .kpi-grid { grid-template-columns: repeat(2, 1fr); } .two-col { grid-template-columns: 1fr; } }
+  @media (max-width: 760px) {
+    .sidebar { position: fixed; left: -240px; z-index: 900; transition: left .2s ease; }
+    .sidebar.open { left: 0; }
+    .menu-toggle { display: grid !important; }
+    .kpi-grid { grid-template-columns: 1fr; }
+    .form-grid-2 { grid-template-columns: 1fr; }
+  }
+  .menu-toggle { display: none; width: 38px; height: 38px; border: 1px solid var(--line); background: #fff; border-radius: 8px; place-items: center; margin-right: 6px; }
+</style>
+</head>
+<body>
+
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-brand">
+      <span class="brand-name">ATANY</span>
+      <span class="brand-tag" style="margin-left:auto;">MY ACCOUNT</span>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">OVERVIEW</div>
+      <button class="nav-item active" data-view="dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>
+        Dashboard
+      </button>
+
+      <div class="nav-section-label">BIDDING</div>
+      <button class="nav-item" data-view="live">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none"/></svg>
+        Live Auctions
+        <span class="nav-badge" id="liveNowBadge">0</span>
+      </button>
+      <button class="nav-item" data-view="bids">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 5 19 10M6 13l5-5 5 5-5 5-5-5Z"/><path d="M4 21 9 16M15 4l5 5"/></svg>
+        My Bids
+        <span class="nav-badge" id="activeBidsBadge">0</span>
+      </button>
+      <button class="nav-item" data-view="watchlist">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.8 8.8C20.8 13.8 12 19.1 12 19.1S3.2 13.8 3.2 8.8C3.2 5.9 5.2 4 7.9 4c1.7 0 3.2.9 4.1 2.2C12.9 4.9 14.4 4 16.1 4c2.7 0 4.7 1.9 4.7 4.8Z"/></svg>
+        Watchlist
+      </button>
+
+      <div class="nav-section-label">ORDERS</div>
+      <button class="nav-item" data-view="purchases">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2.5" y="5" width="19" height="14" rx="2"/><path d="M2.5 10h19M6 15h4"/></svg>
+        My Purchases
+      </button>
+
+      <div class="nav-section-label">SETTINGS</div>
+      <button class="nav-item" data-view="account">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3.6"/><path d="M4 20c1.3-4.4 4.3-6.6 8-6.6s6.7 2.2 8 6.6"/></svg>
+        Account Settings
+      </button>
+    </nav>
+    <div class="sidebar-foot">
+      Portal v1.0 · <a href="atany-landing-page.html">Back to storefront →</a>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div style="display:flex;align-items:center;">
+        <button class="menu-toggle" id="menuToggle" onclick="document.getElementById('sidebar').classList.toggle('open')">☰</button>
+        <div class="topbar-title">
+          <h1 id="viewTitle">Dashboard</h1>
+          <p id="viewSubtitle">Your bids, orders, and account at a glance.</p>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="icon-btn" title="Notifications">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg>
+          <span class="icon-dot"></span>
+        </button>
+        <div class="user-menu-wrap">
+          <div class="admin-chip user-menu-trigger" onclick="toggleUserMenu(event)">
+            <div class="admin-avatar">MS</div>
+            <div><div class="name">Maria Santos</div><div class="role">Customer</div></div>
+          </div>
+          <div class="user-dropdown" id="userDropdown">
+            <button class="user-dropdown-item" onclick="switchView('account'); closeUserMenu();">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="3.6"/><path d="M4 20c1.3-4.4 4.3-6.6 8-6.6s6.7 2.2 8 6.6"/></svg>
+              Account Settings
+            </button>
+            <button class="user-dropdown-item danger" onclick="signOut()">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/></svg>
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- DASHBOARD -->
+      <section class="view active" id="view-dashboard">
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-top"><div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 13l5-5 5 5-5 5-5-5Z"/></svg></div><span class="kpi-delta up">Live</span></div>
+            <div class="kpi-value" id="kpiActiveBids">0</div>
+            <div class="kpi-label">Active Bids</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-top"><div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2 3 7v10l9 5 9-5V7l-9-5Z"/></svg></div><span class="kpi-delta up">+1</span></div>
+            <div class="kpi-value" id="kpiWon">0</div>
+            <div class="kpi-label">Items Won</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-top"><div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2.5" y="5" width="19" height="14" rx="2"/></svg></div><span class="kpi-delta up">YTD</span></div>
+            <div class="kpi-value" id="kpiSpent">₱0</div>
+            <div class="kpi-label">Total Spent</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-top"><div class="kpi-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.8 8.8C20.8 13.8 12 19.1 12 19.1S3.2 13.8 3.2 8.8C3.2 5.9 5.2 4 7.9 4c1.7 0 3.2.9 4.1 2.2C12.9 4.9 14.4 4 16.1 4c2.7 0 4.7 1.9 4.7 4.8Z"/></svg></div></div>
+            <div class="kpi-value" id="kpiWatch">0</div>
+            <div class="kpi-label">Items Watching</div>
+          </div>
+        </div>
+
+        <div class="two-col">
+          <div class="panel">
+            <div class="panel-head">
+              <div><h2>Auctions You're Bidding On</h2><p>Ending soonest first.</p></div>
+              <button class="btn btn-outline" onclick="switchView('bids')">View all</button>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>Item</th><th>Your Bid</th><th>Current Bid</th><th>Ends</th><th>Status</th></tr></thead>
+                <tbody id="dashBidRows"></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><div><h2>Recent Activity</h2><p>Updates on your account.</p></div></div>
+            <div class="activity-list" id="activityList"></div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-head">
+            <div><h2>Recent Orders</h2><p>Your latest purchases and pickups.</p></div>
+            <button class="btn btn-outline" onclick="switchView('purchases')">View all</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Order ID</th><th>Item</th><th>Amount</th><th>Branch</th><th>Status</th><th>Date</th></tr></thead>
+              <tbody id="dashOrderRows"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- LIVE AUCTIONS -->
+      <section class="view" id="view-live">
+        <div class="panel">
+          <div class="toolbar">
+            <div class="search-box">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" id="liveSearch" placeholder="Search live auctions…" oninput="renderLiveAuctions()">
+            </div>
+            <select class="filter-select" id="liveStatusFilter" onchange="renderLiveAuctions()">
+              <option value="">Live &amp; Scheduled</option>
+              <option value="live">Live Now</option>
+              <option value="scheduled">Scheduled</option>
+            </select>
+          </div>
+          <div class="watch-grid" id="liveGrid"></div>
+        </div>
+      </section>
+
+      <!-- MY BIDS -->
+      <section class="view" id="view-bids">
+        <div class="panel">
+          <div class="toolbar">
+            <div class="search-box">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" id="bidSearch" placeholder="Search your bids…" oninput="renderBids()">
+            </div>
+            <select class="filter-select" id="bidStatusFilter" onchange="renderBids()">
+              <option value="">All Status</option>
+              <option value="winning">Winning</option>
+              <option value="outbid">Outbid</option>
+              <option value="won">Won</option>
+              <option value="lost">Lost</option>
+            </select>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Item</th><th>Your Bid</th><th>Current Bid</th><th>Bids</th><th>Ends</th><th>Status</th><th></th></tr></thead>
+              <tbody id="bidRows"></tbody>
+            </table>
+          </div>
+          <div class="pager"><span id="bidCount">0 bids</span></div>
+        </div>
+      </section>
+
+      <!-- WATCHLIST -->
+      <section class="view" id="view-watchlist">
+        <div class="panel">
+          <div class="panel-head">
+            <div><h2>Your Watchlist</h2><p>Items you're keeping an eye on.</p></div>
+          </div>
+          <div class="watch-grid" id="watchGrid"></div>
+        </div>
+      </section>
+
+      <!-- PURCHASES -->
+      <section class="view" id="view-purchases">
+        <div class="panel">
+          <div class="toolbar">
+            <div class="search-box">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+              <input type="text" id="orderSearch" placeholder="Search orders…" oninput="renderOrders()">
+            </div>
+            <select class="filter-select" id="orderStatusFilter" onchange="renderOrders()">
+              <option value="">All Status</option>
+              <option value="pending">Payment Pending</option>
+              <option value="readypickup">Ready for Pickup</option>
+              <option value="completed">Completed</option>
+            </select>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Order ID</th><th>Item</th><th>Amount</th><th>Branch</th><th>Status</th><th>Date</th><th></th></tr></thead>
+              <tbody id="orderRows"></tbody>
+            </table>
+          </div>
+          <div class="pager"><span id="orderCount">0 orders</span></div>
+        </div>
+      </section>
+
+      <!-- ACCOUNT -->
+      <section class="view" id="view-account">
+        <div class="two-col">
+          <div class="panel">
+            <div class="panel-head"><div><h2>Profile</h2><p>Update your personal details.</p></div></div>
+            <div style="padding:20px;">
+              <div class="form-grid-2">
+                <div class="form-row"><label>Full Name</label><input type="text" value="Maria Santos"></div>
+                <div class="form-row"><label>Email Address</label><input type="email" value="maria.santos@email.com"></div>
+              </div>
+              <div class="form-row"><label>Phone Number</label><input type="text" value="+63 917 123 4567"></div>
+              <div class="form-row"><label>Preferred Branch</label>
+                <select>
+                  <option>Davao City Branch</option>
+                  <option>Cebu Branch</option>
+                  <option>Manila Branch</option>
+                </select>
+              </div>
+              <button class="btn btn-primary" onclick="showToast('Profile updated.')">Save Changes</button>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-head"><div><h2>Security</h2><p>Manage your password.</p></div></div>
+            <div style="padding:20px;">
+              <div class="form-row"><label>Current Password</label><input type="password" placeholder="••••••••"></div>
+              <div class="form-row"><label>New Password</label><input type="password" placeholder="••••••••"></div>
+              <button class="btn btn-primary" onclick="showToast('Password updated.')">Update Password</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<div class="modal-overlay" id="detailModal">
+  <div class="modal-box detail-box">
+    <button class="detail-close" onclick="closeDetailModal()">×</button>
+    <button class="heart-btn heart-btn-lg" id="detailHeartBtn" style="top:14px;right:58px;" aria-label="Save to watchlist">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20.8 8.8C20.8 13.8 12 19.1 12 19.1S3.2 13.8 3.2 8.8C3.2 5.9 5.2 4 7.9 4c1.7 0 3.2.9 4.1 2.2C12.9 4.9 14.4 4 16.1 4c2.7 0 4.7 1.9 4.7 4.8Z"/></svg>
+    </button>
+    <div class="detail-img-wrap"><img id="detailImg" src="" alt=""></div>
+    <div class="detail-body">
+      <h2 id="detailName"></h2>
+      <div class="detail-sub" id="detailSub"></div>
+
+      <div class="detail-stats">
+        <div class="detail-stat"><b id="detailCurrentBid"></b><span>Current Bid</span></div>
+        <div class="detail-stat"><b id="detailBidsCount"></b><span>Bids</span></div>
+        <div class="detail-stat"><b id="detailTimeLeft"></b><span id="detailTimeLabel">Time Left</span></div>
+      </div>
+
+      <p class="detail-desc" id="detailDesc"></p>
+
+      <div class="detail-bidbox" id="detailBidBoxWrap">
+        <input type="number" id="detailBidInput" placeholder="">
+        <button class="btn btn-primary" id="detailBidBtn">Place Bid</button>
+      </div>
+
+      <div class="detail-section-label">Bidders</div>
+      <div class="bidder-list" id="bidderList"></div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="payModal">
+  <div class="modal-box pay-box">
+    <div class="modal-box-head">
+      <h3>Complete Payment</h3>
+      <button class="modal-close" onclick="closePayModal()">×</button>
+    </div>
+    <div class="modal-box-body" id="payModalBody"></div>
+  </div>
+</div>
+
+<script>
+/* ============ MOCK DATA ============ */
+let bids = [
+  { id: 'B-01', item: 'Solitaire Diamond Ring', img: 'https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=200&q=70', yourBid: 74500, currentBid: 74500, bidsCount: 14, endsInSec: 3600*3+900, status: 'winning' },
+  { id: 'B-02', item: 'Byzantine Gold Chain', img: 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&w=200&q=70', yourBid: 148000, currentBid: 151000, bidsCount: 22, endsInSec: 3600*1+1200, status: 'outbid' },
+  { id: 'B-03', item: 'Vintage Chrono Watch', img: 'https://images.unsplash.com/photo-1670404160620-a3a86428560e?auto=format&fit=crop&w=200&q=70', yourBid: 268000, currentBid: 268000, bidsCount: 9, endsInSec: -1, status: 'won' },
+  { id: 'B-04', item: 'Pearl Drop Earrings', img: 'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?auto=format&fit=crop&w=200&q=70', yourBid: 19000, currentBid: 21500, bidsCount: 7, endsInSec: -1, status: 'lost' },
+];
+
+let liveAuctions = [
+  { id: 'A-701', name: 'Sapphire Cluster Ring', img: 'https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=900&q=75', currentBid: 88500, bids: 11, endsInSec: 3600*2+1400, status: 'live',
+    desc: '18K white gold ring set with a round-cut center stone in a diamond halo, on a split shoulder shank. 4.6g total weight, comes with ATANY karat certificate.',
+    bidders: [
+      { name: 'Ramon V.', amount: 88500, time: 'Just now' },
+      { name: 'Ana R.', amount: 86000, time: '4 min ago' },
+      { name: 'Maria S.', amount: 82000, time: '19 min ago' },
+      { name: 'John D.', amount: 78000, time: '41 min ago' },
+      { name: 'Carla T.', amount: 74000, time: '1 hour ago' },
+    ] },
+  { id: 'A-503', name: 'Byzantine Gold Chain', img: 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&w=900&q=75', currentBid: 151000, bids: 22, endsInSec: 3600*1+1200, status: 'live',
+    desc: '21K solid gold Byzantine-link chain, 28g, 22 inches. A classic heirloom-weight piece with dense, interlocking links.',
+    bidders: [
+      { name: 'John D.', amount: 151000, time: '2 min ago' },
+      { name: 'Ramon V.', amount: 148000, time: '10 min ago' },
+      { name: 'Ana R.', amount: 140000, time: '28 min ago' },
+      { name: 'Maria S.', amount: 132000, time: '52 min ago' },
+    ] },
+  { id: 'A-501', name: 'Solitaire Diamond Ring', img: 'https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=900&q=75', currentBid: 74500, bids: 14, endsInSec: 3600*3+900, status: 'live',
+    desc: '18K gold solitaire ring, 3.1g, classic four-prong setting. A timeless engagement-style piece with a certified center stone.',
+    bidders: [
+      { name: 'Maria S.', amount: 74500, time: '6 min ago' },
+      { name: 'Carla T.', amount: 71500, time: '22 min ago' },
+      { name: 'John D.', amount: 68000, time: '1 hour ago' },
+    ] },
+  { id: 'L-203-A', name: 'Emerald Halo Ring', img: 'https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=900&q=75', currentBid: 89000, bids: 5, endsInSec: 3600*4+300, status: 'live',
+    desc: '18K gold ring, 4.0g, featuring a center emerald surrounded by a diamond halo. Includes gemstone identification report.',
+    bidders: [
+      { name: 'Ana R.', amount: 89000, time: '14 min ago' },
+      { name: 'Ramon V.', amount: 85000, time: '39 min ago' },
+    ] },
+  { id: 'A-502', name: 'Rose Gold Bangle', img: 'https://images.unsplash.com/photo-1611591437281-460bfbe1220a?auto=format&fit=crop&w=900&q=75', currentBid: 48000, bids: 0, endsInSec: 3600*26, status: 'scheduled',
+    desc: '18K rose gold bangle, 12g, hinged clasp with a brushed-and-polished finish. Bidding opens once the auction goes live.',
+    bidders: [] },
+  { id: 'A-702', name: 'Antique Filigree Brooch', img: 'https://images.unsplash.com/photo-1670404160620-a3a86428560e?auto=format&fit=crop&w=900&q=75', currentBid: 30000, bids: 0, endsInSec: 3600*20, status: 'scheduled',
+    desc: '14K gold filigree brooch, 8.2g, early-20th-century design with hand-worked scrollwork detailing.',
+    bidders: [] },
+];
+
+let watchlist = [
+  { name: 'Emerald Halo Ring', img: 'https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=300&q=70', currentBid: 89000 },
+  { name: 'Rose Gold Bangle', img: 'https://images.unsplash.com/photo-1611591437281-460bfbe1220a?auto=format&fit=crop&w=300&q=70', currentBid: 48000 },
+];
+
+let orders = [
+  { id: 'ORD-3315', item: 'Vintage Chrono Watch', amount: 268000, branch: 'Davao City Branch', status: 'pending', date: '2026-08-29' },
+  { id: 'ORD-3301', item: 'Pearl Stud Earrings', amount: 18500, branch: 'Davao City Branch', status: 'readypickup', date: '2026-08-24' },
+  { id: 'ORD-3287', item: 'Gold Signet Ring', amount: 41000, branch: 'Cebu Branch', status: 'completed', date: '2026-07-30' },
+  { id: 'ORD-3260', item: 'Pearl Drop Earrings', amount: 21500, branch: 'Cebu Branch', status: 'completed', date: '2026-06-12' },
+];
+
+let activity = [
+  { text: 'You were outbid on <b>Byzantine Gold Chain</b>', time: '18 min ago' },
+  { text: 'You won <b>Vintage Chrono Watch</b> — ready for pickup', time: '2 days ago' },
+  { text: 'Payment confirmed for order <b>ORD-3287</b>', time: '1 month ago' },
+];
+
+/* ============ NAV ============ */
+const titles = {
+  dashboard: ['Dashboard', 'Your bids, orders, and account at a glance.'],
+  live: ['Live Auctions', 'Browse every auction running right now and place a bid.'],
+  bids: ['My Bids', 'Track every auction you\'ve placed a bid on.'],
+  watchlist: ['Watchlist', 'Items you\'re keeping an eye on.'],
+  purchases: ['My Purchases', 'Orders, payments, and pickup status.'],
+  account: ['Account Settings', 'Manage your profile and security.'],
+};
+
+function switchView(view) {
+  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+  document.getElementById('view-' + view).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === view));
+  document.getElementById('viewTitle').textContent = titles[view][0];
+  document.getElementById('viewSubtitle').textContent = titles[view][1];
+  document.getElementById('sidebar').classList.remove('open');
+}
+document.querySelectorAll('.nav-item[data-view]').forEach(btn => btn.addEventListener('click', () => switchView(btn.dataset.view)));
+
+/* ============ USER MENU / SIGN OUT ============ */
+function toggleUserMenu(e) {
+  e.stopPropagation();
+  document.getElementById('userDropdown').classList.toggle('open');
+}
+function closeUserMenu() {
+  document.getElementById('userDropdown').classList.remove('open');
+}
+document.addEventListener('click', closeUserMenu);
+
+function signOut() {
+  closeUserMenu();
+  showToast('Signing out…');
+  setTimeout(() => { window.location.href = 'login.html'; }, 600);
+}
+
+/* ============ HELPERS ============ */
+function peso(n) { return '₱' + Number(n).toLocaleString(); }
+function formatCountdown(sec) {
+  if (sec <= 0) return 'Ended';
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+  return h + 'h ' + m + 'm';
+}
+function showToast(message) {
+  const toast = document.getElementById('toast');
+  toast.textContent = message;
+  toast.classList.add('show');
+  clearTimeout(window._t);
+  window._t = setTimeout(() => toast.classList.remove('show'), 2600);
+}
+function emptyRow(colspan, text) { return `<tr><td colspan="${colspan}"><div class="empty-state"><p>${text}</p></div></td></tr>`; }
+function statusLabel(s) { return s.charAt(0).toUpperCase() + s.slice(1).replace('readypickup', 'Ready for Pickup'); }
+
+/* ============ AUCTION DETAIL MODAL ============ */
+let activeDetailId = null;
+
+function openDetailModal(auctionId) {
+  activeDetailId = auctionId;
+  renderDetailModal();
+  document.getElementById('detailModal').classList.add('show');
+}
+
+function closeDetailModal() {
+  document.getElementById('detailModal').classList.remove('show');
+  activeDetailId = null;
+}
+
+document.getElementById('detailModal').addEventListener('click', e => {
+  if (e.target.id === 'detailModal') closeDetailModal();
+});
+
+function renderDetailModal() {
+  const a = liveAuctions.find(x => x.id === activeDetailId);
+  if (!a) return;
+  const isLive = a.status === 'live';
+
+  document.getElementById('detailImg').src = a.img;
+
+  const isWatched = watchlist.some(w => w.name === a.name);
+  const heartBtn = document.getElementById('detailHeartBtn');
+  heartBtn.classList.toggle('saved', isWatched);
+  heartBtn.querySelector('svg').setAttribute('fill', isWatched ? 'currentColor' : 'none');
+  heartBtn.onclick = () => toggleWatch(a.id);
+  document.getElementById('detailName').textContent = a.name;
+  document.getElementById('detailSub').textContent = isLive ? 'Live auction · ' + a.bids + ' bid' + (a.bids === 1 ? '' : 's') + ' so far' : 'Scheduled auction · not yet open for bidding';
+  document.getElementById('detailCurrentBid').textContent = peso(a.currentBid);
+  document.getElementById('detailBidsCount').textContent = a.bids;
+  document.getElementById('detailTimeLeft').textContent = isLive ? formatCountdown(a.endsInSec) : formatCountdown(a.endsInSec);
+  document.getElementById('detailTimeLabel').textContent = isLive ? 'Time Left' : 'Starts In';
+  document.getElementById('detailDesc').textContent = a.desc;
+
+  const wrap = document.getElementById('detailBidBoxWrap');
+  if (isLive) {
+    wrap.style.display = 'flex';
+    document.getElementById('detailBidInput').placeholder = '₱' + (a.currentBid + 1000).toLocaleString() + '+';
+    document.getElementById('detailBidInput').value = '';
+    document.getElementById('detailBidBtn').textContent = 'Place Bid';
+    document.getElementById('detailBidBtn').onclick = () => placeBidFromDetail(a.id);
+  } else {
+    wrap.style.display = 'flex';
+    document.getElementById('detailBidInput').style.display = 'none';
+    document.getElementById('detailBidBtn').textContent = 'Notify Me When Live';
+    document.getElementById('detailBidBtn').onclick = () => { watchAuction(a.id); closeDetailModal(); };
+  }
+  if (isLive) document.getElementById('detailBidInput').style.display = 'block';
+
+  const list = a.bidders && a.bidders.length ? a.bidders : [];
+  document.getElementById('bidderList').innerHTML = list.length ? list.map((b, i) => `
+    <div class="bidder-row ${i === 0 ? 'leader' : ''}">
+      <div class="bidder-avatar">${b.name.split(' ').map(w => w[0]).join('').slice(0,2)}</div>
+      <div><div class="bidder-name">${b.name}</div><div class="bidder-time">${b.time}</div></div>
+      <div class="bidder-amount">${peso(b.amount)}</div>
+    </div>`).join('') : `<div class="empty-state"><p>No bids placed yet — be the first.</p></div>`;
+}
+
+function placeBidFromDetail(auctionId) {
+  const a = liveAuctions.find(x => x.id === auctionId);
+  const input = document.getElementById('detailBidInput');
+  const amount = Number(input.value);
+  const minBid = a.currentBid + 1000;
+
+  if (!amount || amount < minBid) {
+    showToast('Enter at least ' + peso(minBid) + ' to bid on ' + a.name + '.');
+    return;
+  }
+
+  const check = applyBid(a, amount, 'You');
+  renderDetailModal();
+  renderLiveAuctions();
+  renderBids();
+  if (check.flagged) {
+    showToast('Bid placed — flagged as ' + check.reason + '. Our security team has been notified.');
+  } else {
+    showToast('Bid of ' + peso(amount) + ' placed on ' + a.name + '.');
+  }
+}
+
+let myRecentBidTimes = [];
+
+function checkSuspicious(a, amount, previousBid) {
+  const now = Date.now();
+  myRecentBidTimes = myRecentBidTimes.filter(t => now - t < 60000);
+  myRecentBidTimes.push(now);
+
+  const jumpRatio = previousBid > 0 ? amount / previousBid : 1;
+  const jumpAmount = amount - previousBid;
+
+  if (jumpRatio >= 2.5 || jumpAmount >= 50000) {
+    return { flagged: true, reason: 'unusually large bid jump' };
+  }
+  if (myRecentBidTimes.length >= 4) {
+    return { flagged: true, reason: 'rapid bidding activity' };
+  }
+  return { flagged: false };
+}
+
+function applyBid(a, amount, bidderName) {
+  const previousBid = a.currentBid;
+  const check = bidderName === 'You' ? checkSuspicious(a, amount, previousBid) : { flagged: false };
+
+  a.currentBid = amount;
+  a.bids++;
+  a.bidders = a.bidders || [];
+  a.bidders.unshift({ name: bidderName, amount, time: 'Just now' });
+
+  let myBid = bids.find(b => b.item === a.name);
+  if (myBid) {
+    myBid.yourBid = amount;
+    myBid.currentBid = amount;
+    myBid.status = 'winning';
+    myBid.bidsCount = a.bids;
+    myBid.endsInSec = a.endsInSec;
+    myBid.flagged = check.flagged || myBid.flagged;
+  } else {
+    bids.push({ id: 'B-' + (bids.length + 1).toString().padStart(2, '0'), item: a.name, img: a.img, yourBid: amount, currentBid: amount, bidsCount: a.bids, endsInSec: a.endsInSec, status: 'winning', flagged: check.flagged });
+  }
+
+  return check;
+}
+
+/* ============ LIVE AUCTIONS ============ */
+function renderLiveAuctions() {
+  const q = document.getElementById('liveSearch').value.toLowerCase();
+  const statusFilter = document.getElementById('liveStatusFilter').value;
+  const filtered = liveAuctions.filter(a => a.name.toLowerCase().includes(q) && (!statusFilter || a.status === statusFilter));
+
+  document.getElementById('liveGrid').innerHTML = filtered.map(a => {
+    const isLive = a.status === 'live';
+    const myBid = bids.find(b => b.item === a.name);
+    const isWatched = watchlist.some(w => w.name === a.name);
+    return `
+    <div class="watch-card" onclick="openDetailModal('${a.id}')" style="cursor:pointer;">
+      <span class="live-tag ${isLive ? '' : 'scheduled'}"><span class="live-dot"></span>${isLive ? 'LIVE' : 'STARTS SOON'}</span>
+      <button class="heart-btn ${isWatched ? 'saved' : ''}" onclick="event.stopPropagation(); toggleWatch('${a.id}')" aria-label="Save to watchlist">
+        <svg viewBox="0 0 24 24" fill="${isWatched ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="1.8"><path d="M20.8 8.8C20.8 13.8 12 19.1 12 19.1S3.2 13.8 3.2 8.8C3.2 5.9 5.2 4 7.9 4c1.7 0 3.2.9 4.1 2.2C12.9 4.9 14.4 4 16.1 4c2.7 0 4.7 1.9 4.7 4.8Z"/></svg>
+      </button>
+      <img src="${a.img}" alt="">
+      <div class="watch-card-body">
+        <h4>${a.name}</h4>
+        <div class="live-meta"><span>${a.bids} bid${a.bids === 1 ? '' : 's'}</span><span>${isLive ? formatCountdown(a.endsInSec) + ' left' : 'Starts in ' + formatCountdown(a.endsInSec)}</span></div>
+        <div class="price">Current bid: <b>${peso(a.currentBid)}</b></div>
+        ${myBid ? `<div class="cell-sub" style="margin-bottom:8px;">Your bid: ${peso(myBid.yourBid)} · <span class="badge ${myBid.status}" style="vertical-align:middle;">${myBid.status}</span></div>` : ''}
+        ${isLive ? `
+          <div class="bid-box" onclick="event.stopPropagation()">
+            <input type="number" id="bidInput-${a.id}" placeholder="₱${(a.currentBid + 1000).toLocaleString()}+">
+            <button class="btn btn-primary" onclick="placeBid('${a.id}')">Bid</button>
+          </div>
+        ` : `<button class="btn btn-outline" style="width:100%;justify-content:center;" onclick="event.stopPropagation(); watchAuction('${a.id}')">Notify Me</button>`}
+      </div>
+    </div>`;
+  }).join('') || `<div class="empty-state" style="grid-column:1/-1;"><p>No auctions match your search.</p></div>`;
+
+  document.getElementById('liveNowBadge').textContent = liveAuctions.filter(a => a.status === 'live').length;
+}
+
+function placeBid(auctionId) {
+  const a = liveAuctions.find(x => x.id === auctionId);
+  const input = document.getElementById('bidInput-' + auctionId);
+  const amount = Number(input.value);
+  const minBid = a.currentBid + 1000;
+
+  if (!amount || amount < minBid) {
+    showToast('Enter at least ' + peso(minBid) + ' to bid on ' + a.name + '.');
+    return;
+  }
+
+  const check = applyBid(a, amount, 'You');
+  input.value = '';
+
+  renderLiveAuctions();
+  renderBids();
+  if (check.flagged) {
+    showToast('Bid placed — flagged as ' + check.reason + '. Our security team has been notified.');
+  } else {
+    showToast('Bid of ' + peso(amount) + ' placed on ' + a.name + '.');
+  }
+}
+
+function toggleWatch(auctionId) {
+  const a = liveAuctions.find(x => x.id === auctionId);
+  const idx = watchlist.findIndex(w => w.name === a.name);
+  if (idx > -1) {
+    watchlist.splice(idx, 1);
+    showToast('Removed ' + a.name + ' from your watchlist.');
+  } else {
+    watchlist.push({ name: a.name, img: a.img, currentBid: a.currentBid });
+    showToast('Added ' + a.name + ' to your watchlist.');
+  }
+  renderWatchlist();
+  renderLiveAuctions();
+  if (activeDetailId === auctionId) renderDetailModal();
+}
+
+function watchAuction(auctionId) {
+  const a = liveAuctions.find(x => x.id === auctionId);
+  if (!watchlist.some(w => w.name === a.name)) {
+    watchlist.push({ name: a.name, img: a.img, currentBid: a.currentBid });
+    renderWatchlist();
+  }
+  showToast('We\'ll notify you when ' + a.name + ' goes live.');
+}
+
+/* ============ BIDS ============ */
+function renderBids() {
+  const q = document.getElementById('bidSearch').value.toLowerCase();
+  const statusFilter = document.getElementById('bidStatusFilter').value;
+  const filtered = bids.filter(b => b.item.toLowerCase().includes(q) && (!statusFilter || b.status === statusFilter));
+
+  document.getElementById('bidRows').innerHTML = filtered.map(b => `
+    <tr>
+      <td><div class="item-thumb"><img src="${b.img}" alt=""><div class="cell-main">${b.item}</div></div></td>
+      <td>${peso(b.yourBid)}</td>
+      <td class="cell-main">${peso(b.currentBid)}</td>
+      <td>${b.bidsCount}</td>
+      <td>${formatCountdown(b.endsInSec)}</td>
+      <td><span class="badge ${b.status}">${statusLabel(b.status)}</span>${b.flagged ? ' <span class="badge medium" title="Flagged for admin review" style="margin-left:4px;">Under Review</span>' : ''}</td>
+      <td>${b.status === 'outbid' ? `<button class="btn-ghost" onclick="rebid('${b.id}')">Rebid</button>` : ''}</td>
+    </tr>`).join('') || emptyRow(7, 'No bids match your filters.');
+
+  document.getElementById('bidCount').textContent = filtered.length + ' bid' + (filtered.length === 1 ? '' : 's');
+  const activeCount = bids.filter(b => b.status === 'winning' || b.status === 'outbid').length;
+  document.getElementById('activeBidsBadge').textContent = activeCount;
+  document.getElementById('kpiActiveBids').textContent = activeCount;
+  document.getElementById('kpiWon').textContent = bids.filter(b => b.status === 'won').length;
+
+  renderDashBids();
+}
+
+function renderDashBids() {
+  const soonest = [...bids].filter(b => b.status === 'winning' || b.status === 'outbid').sort((a,b) => a.endsInSec - b.endsInSec);
+  document.getElementById('dashBidRows').innerHTML = soonest.map(b => `
+    <tr>
+      <td class="cell-main">${b.item}</td>
+      <td>${peso(b.yourBid)}</td>
+      <td>${peso(b.currentBid)}</td>
+      <td>${formatCountdown(b.endsInSec)}</td>
+      <td><span class="badge ${b.status}">${statusLabel(b.status)}</span></td>
+    </tr>`).join('') || emptyRow(5, 'You have no active bids right now.');
+}
+
+function rebid(id) {
+  const b = bids.find(x => x.id === id);
+  b.yourBid = b.currentBid + 1000;
+  b.currentBid = b.yourBid;
+  b.status = 'winning';
+  b.bidsCount++;
+  renderBids();
+  showToast('New bid of ' + peso(b.yourBid) + ' placed on ' + b.item + '.');
+}
+
+/* ============ WATCHLIST ============ */
+function renderWatchlist() {
+  document.getElementById('watchGrid').innerHTML = watchlist.map((w, i) => `
+    <div class="watch-card">
+      <img src="${w.img}" alt="">
+      <div class="watch-card-body">
+        <h4>${w.name}</h4>
+        <div class="price">Current bid: <b>${peso(w.currentBid)}</b></div>
+        <div class="watch-card-actions">
+          <button class="btn btn-primary" onclick="showToast('Redirecting to auction for ${w.name.replace(/'/g,"\\'")} (demo).')">Bid Now</button>
+          <button class="btn btn-outline" onclick="removeWatch(${i})">Remove</button>
+        </div>
+      </div>
+    </div>`).join('') || `<div class="empty-state" style="grid-column:1/-1;"><p>Your watchlist is empty. Browse auctions to add items.</p></div>`;
+
+  document.getElementById('kpiWatch').textContent = watchlist.length;
+}
+
+function removeWatch(i) {
+  watchlist.splice(i, 1);
+  renderWatchlist();
+  showToast('Removed from watchlist.');
+}
+
+/* ============ ORDERS ============ */
+function renderOrders() {
+  const q = document.getElementById('orderSearch').value.toLowerCase();
+  const statusFilter = document.getElementById('orderStatusFilter').value;
+  const filtered = orders.filter(o => (o.item.toLowerCase().includes(q) || o.id.toLowerCase().includes(q)) && (!statusFilter || o.status === statusFilter));
+
+  document.getElementById('orderRows').innerHTML = filtered.map(o => `
+    <tr>
+      <td class="cell-main">${o.id}</td>
+      <td>${o.item}</td>
+      <td>${peso(o.amount)}</td>
+      <td>${o.branch}</td>
+      <td><span class="badge ${o.status}">${statusLabel(o.status)}</span></td>
+      <td>${o.date}</td>
+      <td>${o.status === 'pending' ? `<button class="btn-ghost" onclick="payOrder('${o.id}')">Pay Now</button>` : ''}</td>
+    </tr>`).join('') || emptyRow(7, 'No orders match your filters.');
+
+  document.getElementById('orderCount').textContent = filtered.length + ' order' + (filtered.length === 1 ? '' : 's');
+  const spent = orders.filter(o => o.status !== 'pending').reduce((s, o) => s + o.amount, 0);
+  document.getElementById('kpiSpent').textContent = peso(spent);
+
+  renderDashOrders();
+}
+
+function renderDashOrders() {
+  document.getElementById('dashOrderRows').innerHTML = orders.slice(0, 4).map(o => `
+    <tr>
+      <td class="cell-main">${o.id}</td>
+      <td>${o.item}</td>
+      <td>${peso(o.amount)}</td>
+      <td>${o.branch}</td>
+      <td><span class="badge ${o.status}">${statusLabel(o.status)}</span></td>
+      <td>${o.date}</td>
+    </tr>`).join('') || emptyRow(6, 'No orders yet.');
+}
+
+function payOrder(id) {
+  openPayModal(id);
+}
+
+/* ============ PAYMENT MODAL ============ */
+let payMethods = [
+  { id: 'gcash', label: 'GCash', icon: '<path d="M4 7h16v10H4z"/><path d="M8 7V5.5A1.5 1.5 0 0 1 9.5 4h5A1.5 1.5 0 0 1 16 5.5V7"/>' },
+  { id: 'card', label: 'Credit / Debit Card', icon: '<rect x="3" y="6" width="18" height="12" rx="2"/><path d="M3 10h18"/>' },
+  { id: 'bank', label: 'Bank Transfer', icon: '<path d="M3 10h18M5 10v8M9 10v8M15 10v8M19 10v8M2 20h20M12 3 3 8h18L12 3Z"/>' },
+  { id: 'counter', label: 'Pay at Branch Counter', icon: '<path d="M3 9 12 3l9 6M4 10h16v10H4z"/><path d="M9 20v-6h6v6"/>' },
+];
+let selectedPayMethod = 'gcash';
+let activePayOrderId = null;
+
+function openPayModal(orderId) {
+  activePayOrderId = orderId;
+  selectedPayMethod = 'gcash';
+  renderPayModal();
+  document.getElementById('payModal').classList.add('show');
+}
+
+function closePayModal() {
+  document.getElementById('payModal').classList.remove('show');
+  activePayOrderId = null;
+}
+
+document.getElementById('payModal').addEventListener('click', e => {
+  if (e.target.id === 'payModal') closePayModal();
+});
+
+function renderPayModal() {
+  const o = orders.find(x => x.id === activePayOrderId);
+  if (!o) return;
+  const fee = 0;
+
+  document.getElementById('payModalBody').innerHTML = `
+    <div class="pay-summary">
+      <div class="pay-summary-row"><span>${o.item}</span><span>${peso(o.amount)}</span></div>
+      <div class="pay-summary-row"><span>Processing fee</span><span>${peso(fee)}</span></div>
+      <div class="pay-summary-row total"><span>Total due</span><span>${peso(o.amount + fee)}</span></div>
+    </div>
+
+    <div class="pickup-note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s7-7.4 7-12.5A7 7 0 0 0 5 9.5C5 14.6 12 22 12 22Z"/><circle cx="12" cy="9.5" r="2.4"/></svg>
+      <div>ATANY is pickup-only — no delivery. Once payment is confirmed, bring a valid ID and your order number to <b>${o.branch}</b> within 7 days to claim this item.</div>
+    </div>
+
+    <div class="pay-methods">
+      ${payMethods.map(m => `
+        <label class="pay-method ${selectedPayMethod === m.id ? 'selected' : ''}" onclick="selectPayMethod('${m.id}')">
+          <input type="radio" name="payMethod" ${selectedPayMethod === m.id ? 'checked' : ''}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">${m.icon}</svg>
+          ${m.label}
+        </label>`).join('')}
+    </div>
+
+    <button class="btn btn-primary" style="width:100%;justify-content:center;" onclick="confirmPayment()">
+      Pay ${peso(o.amount + fee)}
+    </button>
+  `;
+}
+
+function selectPayMethod(id) {
+  selectedPayMethod = id;
+  renderPayModal();
+}
+
+function confirmPayment() {
+  const o = orders.find(x => x.id === activePayOrderId);
+  const methodLabel = payMethods.find(m => m.id === selectedPayMethod).label;
+
+  document.getElementById('payModalBody').innerHTML = `
+    <div class="pay-success">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/></svg>
+      <h3>Payment Confirmed</h3>
+      <p>${peso(o.amount)} paid via ${methodLabel} for <b>${o.item}</b>.</p>
+      <p style="margin-top:10px;">Ready for pickup at <b>${o.branch}</b>. Bring a valid ID and order <b>${o.id}</b> within 7 days.</p>
+      <button class="btn btn-primary" style="width:100%;justify-content:center;margin-top:18px;" onclick="closePayModal()">Done</button>
+    </div>
+  `;
+
+  o.status = 'readypickup';
+  renderOrders();
+}
+
+/* ============ ACTIVITY ============ */
+function renderActivity() {
+  document.getElementById('activityList').innerHTML = activity.map(a => `
+    <div class="activity-item">
+      <div class="activity-dot"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/></svg></div>
+      <div><div class="activity-text">${a.text}</div><div class="activity-time">${a.time}</div></div>
+    </div>`).join('');
+}
+
+/* ============ COUNTDOWN ============ */
+setInterval(() => {
+  bids.forEach(b => { if ((b.status === 'winning' || b.status === 'outbid') && b.endsInSec > 0) b.endsInSec--; });
+  liveAuctions.forEach(a => { if (a.endsInSec > 0) a.endsInSec--; });
+  renderDashBids();
+  if (activeDetailId) renderDetailModal();
+}, 1000);
+
+/* ============ INIT ============ */
+renderLiveAuctions();
+renderBids();
+renderWatchlist();
+renderOrders();
+renderActivity();
+</script>
+<script>window.ATANY_ASSISTANT_MODE="customer";</script><script src="atany-assistant.js"></script>
+</body>
+</html>

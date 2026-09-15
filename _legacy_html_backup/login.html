@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Sign In — ATANY</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --navy: #14301f;
+    --navy-2: #1e4530;
+    --gold: #c7a66a;
+    --cream: #faf9f6;
+    --ivory: #fffefa;
+    --soft: #f3f1ec;
+    --line: #e5e2da;
+    --text: #172235;
+    --muted: #707782;
+    --shadow: 0 10px 30px rgba(20, 48, 31, .07);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: "Plus Jakarta Sans", sans-serif;
+    background: var(--cream);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  a { color: inherit; text-decoration: none; }
+  button, input { font: inherit; }
+  button { cursor: pointer; }
+
+  .top-bar {
+    padding: 26px 0;
+    text-align: center;
+    border-bottom: 1px solid var(--line);
+    background: rgba(255,255,252,.9);
+  }
+
+  .brand-name {
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: .03em;
+    color: var(--navy);
+  }
+
+  main {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+  }
+
+  .auth-card {
+    width: min(420px, 100%);
+    background: var(--ivory);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 36px 32px;
+    box-shadow: var(--shadow);
+  }
+
+  .eyebrow {
+    color: var(--gold);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .12em;
+    margin-bottom: 10px;
+  }
+
+  h1 {
+    font-size: 30px;
+    color: var(--navy);
+    margin-bottom: 6px;
+  }
+
+  .auth-card > p {
+    color: var(--muted);
+    font-size: 12.5px;
+    margin-bottom: 26px;
+  }
+
+  .form-group { margin-bottom: 16px; }
+
+  .form-group label {
+    display: block;
+    color: var(--navy);
+    font-size: 11px;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+
+  .form-group input {
+    width: 100%;
+    height: 44px;
+    padding: 0 13px;
+    border: 1px solid #d7d4cc;
+    border-radius: 7px;
+    outline: none;
+    background: #fff;
+    color: var(--text);
+    font-size: 13px;
+  }
+
+  .form-group input:focus {
+    border-color: var(--navy);
+    box-shadow: 0 0 0 3px rgba(20, 48, 31,.07);
+  }
+
+  .row-between {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+    font-size: 11.5px;
+  }
+
+  .row-between label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+  }
+
+  .row-between a {
+    color: var(--navy);
+    font-weight: 700;
+  }
+
+  .row-between a:hover { color: var(--gold); }
+
+  .btn-primary {
+    width: 100%;
+    min-height: 46px;
+    border: 0;
+    border-radius: 7px;
+    background: var(--navy);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    box-shadow: 0 7px 18px rgba(20, 48, 31,.14);
+    transition: background .2s ease, transform .2s ease;
+  }
+
+  .btn-primary:hover {
+    background: var(--navy-2);
+    transform: translateY(-2px);
+  }
+
+  .switch-line {
+    text-align: center;
+    margin-top: 22px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  .switch-line a {
+    color: var(--navy);
+    font-weight: 700;
+  }
+
+  .switch-line a:hover { color: var(--gold); }
+
+  .back-home {
+    display: block;
+    text-align: center;
+    margin-top: 22px;
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+
+  .back-home:hover { color: var(--navy); }
+
+  .toast {
+    position: fixed;
+    z-index: 3000;
+    right: 20px;
+    bottom: 20px;
+    background: var(--navy);
+    color: white;
+    padding: 12px 17px;
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: 600;
+    transform: translateY(20px);
+    opacity: 0;
+    pointer-events: none;
+    transition: transform .25s ease, opacity .25s ease;
+  }
+
+  .toast.show {
+    transform: translateY(0);
+    opacity: 1;
+  }
+</style>
+</head>
+<body>
+
+  <div class="top-bar" style="display:flex;align-items:center;justify-content:center;position:relative;">
+    <a href="atany-landing-page.html" class="brand-name">ATANY</a>
+    <div id="assistantBellSlot" style="position:absolute;right:24px;top:50%;transform:translateY(-50%);"></div>
+  </div>
+
+  <main>
+    <div class="auth-card">
+      <div class="eyebrow">WELCOME BACK</div>
+      <h1>Sign In</h1>
+      <p>Access your bids, favorites, and purchases.</p>
+
+      <form onsubmit="return submitLogin(event)">
+        <div class="form-group">
+          <label>Sign in as</label>
+          <select id="loginRole" style="width:100%;height:44px;padding:0 13px;border:1px solid #d7d4cc;border-radius:7px;background:#fff;color:var(--text);font-size:13px;">
+            <option value="customer-dashboard.html">Customer</option>
+            <option value="shop-owner-dashboard.html">Shop Owner</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label>Email Address</label>
+          <input type="email" required placeholder="you@example.com">
+        </div>
+
+        <div class="form-group">
+          <label>Password</label>
+          <input type="password" required placeholder="Enter your password">
+        </div>
+
+        <div class="row-between">
+          <label><input type="checkbox" style="width:auto;height:auto;"> Remember me</label>
+          <a href="#" onclick="showToast('Password reset link sent (demo).'); return false;">Forgot password?</a>
+        </div>
+
+        <button type="submit" class="btn-primary">Sign In</button>
+      </form>
+
+      <p class="switch-line">New to ATANY? <a href="signup.html">Create an account</a></p>
+      <a href="atany-landing-page.html" class="back-home">← Back to home</a>
+    </div>
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    function showToast(message) {
+      const toast = document.getElementById("toast");
+      toast.textContent = message;
+      toast.classList.add("show");
+      clearTimeout(window._t);
+      window._t = setTimeout(() => toast.classList.remove("show"), 2600);
+    }
+
+    function submitLogin(e) {
+      e.preventDefault();
+      const dest = document.getElementById("loginRole").value;
+      showToast("Demo login submitted — redirecting…");
+      setTimeout(() => { window.location.href = dest; }, 700);
+      return false;
+    }
+  </script>
+  <script>window.ATANY_ASSISTANT_MODE="customer";</script><script src="atany-assistant.js"></script>
+</body>
+</html>
