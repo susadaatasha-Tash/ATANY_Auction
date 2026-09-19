@@ -14,6 +14,7 @@ import { Server } from 'socket.io';
 import cron from 'node-cron';
 import { closeExpiredAuctions } from './services/auctionCloser.js';
 import { startScheduledAuctions } from './services/auctionStarter.js';
+import { expireOverdueBillings } from './services/billingExpiration.js';
 import { listAuctions as listAuctionsService } from './services/auctionService.js';
 import { createUploadUrl } from './services/storageService.js';
 import { chatbotReply } from './services/chatbotService.js';
@@ -73,7 +74,7 @@ app.use(reviewRoutes); // extension d) product reviews: GET/POST /products/:id/r
 app.get('/api/auctions/live', async (req, res) => {
   try {
     const { branch_id } = req.query;
-    const rows = await listAuctionsService({ branchId: branch_id, status: 'live' });
+    const rows = await listAuctionsService({ branchId: branch_id });
     res.json(rows);
   } catch (e) { console.error('live feed error', e.message); res.json([]); }
 });
@@ -105,6 +106,8 @@ app.post('/admin/products/upload-url', requireAuth, requireRole(['admin']), asyn
 cron.schedule('* * * * *', () => closeExpiredAuctions().catch(console.error));
 // Notify watchers when scheduled auctions go live (start_time reached)
 cron.schedule('* * * * *', () => startScheduledAuctions().catch(console.error));
+// Billing subscription: mark pending as overdue after due_date (daily 2am)
+cron.schedule('0 2 * * *', () => expireOverdueBillings().catch(console.error));
 
 // Prevent direct pg IPv6 ETIMEDOUT from crashing the process (pool emits unhandled)
 pool.on('error', (err) => console.error('pg pool error', err.message));

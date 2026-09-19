@@ -24,13 +24,34 @@ export async function closeExpiredAuctions() {
           winnerId = top[0].user_id;
           winningAmount = top[0].amount;
         } else {
-          // spec 4.1: auto-create order status pending — also determine correct branch via product's shop
-          const { rows: orderRows } = await client.query(
-            `INSERT INTO orders (auction_id, buyer_id, amount, branch_id, status)
-             VALUES ($1,$2,$3, (SELECT s.home_branch_id FROM auctions a JOIN products p ON p.id=a.product_id JOIN shops s ON s.id=p.shop_id WHERE a.id=$1), 'pending')
-             RETURNING id`,
-            [a.id, top[0].user_id, top[0].amount]
-          );
+          // spec 4.1: auto-create order status pending — REST-compatible: fetch branch via simple queries
+          let branchId = null;
+          try {
+            const { rows: aucProd } = await client.query('SELECT product_id FROM auctions WHERE id=$1', [a.id]);
+            const productId = aucProd[0]?.product_id;
+            if (productId) {
+              const { rows: prodShop } = await client.query('SELECT shop_id FROM products WHERE id=$1', [productId]);
+              const shopId = prodShop[0]?.shop_id;
+              if (shopId) {
+                const { rows: shopBranch } = await client.query('SELECT home_branch_id FROM shops WHERE id=$1', [shopId]);
+                branchId = shopBranch[0]?.home_branch_id || null;
+              }
+            }
+          } catch {}
+          let orderRows;
+          try {
+            const res = await client.query(
+              `INSERT INTO orders (auction_id, buyer_id, amount, branch_id, status) VALUES ($1,$2,$3,$4,'pending') RETURNING id`,
+              [a.id, top[0].user_id, top[0].amount, branchId]
+            );
+            orderRows = res.rows;
+          } catch (insErr) {
+            if (insErr.code === '23505') {
+              const { rows: existing } = await client.query('SELECT id FROM orders WHERE auction_id=$1', [a.id]);
+              orderRows = existing;
+            } else throw insErr;
+          }
+          if (orderRows.length) orderId = orderRows[0]?.id;
           winnerId = top[0].user_id;
           winningAmount = top[0].amount;
           orderId = orderRows[0]?.id;
@@ -38,22 +59,28 @@ export async function closeExpiredAuctions() {
       }
       await client.query('COMMIT');
 
-      // After commit: notify winner via in-app + email (automatic, no admin action required per spec)
+      // After commit: notify winner via in-app + email (REST-compatible simple queries)
       if (winnerId) {
         try {
-          // Fetch winner, product, branch details for notification — include readable codes for cross-reference
-          const { rows: details } = await pool.query(
-            `SELECT u.email, u.name as user_name, p.name as product_name, p.image_url, o.amount as winning_bid, o.transaction_code, ac.auction_code,
-                    b.name as branch_name, b.address as branch_address, b.hours as branch_hours, b.phone as branch_phone
-             FROM orders o
-             JOIN users u ON u.id = o.buyer_id
-             JOIN auctions ac ON ac.id = o.auction_id
-             JOIN products p ON p.id = ac.product_id
-             LEFT JOIN branches b ON b.id = o.branch_id
-             WHERE o.id = $1`,
-            [orderId]
-          );
-          const d = details[0];
+          const { rows: orderRows } = await pool.query('SELECT amount, transaction_code, buyer_id, auction_id, branch_id FROM orders WHERE id=$1', [orderId]);
+          const oRow = orderRows[0];
+          const { rows: userRows } = await pool.query('SELECT email, name FROM users WHERE id=$1', [oRow?.buyer_id || winnerId]);
+          const { rows: aucRows } = await pool.query('SELECT auction_code, product_id FROM auctions WHERE id=$1', [oRow?.auction_id || a.id]);
+          const { rows: prodRows } = await pool.query('SELECT name, image_url FROM products WHERE id=$1', [aucRows[0]?.product_id]);
+          const { rows: branchRows } = oRow?.branch_id ? await pool.query('SELECT name, address, hours, phone FROM branches WHERE id=$1', [oRow.branch_id]) : { rows: [] };
+          const d = {
+            email: userRows[0]?.email,
+            user_name: userRows[0]?.name,
+            product_name: prodRows[0]?.name,
+            image_url: prodRows[0]?.image_url,
+            winning_bid: oRow?.amount,
+            transaction_code: oRow?.transaction_code,
+            auction_code: aucRows[0]?.auction_code,
+            branch_name: branchRows[0]?.name,
+            branch_address: branchRows[0]?.address,
+            branch_hours: branchRows[0]?.hours,
+            branch_phone: branchRows[0]?.phone,
+          };
           if (d) {
             const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5174';
             const branchInfo = d.branch_name ? `${d.branch_name} — ${d.branch_address || ''} ${d.branch_hours ? `(${d.branch_hours})` : ''}`.trim() : 'Designated ATANY branch (see order details)';

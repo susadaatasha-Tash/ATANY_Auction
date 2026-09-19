@@ -104,10 +104,14 @@ export const crud = {
       let auctionInfo = null;
       if (auction) {
         const now = new Date();
-        const { rows: bids } = await pool.query(
-          'SELECT b.*, u.name as bidder_name FROM bids b LEFT JOIN users u ON b.user_id = u.id WHERE b.auction_id=$1 ORDER BY b.amount DESC',
-          [auction.id]
-        );
+        const { rows: bidRows } = await pool.query('SELECT * FROM bids WHERE auction_id=$1 ORDER BY amount DESC', [auction.id]);
+        const bidderIds = [...new Set(bidRows.map(b => b.user_id).filter(Boolean))];
+        let bidderMap = {};
+        if (bidderIds.length) {
+          const { rows: bidders } = await pool.query(`SELECT id, name FROM users WHERE id IN (${bidderIds.map((_,i)=>`$${i+1}`).join(',')})`, bidderIds);
+          bidderMap = Object.fromEntries(bidders.map(u => [u.id, u.name]));
+        }
+        const bids = bidRows.map(b => ({ ...b, bidder_name: bidderMap[b.user_id] || null }));
         const uniqueBidders = new Set(bids.map(b => b.user_id)).size;
         auctionInfo = {
           id: auction.id,

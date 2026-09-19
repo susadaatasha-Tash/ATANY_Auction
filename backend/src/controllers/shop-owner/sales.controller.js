@@ -49,12 +49,14 @@ export const listSales = async (req, res) => {
         payment_status = pay[0]?.status || null;
       } catch { payment_status = null; }
       const productId = auctionMap[o.auction_id];
+      const commission = Math.round(o.amount * 0.10);
       rows.push({
         id: o.id,
         transaction_code: o.transaction_code,
         item: prodMap[productId] || 'Jewelry Item',
         buyer: buyerMap[o.buyer_id] || 'Customer',
         amount: o.amount,
+        commission,
         payout: Math.round(o.amount * 0.9),
         status: o.status,
         payment_status,
@@ -103,6 +105,18 @@ export const updateOrderStatus = async (req, res) => {
       if (!pay.length) return res.status(400).json({ message: 'Order cannot be prepared until payment is confirmed.' });
     }
     const { rows } = await pool.query('UPDATE orders SET status=$1 WHERE id=$2 RETURNING *', [status, req.params.id]);
+    // Audit log (best-effort — never blocks the response)
+    try {
+      const statusAction = { preparing: 'order_preparing', ready_pickup: 'order_ready_pickup', completed: 'order_completed' }[status];
+      if (statusAction) {
+        await pool.query(
+          'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details) VALUES ($1, $2, $3, $4, $5)',
+          [req.user.id, statusAction, 'order', req.params.id, JSON.stringify({ name: productRows[0].name, status })]
+        );
+      }
+    } catch (logErr) {
+      console.warn('[audit log] failed:', logErr.message);
+    }
     try {
       const prodName = productRows[0].name || 'your jewelry';
       const { rows: branchRows } = await pool.query(

@@ -53,5 +53,29 @@ export async function startScheduledAuctions() {
     } finally {
       client.release();
     }
+    // Other-branch live auction notification (outside transaction, after status is live)
+    try {
+      const { rows: prodRows } = await pool.query('SELECT shop_id FROM products WHERE id = $1', [auction.product_id]);
+      const shopId = prodRows[0]?.shop_id;
+      if (shopId) {
+        const { rows: shopRows } = await pool.query('SELECT home_branch_id FROM shops WHERE id = $1', [shopId]);
+        const branchId = shopRows[0]?.home_branch_id;
+        if (branchId) {
+          const { rows: branchRows } = await pool.query('SELECT name FROM branches WHERE id = $1', [branchId]);
+          const branchName = branchRows[0]?.name || 'Branch';
+          // Fetch auction details for notification
+          const { rows: aucRows } = await pool.query('SELECT start_price FROM auctions WHERE id = $1', [auction.id]);
+          const startPrice = aucRows[0]?.start_price || 0;
+          const otherNotifMsg = `New Live Auction at ${branchName}\n\nA new auction is now live at ${branchName}.\n${productName} — Starting price: ₱${Number(startPrice).toLocaleString()}\n\nView Auction`;
+          const { rows: otherCustomers } = await pool.query('SELECT id FROM users WHERE preferred_branch_id IS NOT NULL AND preferred_branch_id != $1 AND role = $2', [branchId, 'customer']);
+          for (const cust of otherCustomers.rows) {
+            await pool.query('INSERT INTO notifications (user_id, type, message) VALUES ($1, $2, $3)', [cust.id, 'auction', otherNotifMsg]);
+          }
+          if (otherCustomers.rows.length) console.log(`Other-branch notification for auction ${auction.id} at ${branchName}: notified ${otherCustomers.rows.length} customers`);
+        }
+      }
+    } catch (notifErr) {
+      console.warn('[other-branch starter notification] failed:', notifErr.message);
+    }
   }
 }

@@ -1,10 +1,43 @@
 import { pool } from '../../db/pool.js';
 export const getOrders = async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      `SELECT o.id, o.transaction_code, p.name as item, p.image_url as img, p.category, p.karat_weight, o.amount, b.name as branch, o.status,
-              o.created_at as date
-       FROM orders o JOIN auctions a ON a.id=o.auction_id JOIN products p ON p.id=a.product_id LEFT JOIN branches b ON b.id=o.branch_id WHERE o.buyer_id=$1 ORDER BY o.created_at DESC`, [req.user.id]);
+    const { rows: orders } = await pool.query('SELECT * FROM orders WHERE buyer_id=$1 ORDER BY created_at DESC', [req.user.id]);
+    if (!orders.length) return res.json([]);
+    const auctionIds = [...new Set(orders.map(o => o.auction_id).filter(Boolean))];
+    const branchIds = [...new Set(orders.map(o => o.branch_id).filter(Boolean))];
+    let auctionMap = {};
+    if (auctionIds.length) {
+      const { rows: auctions } = await pool.query(`SELECT * FROM auctions WHERE id IN (${auctionIds.map((_,i)=>`$${i+1}`).join(',')})`, auctionIds);
+      auctionMap = Object.fromEntries(auctions.map(a => [a.id, a]));
+    }
+    const productIds = [...new Set(Object.values(auctionMap).map(a => a.product_id).filter(Boolean))];
+    let productMap = {};
+    if (productIds.length) {
+      const { rows: products } = await pool.query(`SELECT * FROM products WHERE id IN (${productIds.map((_,i)=>`$${i+1}`).join(',')})`, productIds);
+      productMap = Object.fromEntries(products.map(p => [p.id, p]));
+    }
+    let branchMap = {};
+    if (branchIds.length) {
+      const { rows: branches } = await pool.query(`SELECT * FROM branches WHERE id IN (${branchIds.map((_,i)=>`$${i+1}`).join(',')})`, branchIds);
+      branchMap = Object.fromEntries(branches.map(b => [b.id, b]));
+    }
+    const rows = orders.map(o => {
+      const a = auctionMap[o.auction_id] || {};
+      const p = productMap[a.product_id] || {};
+      const b = branchMap[o.branch_id] || {};
+      return {
+        id: o.id,
+        transaction_code: o.transaction_code,
+        item: p.name,
+        img: p.image_url,
+        category: p.category,
+        karat_weight: p.karat_weight,
+        amount: o.amount,
+        branch: b.name || null,
+        status: o.status,
+        date: o.created_at,
+      };
+    });
     // attach latest payment status per order (REST-compatible: separate simple queries)
     for (const r of rows) {
       try {
@@ -19,13 +52,18 @@ export const getOrders = async (req, res) => {
   }
 };
 export const payOrder = async (req, res) => {
-  // Spec 4.4 + 1: PayMongo sandbox — create source then mark pending -> ready_pickup. Pickup-only, no shipped status anywhere (spec 5.5).
-  const { payment_method = 'gcash' } = req.body;
-  // In production: call PayMongo sources API with PAYMONGO_SECRET_KEY (server-only spec 5.6)
-  // const payRes = await fetch('https://api.paymongo.com/v1/sources', { method:'POST', headers:{ Authorization: `Basic ${Buffer.from(process.env.PAYMONGO_SECRET_KEY).toString('base64')}` }, body: JSON.stringify({ data:{ attributes:{ amount: rows[0].amount*100, currency:'PHP', type: payment_method }}}});
+  // LEGACY: Pay at Branch Counter only. Online payments must use PayMongo checkout via POST /customer/orders/:id/payment
+  const { payment_method = 'counter' } = req.body;
+  const ONLINE_METHODS = ['gcash', 'card', 'paymaya', 'maya', 'grab_pay', 'qrph', 'billease', 'bank', 'bank_transfer'];
+  if (ONLINE_METHODS.includes(String(payment_method).toLowerCase())) {
+    return res.status(400).json({ message: 'Online payments must use PayMongo checkout. Use POST /customer/orders/:id/payment' });
+  }
+  // Only counter / branch-counter allowed here
+  if (payment_method !== 'counter' && payment_method !== 'branch_counter') {
+    return res.status(400).json({ message: 'Invalid payment method for this endpoint. Use PayMongo checkout for online payments.' });
+  }
   const { rows } = await pool.query("UPDATE orders SET status='ready_pickup', payment_method=$1 WHERE id=$2 AND buyer_id=$3 AND status='pending' RETURNING *", [payment_method, req.params.id, req.user.id]);
   if (!rows.length) return res.status(404).json({ message: 'Order not found or not pending' });
-  // Spec 4.6: notify customer ready_pickup + shop owner sale
   await pool.query("INSERT INTO notifications (user_id, type, message) VALUES ($1,'payout',$2)", [req.user.id, `Order ${rows[0].id} is ready for pickup — bring valid ID + order number within 7 days.`]);
   res.json(rows[0]);
 };

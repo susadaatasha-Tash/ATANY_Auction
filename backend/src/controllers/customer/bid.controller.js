@@ -19,18 +19,43 @@ export async function placeBidController(req, res) {
 
 export async function listBids(req, res) {
   const userId = req.user.id;
-  const { rows } = await pool.query(`
-    SELECT b.id, b.amount as "yourBid", a.current_bid as "currentBid",
-           (SELECT COUNT(*) FROM bids WHERE auction_id = a.id)::int as "bidsCount",
-           EXTRACT(EPOCH FROM (a.end_time - NOW()))::int as "endsInSec",
-           b.flagged, b.flag_reason as "flagReason",
-           a.status, p.name as item, p.image_url as img
-    FROM bids b
-    JOIN auctions a ON a.id = b.auction_id
-    JOIN products p ON p.id = a.product_id
-    WHERE b.user_id = $1
-    ORDER BY b.created_at DESC
-  `, [userId]);
+  const { rows: bids } = await pool.query('SELECT * FROM bids WHERE user_id=$1 ORDER BY created_at DESC', [userId]);
+  if (!bids.length) return res.json([]);
+  const auctionIds = [...new Set(bids.map(b => b.auction_id))];
+  const { rows: auctions } = await pool.query(`SELECT * FROM auctions WHERE id IN (${auctionIds.map((_,i)=>`$${i+1}`).join(',')})`, auctionIds);
+  const auctionMap = Object.fromEntries(auctions.map(a => [a.id, a]));
+  const productIds = [...new Set(auctions.map(a => a.product_id).filter(Boolean))];
+  let productMap = {};
+  if (productIds.length) {
+    const { rows: products } = await pool.query(`SELECT * FROM products WHERE id IN (${productIds.map((_,i)=>`$${i+1}`).join(',')})`, productIds);
+    productMap = Object.fromEntries(products.map(p => [p.id, p]));
+  }
+  // Count bids per auction
+  const bidCounts = {};
+  const auctionMapForCount = {};
+  for (const aid of auctionIds) {
+    const { rows } = await pool.query('SELECT COUNT(*)::int as cnt FROM bids WHERE auction_id=$1', [aid]);
+    bidCounts[aid] = rows[0]?.cnt || 0;
+  }
+  const now = new Date();
+  const rows = bids.map(b => {
+    const a = auctionMap[b.auction_id] || {};
+    const p = productMap[a.product_id] || {};
+    return {
+      id: b.id,
+      yourBid: b.amount,
+      currentBid: a.current_bid,
+      bidsCount: bidCounts[a.id] || 0,
+      endsInSec: a.end_time ? Math.max(0, Math.floor((new Date(a.end_time) - now)/1000)) : 0,
+      flagged: b.flagged,
+      flagReason: b.flag_reason,
+      status: a.status,
+      item: p.name,
+      img: p.image_url,
+      auction_id: a.id,
+      created_at: b.created_at,
+    };
+  });
   // Map status for My Bids: winning/outbid/won/lost based on current highest
   const withStatus = rows.map((r) => {
     // Determine if this bid is the current highest for its auction

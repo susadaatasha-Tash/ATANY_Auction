@@ -13,7 +13,15 @@ export function requireRole(allowed) {
       if (!req.user?.id) {
         return res.status(403).json({ message: `Forbidden — requires ${roles.join(' or ')}` });
       }
-      const { rows } = await pool.query('SELECT role FROM public.users WHERE id = $1', [req.user.id]);
+      let rows;
+      try {
+        ({ rows } = await pool.query('SELECT role FROM public.users WHERE id = $1', [req.user.id]));
+      } catch (dbErr) {
+        // Database/query failure — this is NOT an authorization error.
+        // Log the real error server-side; return a safe generic message to the client.
+        console.error('[requireRole] DB query failed (not an auth error):', dbErr.message);
+        return res.status(500).json({ message: 'Database service unavailable' });
+      }
       const userRole = rows[0]?.role;
       if (!userRole || !roles.includes(userRole)) {
         return res.status(403).json({ message: `Forbidden — requires ${roles.join(' or ')}` });
@@ -21,8 +29,9 @@ export function requireRole(allowed) {
       req.user.trustedRole = userRole;
       next();
     } catch (e) {
-      console.error('requireRole DB check failed', e.message);
-      return res.status(403).json({ message: `Forbidden — requires ${roles.join(' or ')}` });
+      // Unexpected error — log and return 500, not 403.
+      console.error('[requireRole] unexpected error:', e.message);
+      return res.status(500).json({ message: 'Internal server error' });
     }
   };
 }

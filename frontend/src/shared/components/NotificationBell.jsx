@@ -2,10 +2,6 @@ import { useNotifications } from '../../roles/customer/hooks/useNotifications';
 import { useNavigate } from 'react-router-dom';
 
 // ATANY refined bell - Option A: Classic outline (recommended)
-// - 20x20 viewBox, stroke 1.6, navy #14301f, gold badge, hover circle
-// Other options available in comments below:
-// Option B: Rounded/friendly - same path with stroke 1.8 + slightly wider shoulders
-// Option C: Minimalist line - stroke 1.4, no fill, extra-thin
 const BellIcon = ({ variant = 'classic' }) => {
   const common = { fill: 'none', stroke: '#14301f', strokeLinecap: 'round', strokeLinejoin: 'round' };
   if (variant === 'rounded') {
@@ -24,7 +20,6 @@ const BellIcon = ({ variant = 'classic' }) => {
       </svg>
     );
   }
-  // classic (default)
   return (
     <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" {...common} strokeWidth="1.6">
       <path d="M6 8a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6Z" />

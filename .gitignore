@@ -7,3 +7,7 @@ frontend/.env
 backend/.env
 *.log
 .DS_Store
+
+supabase/.temp/
+test-results/
+*.bak

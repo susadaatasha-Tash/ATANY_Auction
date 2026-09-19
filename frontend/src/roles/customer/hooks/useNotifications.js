@@ -28,5 +28,9 @@ export function useNotifications(apiPath) {
     try { await apiFetch(`${path}/${id}/read`, { method: 'PUT' }); } catch {}
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
   };
-  return { notifications, unread, refresh, markAllRead, markOneRead, error };
+  const remove = async (id) => {
+    await apiFetch(`${path}/${id}`, { method: 'DELETE' });
+    setNotifications(prev => prev.filter(n => n.id !== id));
+  };
+  return { notifications, unread, refresh, markAllRead, markOneRead, remove, error };
 }

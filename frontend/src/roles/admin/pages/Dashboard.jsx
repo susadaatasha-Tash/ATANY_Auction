@@ -67,6 +67,14 @@ export default function AdminDashboard() {
     ...(sellerApps || []).slice(0, 5).map(s => ({ type: 'app', text: `Seller application: <b>${s.shop_name}</b> — ${s.status}`, time: s.created_at })),
   ].filter(a => a.time).sort((a, b) => new Date(b.time) - new Date(a.time)).slice(0, 8);
 
+  const branchImages = {
+    'Davao City Branch': 'https://images.unsplash.com/photo-1571896349842-33c89424de2d?auto=format&fit=crop&w=400&q=70',
+    'Abreeza Branch': 'https://images.unsplash.com/photo-1555529771-7888783a18da?auto=format&fit=crop&w=400&q=70',
+    'SM Lanang Branch': 'https://images.unsplash.com/photo-1519566335946-e6f65f0f4ff7?auto=format&fit=crop&w=400&q=70',
+    'Gmall Branch': 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=400&q=70',
+  };
+  const getBranchImage = (b) => b.branch_image_url || b.image_url || branchImages[b.name] || 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=400&q=70';
+
   return (
     <>
       <div className="kpi-grid">
@@ -79,20 +87,23 @@ export default function AdminDashboard() {
       <div className="two-col">
         <div className="panel">
           <div className="panel-head"><div><h2>Branches</h2><p>All ATANY branches and status.</p></div></div>
-          <div className="table-wrap">
-            <table>
-              <thead><tr><th>Branch</th><th>Address</th><th>Status</th></tr></thead>
-              <tbody>
-                {(branches || []).slice(0, 6).map(b => (
-                  <tr key={b.id}>
-                    <td className="cell-main">{b.name}</td>
-                    <td>{b.address || '—'}</td>
-                    <td><span className={`badge ${String(b.status || 'Open').toLowerCase()}`}>{b.status || 'Open'}</span></td>
-                  </tr>
-                ))}
-                {!(branches || []).length && <tr><td colSpan={3}><div className="empty-state"><p>No branches found.</p></div></td></tr>}
-              </tbody>
-            </table>
+          <div style={{ padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
+            {(branches || []).slice(0, 4).map(b => (
+              <div key={b.id} style={{ background: '#fff', border: '1px solid #EEE8DC', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(22,43,77,0.06)' }}>
+                <div style={{ height: '140px', overflow: 'hidden', background: '#F7F3EA' }}>
+                  <img src={getBranchImage(b)} alt={b.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                </div>
+                <div style={{ padding: '14px 16px' }}>
+                  <div style={{ fontSize: '14px', fontWeight: 700, color: '#162B4D', marginBottom: '4px' }}>{b.name}</div>
+                  <div style={{ fontSize: '12px', color: '#718096', lineHeight: 1.4, marginBottom: '10px', minHeight: '34px' }}>{b.address || '—'}</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', fontWeight: 600, color: (b.status || 'Open').toLowerCase() === 'open' ? '#5D9B78' : '#C9963E' }}>
+                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: (b.status || 'Open').toLowerCase() === 'open' ? '#5D9B78' : '#C9963E', display: 'inline-block' }}></span>
+                    {b.status || 'Open'}
+                  </div>
+                </div>
+              </div>
+            ))}
+            {!(branches || []).length && <div className="empty-state" style={{ gridColumn: '1/-1' }}><p>No branches found.</p></div>}
           </div>
         </div>
 

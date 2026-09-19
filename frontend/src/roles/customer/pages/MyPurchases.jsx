@@ -23,6 +23,7 @@ const STATUS_META = {
 const FILTERS = [
   { key: 'all', label: 'All Orders' },
   { key: 'pending', label: 'Awaiting Payment' },
+  { key: 'preparing', label: 'Preparing' },
   { key: 'ready_pickup', label: 'Ready for Pickup' },
   { key: 'completed', label: 'Completed' },
 ];
@@ -39,7 +40,7 @@ export default function MyPurchases({ orders: propOrders }) {
 
   useEffect(() => {
     if (propOrders && propOrders.length) {
-      const mapped = propOrders.map(o => ({ ...o, displayId: o.transaction_code || o.id }));
+      const mapped = propOrders.map(o => ({ ...o, displayId: o.transaction_code || o.id, date: o.date || o.created_at }));
       setOrders(mapped);
       setLoading(false);
       return;
@@ -49,7 +50,7 @@ export default function MyPurchases({ orders: propOrders }) {
       const mapped = (Array.isArray(rows) ? rows : []).map(r => ({
         ...r,
         displayId: r.transaction_code || r.id,
-        date: r.date,
+        date: r.date || r.created_at,
       }));
       setOrders(mapped);
       setError(null);
@@ -76,27 +77,26 @@ export default function MyPurchases({ orders: propOrders }) {
 
   return (
     <div className="purchases-page">
-      {/* Filters */}
-      <div className="purchases-filters">
-        {FILTERS.map(f => (
-          <button
-            key={f.key}
-            className={`purchases-filter ${filter === f.key ? 'active' : ''}`}
-            onClick={() => setFilter(f.key)}
-          >
-            {f.label}
-            {f.key !== 'all' && (
-              <span className="purchases-filter-count">{orders.filter(o => f.key === 'all' ? true : o.status === f.key).length}</span>
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* Search */}
-      <div className="purchases-search">
-        <div className="search-box purchases-search-box">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
-          <input type="text" value={q} onChange={e => setQ(e.target.value)} placeholder="Search orders..." aria-label="Search orders" />
+      <div className="purchases-topbar">
+        <div className="purchases-filters">
+          {FILTERS.map(f => (
+            <button
+              key={f.key}
+              className={`purchases-filter ${filter === f.key ? 'active' : ''}`}
+              onClick={() => setFilter(f.key)}
+            >
+              {f.label}
+              {f.key !== 'all' && (
+                <span className="purchases-filter-count">{orders.filter(o => f.key === 'all' ? true : o.status === f.key).length}</span>
+              )}
+            </button>
+          ))}
+        </div>
+        <div className="purchases-search">
+          <div className="search-box purchases-search-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
+            <input type="text" value={q} onChange={e => setQ(e.target.value)} placeholder="Search orders..." aria-label="Search orders" />
+          </div>
         </div>
       </div>
 

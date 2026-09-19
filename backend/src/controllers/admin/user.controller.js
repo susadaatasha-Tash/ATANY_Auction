@@ -12,7 +12,15 @@ function generateTempPassword() {
   return 'A1!' + crypto.randomBytes(13).toString('hex');
 }
 
-export const listUsers = async (_req, res) => res.json((await pool.query('SELECT id, name, email, role, status, created_at, (SELECT COUNT(*) FROM bids WHERE user_id=users.id)::int as bids FROM users ORDER BY created_at DESC')).rows);
+export const listUsers = async (_req, res) => {
+  const { rows: users } = await pool.query('SELECT id, name, email, role, status, created_at FROM users ORDER BY created_at DESC');
+  if (!users.length) return res.json([]);
+  const userIds = users.map(u => u.id);
+  const { rows: bids } = await pool.query(`SELECT user_id FROM bids WHERE user_id IN (${userIds.map((_,i)=>`$${i+1}`).join(',')})`, userIds);
+  const counts = {};
+  bids.forEach(b => { counts[b.user_id] = (counts[b.user_id]||0)+1; });
+  res.json(users.map(u => ({ ...u, bids: counts[u.id] || 0 })));
+};
 export const updateUser = async (req, res) => {
   const { name, email, role, status } = req.body;
   // Input validation

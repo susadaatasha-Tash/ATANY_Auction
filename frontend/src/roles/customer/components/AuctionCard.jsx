@@ -9,7 +9,7 @@ function peso(n) {
   return '₱' + num.toLocaleString();
 }
 
-export function AuctionCard({ auction, isWatched, isNotifying, onOpenDetail, onToggleWatch, onToggleNotify, onPlaceBid }) {
+export function AuctionCard({ auction, isFavorited, isNotifying, onOpenDetail, onToggleFavorite, onToggleNotify, onPlaceBid }) {
   const isLive = auction.status === 'live';
   const isEnded = auction.status === 'ended';
   const [bidAmount, setBidAmount] = useState('');
@@ -28,8 +28,8 @@ export function AuctionCard({ auction, isWatched, isNotifying, onOpenDetail, onT
   return (
     <div className="watch-card" onClick={() => onOpenDetail(auction.id)} style={{ cursor: 'pointer' }}>
       <span className={`live-tag ${isLive ? '' : isEnded ? 'ended' : 'scheduled'}`}><span className="live-dot" />{isLive ? 'LIVE' : isEnded ? 'ENDED' : 'STARTS SOON'}</span>
-      <button type="button" className={`heart-btn ${isWatched ? 'saved' : ''}`} onClick={(e) => { e.stopPropagation(); e.preventDefault(); onToggleWatch(auction.productId || auction.product_id || auction.id); }} aria-label="Save to watchlist">
-        <svg viewBox="0 0 24 24" fill={isWatched ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8"><path d="M20.8 8.8C20.8 13.8 12 19.1 12 19.1S3.2 13.8 3.2 8.8C3.2 5.9 5.2 4 7.9 4c1.7 0 3.2.9 4.1 2.2C12.9 4.9 14.4 4 16.1 4c2.7 0 4.7 1.9 4.7 4.8Z"/></svg>
+      <button type="button" className={`heart-btn ${isFavorited ? 'saved' : ''}`} onClick={(e) => { e.stopPropagation(); e.preventDefault(); onToggleFavorite(auction.productId || auction.product_id || auction.id); }} aria-label="Toggle favorite">
+        <svg viewBox="0 0 24 24" fill={isFavorited ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8"><path d="M20.8 8.8C20.8 13.8 12 19.1 12 19.1S3.2 13.8 3.2 8.8C3.2 5.9 5.2 4 7.9 4c1.7 0 3.2.9 4.1 2.2C12.9 4.9 14.4 4 16.1 4c2.7 0 4.7 1.9 4.7 4.8Z"/></svg>
       </button>
       <img src={auction.img} alt="" />
       <div className="watch-card-body">

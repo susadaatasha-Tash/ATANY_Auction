@@ -1,7 +1,7 @@
 // frontend/src/pages/Login.jsx
 // Premium login page — polished card, demo buttons, role-based redirect
 import { useState, useEffect, useRef } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Eye, EyeOff } from 'lucide-react';
 import { supabase } from '../shared/lib/supabaseClient';
 import { useAuth } from '../shared/hooks/useAuth';
@@ -15,20 +15,40 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   const showToast = useToast();
   const navigate = useNavigate();
-  const { user, role, preferredBranchId } = useAuth();
-  const redirectedRef = useRef(false);
+  const { user, role, preferredBranchId, loading } = useAuth();
+  const navigationRef = useRef(false);
+  const [searchParams] = useSearchParams();
+  const redirect = searchParams.get('redirect') || '/customer';
 
   useEffect(() => {
-    if (!user || !role || redirectedRef.current) return;
-    redirectedRef.current = true;
-    showToast('Welcome back — redirecting…');
-    setTimeout(() => {
-      if (role === 'admin') navigate('/admin', { replace: true });
-      else if (role === 'shop_owner') navigate('/shop', { replace: true });
-      else if (!preferredBranchId) navigate('/select-branch', { replace: true });
-      else navigate('/customer', { replace: true });
-    }, 300);
-  }, [user, role, preferredBranchId, navigate, showToast]);
+    if (!user) navigationRef.current = false;
+  }, [user]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!user || !role) return;
+    showToast('Welcome back');
+  }, [user, role, loading, showToast]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (user && !role) {
+      console.error('[Login] Authenticated but role metadata missing for user', user.id);
+    }
+    if (!user || navigationRef.current || !role) return;
+    navigationRef.current = true;
+    if (redirect !== '/customer') {
+      navigate(redirect, { replace: true });
+    } else if (role === 'admin') {
+      navigate('/admin', { replace: true });
+    } else if (role === 'shop_owner') {
+      navigate('/shop', { replace: true });
+    } else if (!preferredBranchId) {
+      navigate('/select-branch', { replace: true });
+    } else {
+      navigate('/customer', { replace: true });
+    }
+  }, [user, role, preferredBranchId, redirect, navigate, loading]);
 
   const handle = async (e) => {
     e.preventDefault();

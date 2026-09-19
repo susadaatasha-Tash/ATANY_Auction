@@ -7,13 +7,9 @@ import { useToast } from '../shared/components/Toast';
 import { AssistantWidget } from '../shared/components/AssistantWidget';
 import { PublicHeader } from '../shared/components/PublicHeader';
 import { supabase } from '../shared/lib/supabaseClient';
-
-const mockAuctions = [
-  { id: 'A501', title: '18K Gold Diamond Ring', price: '₱45,000', starting: '₱25,000', img: 'https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=700&q=80', seconds: 9362 },
-  { id: 'A502', title: 'Gold Heart Necklace', price: '₱68,500', starting: '₱40,000', img: 'https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&w=700&q=80', seconds: 18765 },
-  { id: 'A503', title: '18K Gold Bracelet', price: '₱32,000', starting: '₱20,000', img: 'https://images.unsplash.com/photo-1611652022419-a9419f74343d?auto=format&fit=crop&w=700&q=80', seconds: 6330 },
-  { id: 'A504', title: 'Diamond Stud Earrings', price: '₱18,750', starting: '₱12,000', img: 'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?auto=format&fit=crop&w=700&q=80', seconds: 1630 },
-];
+import { apiFetch } from '../shared/lib/apiClient';
+import { useAuth } from '../shared/hooks/useAuth';
+import landingPageBackground from '../assests/landing-page-background.png';
 
 function Countdown({ initial }) {
   const sec = useAuctionCountdown(initial);
@@ -31,6 +27,11 @@ export default function LandingPage() {
   const [cMessage, setCMessage] = useState('');
   const [cBusy, setCBusy] = useState(false);
   const [cSent, setCSent] = useState(false);
+  const { user } = useAuth();
+  const [liveAuctions, setLiveAuctions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [guestBidAuctionId, setGuestBidAuctionId] = useState(null);
 
   const handleContactSubmit = async (e) => {
     e.preventDefault();
@@ -68,12 +69,29 @@ export default function LandingPage() {
     return () => window.removeEventListener('scroll', onScroll);
   }, [hash]);
 
+  useEffect(() => {
+    async function fetchLiveAuctions() {
+      setLoading(true);
+      setError(null);
+      try {
+        const rows = await apiFetch('/api/auctions/live');
+        setLiveAuctions(rows);
+      } catch (e) {
+        setError('Unable to load live auctions.');
+        setLiveAuctions([]);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchLiveAuctions();
+  }, []);
+
   return (
     <>
       <PublicHeader landing />
 
       <main>
-        <section className="hero" id="home">
+        <section className="hero" id="home" style={{ backgroundImage: `url(${landingPageBackground})` }}>
           <div className="container hero-content">
             <div className="hero-copy">
               <div className="eyebrow">EXQUISITE · ELEGANT · EXTRAORDINARY</div>
@@ -108,20 +126,42 @@ export default function LandingPage() {
               <Link to="/customer/live" className="text-link">View all auctions →</Link>
             </div>
             <div className="auction-grid">
-              {mockAuctions.map((a) => (
-                <article key={a.id} className="auction-card">
-                  <div className="card-image">
-                    <img src={a.img} alt={a.title} />
-                    <Countdown initial={a.seconds} />
-                  </div>
-                  <div className="card-body">
-                    <h3 className="card-title">{a.title}</h3>
-                    <div className="price">Current Bid {a.price}</div>
-                    <div className="starting">Starting {a.starting}</div>
-                    <button className="bid-btn" onClick={() => setBidItem(a)}>Place Bid</button>
-                  </div>
-                </article>
-              ))}
+              {loading ? (
+                <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '40px 0' }}>Loading auctions...</div>
+              ) : error ? (
+                <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}>Unable to load live auctions.</div>
+              ) : liveAuctions.length === 0 ? (
+                <div style={{ gridColumn: '1/-1', textAlign: 'center', padding: '40px 0', color: 'var(--muted)' }}>No live auctions at the moment.</div>
+              ) : liveAuctions.map((a) => {
+                const isLive = a.status === 'live';
+                return (
+                  <article key={a.id} className="auction-card">
+                    <div className="card-image">
+                      <img src={a.img} alt={a.name} />
+                      {isLive && (
+                        <span className="live-tag"><span className="live-dot" />LIVE</span>
+                      )}
+                    </div>
+                    <div className="card-body">
+                      <h3 className="card-title">{a.name}</h3>
+                      <div className="live-meta">
+                        <span>{a.shop_name || 'Shop'}</span>
+                        <span>{a.branch_name || ''}</span>
+                      </div>
+                      <div className="price">Current bid: {a.currentBid ? `₱${a.currentBid.toLocaleString()}` : 'Starting'}</div>
+                      {a.karat_weight && <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>✦ {a.karat_weight}</div>}
+                      <div className="starting">Ends in {a.endsInSec !== undefined ? <Countdown initial={a.endsInSec} /> : 'Unknown'}</div>
+                      <div className="bid-box" onClick={(e) => e.stopPropagation()}>
+                        {user ? (
+                          <button className="btn btn-primary" onClick={() => setBidItem(a)}>Place Bid</button>
+                        ) : (
+                          <button className="btn btn-outline" onClick={() => setGuestBidAuctionId(a.id)}>Place Bid</button>
+                        )}
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
             </div>
           </div>
         </section>
@@ -344,13 +384,30 @@ export default function LandingPage() {
           <div className="modal-box">
             <div className="modal-box-head"><h3>Place Your Bid</h3><button className="modal-close" onClick={() => setBidItem(null)}>×</button></div>
             <div className="modal-box-body">
-              <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 12 }}>{bidItem.title} · Current bid: {bidItem.price}</p>
+              <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 12 }}>{bidItem.title || bidItem.name} · Current bid: {bidItem.price || (bidItem.currentBid ? `₱${Number(bidItem.currentBid).toLocaleString()}` : '—')}</p>
               <div className="form-row"><label>Your Bid Amount</label><input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Enter amount" /></div>
               <p style={{ fontSize: 10, color: 'var(--muted)' }}>Min increment ₱1,000 enforced server-side. Public landing bids require login — you'll be redirected.</p>
             </div>
             <div className="modal-box-foot">
               <button className="btn btn-outline" onClick={() => setBidItem(null)}>Cancel</button>
               <Link className="btn btn-primary" to="/login" onClick={() => { showToast('Please sign in to place a bid.'); setBidItem(null); }}>Sign In to Bid</Link>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {guestBidAuctionId && (
+        <div className="modal-overlay show" onClick={(e) => (e.target === e.currentTarget ? setGuestBidAuctionId(null) : null)}>
+          <div className="modal-box">
+            <div className="modal-box-head">
+              <h3>Want to join the bid?</h3>
+            </div>
+            <div className="modal-box-body">
+              <p>Create an account or log in to view auctions and place your bid.</p>
+            </div>
+            <div className="modal-box-foot">
+              <button className="btn btn-outline" onClick={() => setGuestBidAuctionId(null)}>Continue Browsing</button>
+              <Link className="btn btn-primary" to={`/login?redirect=/auction/${guestBidAuctionId}`}>Login / Create Account</Link>
             </div>
           </div>
         </div>

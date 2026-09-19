@@ -7,6 +7,7 @@ import { apiFetch } from '../../../shared/lib/apiClient';
 import { useToast } from '../../../shared/components/Toast';
 import { useRealtimeProducts } from '../../../shared/hooks/useRealtimeProducts';
 import { supabase } from '../../../shared/lib/supabaseClient';
+import { ConfirmModal } from '../../../shared/components/Modal';
 
 function getDisplayStatus(listing) {
   // Use backend-computed status when available (derived from auction start/end times)
@@ -35,27 +36,48 @@ export default function MyListings({ listings: propListings, onSubmit, onResubmi
   const [highlightId, setHighlightId] = useState(null);
   const highlightTimeout = useRef(null);
   const [shopId, setShopId] = useState(null);
+  const [deleting, setDeleting] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
   const showToast = useToast();
 
   const refresh = async () => {
-    try { const rows = await apiFetch('/shop-owner/listings'); setListings(rows); } catch { setListings(propListings || []); }
+    try {
+      const rows = await apiFetch('/shop-owner/listings');
+      console.log('[MyListings] GET /shop-owner/listings returned', Array.isArray(rows) ? rows.length : 0, 'rows:', rows?.slice?.(0,1));
+      setListings(rows);
+    } catch (e) {
+      console.error('[MyListings] fetch failed', e);
+      setListings(propListings || []);
+    }
   };
   useEffect(() => { if (propListings && propListings.length) setListings(propListings); else refresh(); }, [propListings]);
+  // Re-fetch once shopId is resolved (covers case where initial fetch happened before shop row was ensured)
+  useEffect(() => {
+    if (shopId && listings.length === 0) {
+      console.log('[MyListings] shopId resolved, re-fetching listings for', shopId);
+      refresh();
+    }
+  }, [shopId]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
+        // Try shop-owner shop endpoint first
         const shop = await apiFetch('/shop-owner/shop').catch(() => null);
-        if (!cancelled && shop?.id) setShopId(shop.id);
-        else {
+        if (!cancelled && shop?.id) {
+          setShopId(shop.id);
+        } else {
+          // Fallback: fetch from Supabase auth
           const { data: { user } } = await supabase.auth.getUser();
           if (user) {
             const { data } = await supabase.from('shops').select('id').eq('user_id', user.id).single();
             if (data?.id && !cancelled) setShopId(data.id);
           }
         }
-      } catch {}
+      } catch (e) {
+        console.error('Failed to set shop ID', e);
+      }
     })();
     return () => { cancelled = true; };
   }, []);
@@ -106,7 +128,28 @@ export default function MyListings({ listings: propListings, onSubmit, onResubmi
     setOpen(true);
   };
   const handleClose = () => { setOpen(false); setEditing(null); };
-  const filtered = (listings || []).filter((l) => (l.name || '').toLowerCase().includes(q.toLowerCase()) && (!filter || getDisplayStatus(l) === filter));
+
+  const handleDeleteClick = (item) => { setDeleting(item); };
+  const handleDeleteConfirm = async () => {
+    if (!deleting?.auction_id) return;
+    setDeletingId(deleting.auction_id);
+    try {
+      await apiFetch(`/shop-owner/auctions/${deleting.auction_id}`, { method: 'DELETE' });
+      showToast('Auction deleted.');
+      await refresh();
+    } catch (e) { showToast(e.message || 'Failed to delete auction.'); }
+    finally { setDeleting(null); setDeletingId(null); }
+  };
+
+  const filtered = (listings || []).filter((l) => {
+    const statusOk = !filter || getDisplayStatus(l) === filter;
+    const nameOk = (l.name || '').toLowerCase().includes(q.toLowerCase());
+    return nameOk && statusOk;
+  });
+  // Debug: log listings vs filtered to identify filtering issue
+  if (typeof window !== 'undefined' && listings.length && !filtered.length && filter) {
+    console.warn('[MyListings] listings exist but filtered is empty — filter=', filter, 'listings statuses:', listings.map(l => ({ name: l.name, status: l.status, computed: l.computed_status, display: getDisplayStatus(l) })));
+  }
 
   return (
     <div className="panel">
@@ -121,11 +164,18 @@ export default function MyListings({ listings: propListings, onSubmit, onResubmi
           <thead><tr><th>Item</th><th>Category</th><th>Karat / Weight</th><th>Suggested Price</th><th>Status</th><th /></tr></thead>
           <tbody>{filtered.length ? filtered.map((l) => {
             const ds = getDisplayStatus(l);
-            return <tr key={l.id} style={highlightId === l.id ? { background: 'rgba(199,166,106,.12)', transition: 'background .3s ease' } : undefined}><td className="cell-main"><div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>{l.image_url && <img src={l.image_url} alt="" style={{ width: 38, height: 38, borderRadius: 8, objectFit: 'cover' }} onError={(e) => e.target.style.display='none'} /> }<span>{l.name}</span></div></td><td>{l.category}</td><td>{l.karat_weight || l.karat}</td><td>₱{Number(l.price).toLocaleString()}</td><td><span className={`badge ${ds}`}>{ds === 'live' ? 'Live' : ds === 'scheduled' ? 'Scheduled' : 'Ended'}</span></td><td>{l.status === 'rejected' && <button className="btn-ghost" onClick={() => handleEditClick(l)}>Edit & Resubmit</button>}</td></tr>;
+            return <tr key={l.id} style={highlightId === l.id ? { background: 'rgba(199,166,106,.12)', transition: 'background .3s ease' } : undefined}><td className="cell-main"><div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>{l.image_url && <img src={l.image_url} alt="" style={{ width: 38, height: 38, borderRadius: 8, objectFit: 'cover' }} onError={(e) => e.target.style.display='none'} /> }<span>{l.name}</span></div></td><td>{l.category}</td><td>{l.karat_weight || l.karat}</td><td>₱{Number(l.price).toLocaleString()}</td><td><span className={`badge ${ds}`}>{ds === 'live' ? 'Live' : ds === 'scheduled' ? 'Scheduled' : 'Ended'}</span></td><td><div className="row-actions">{l.status === 'rejected' && <button className="btn-ghost" onClick={() => handleEditClick(l)}>Edit & Resubmit</button>}{l.auction_id && <button className="btn-danger-ghost" disabled={deletingId === l.auction_id} onClick={() => handleDeleteClick(l)}>{deletingId === l.auction_id ? 'Deleting…' : 'Delete'}</button>}</div></td></tr>;
           }) : <tr><td colSpan={6}><div className="empty-state"><p>No listings yet.</p></div></td></tr>}</tbody>
         </table>
       </div>
       <SubmitListingModal open={open} onClose={handleClose} onSubmit={handleSubmit} initial={editing} mode={editing ? 'edit' : 'create'} />
+      <ConfirmModal
+        open={!!deleting}
+        onClose={() => setDeleting(null)}
+        title="Delete Auction?"
+        body={<>Are you sure you want to delete <strong>{deleting?.name}</strong>?<br />This will remove the auction from your listings.</>}
+        onConfirm={handleDeleteConfirm}
+      />
     </div>
   );
 }

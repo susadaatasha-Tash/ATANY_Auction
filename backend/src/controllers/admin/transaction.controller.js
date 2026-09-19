@@ -1,7 +1,64 @@
 import { pool } from '../../db/pool.js';
 export const listTransactions = async (_req, res) => {
   try {
-    res.json((await pool.query("SELECT o.id, o.transaction_code, u.name as customer, p.name as item, o.amount, b.name as branch, o.status, o.created_at as date FROM orders o LEFT JOIN users u ON u.id=o.buyer_id LEFT JOIN products p ON p.id=(SELECT product_id FROM auctions WHERE id=o.auction_id) LEFT JOIN branches b ON b.id=o.branch_id ORDER BY o.created_at DESC")).rows);
+    const { rows: orders } = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
+    if (!orders.length) return res.json([]);
+    const buyerIds = [...new Set(orders.map(o => o.buyer_id).filter(Boolean))];
+    const branchIds = [...new Set(orders.map(o => o.branch_id).filter(Boolean))];
+    const auctionIds = [...new Set(orders.map(o => o.auction_id).filter(Boolean))];
+    let userMap = {};
+    if (buyerIds.length) {
+      const { rows: users } = await pool.query(`SELECT id, name FROM users WHERE id IN (${buyerIds.map((_,i)=>`$${i+1}`).join(',')})`, buyerIds);
+      userMap = Object.fromEntries(users.map(u => [u.id, u.name]));
+    }
+    let branchMap = {};
+    if (branchIds.length) {
+      const { rows: branches } = await pool.query(`SELECT * FROM branches WHERE id IN (${branchIds.map((_,i)=>`$${i+1}`).join(',')})`, branchIds);
+      branchMap = Object.fromEntries(branches.map(b => [b.id, b.name]));
+    }
+    let productMap = {};
+    if (auctionIds.length) {
+      const { rows: auctions } = await pool.query(`SELECT id, product_id FROM auctions WHERE id IN (${auctionIds.map((_,i)=>`$${i+1}`).join(',')})`, auctionIds);
+      const auctionMap = Object.fromEntries(auctions.map(a => [a.id, a.product_id]));
+      const productIds = [...new Set(Object.values(auctionMap).filter(Boolean))];
+      if (productIds.length) {
+        const { rows: products } = await pool.query(`SELECT id, name FROM products WHERE id IN (${productIds.map((_,i)=>`$${i+1}`).join(',')})`, productIds);
+        productMap = Object.fromEntries(products.map(p => [p.id, p.name]));
+        // Map auction -> product name
+        for (const aid of auctionIds) {
+          const pid = auctionMap[aid];
+          if (pid && productMap[pid]) productMap[aid] = productMap[pid];
+        }
+      }
+      // Rebuild with correct mapping
+      const result = orders.map(o => {
+        const auction = auctions.find(a => a.id === o.auction_id);
+        const productName = auction ? productMap[auction.product_id] : null;
+        return {
+          id: o.id,
+          transaction_code: o.transaction_code,
+          customer: userMap[o.buyer_id] || null,
+          item: productName || null,
+          amount: o.amount,
+          branch: branchMap[o.branch_id] || null,
+          status: o.status,
+          date: o.created_at,
+        };
+      });
+      return res.json(result);
+    }
+    // Fallback if no auctions
+    const result = orders.map(o => ({
+      id: o.id,
+      transaction_code: o.transaction_code,
+      customer: userMap[o.buyer_id] || null,
+      item: null,
+      amount: o.amount,
+      branch: branchMap[o.branch_id] || null,
+      status: o.status,
+      date: o.created_at,
+    }));
+    res.json(result);
   } catch (e) {
     console.error('[admin/transactions:list]', e.message);
     res.status(500).json({ message: 'Failed to load transactions' });

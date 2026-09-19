@@ -7,7 +7,7 @@ import { AuctionCard } from '../components/AuctionCard';
 import { DetailModal } from '../components/DetailModal';
 import { apiFetch } from '../../../shared/lib/apiClient';
 import { useBranch } from '../../../shared/hooks/useBranch';
-import { useWishlist } from '../hooks/useWishlist';
+import { useFavorites } from '../hooks/useFavorites';
 import { useReminders } from '../hooks/useReminders';
 import { useToast } from '../../../shared/components/Toast';
 
@@ -20,17 +20,17 @@ export default function LiveAuctions({ auctions: propAuctions }) {
   const [auctions, setAuctions] = useState([]);
   const [detailId, setDetailId] = useState(null);
 
-  const { items: watchlist, toggle: toggleWatch } = useWishlist();
+  const { items: favorites, toggle: toggleFavorite } = useFavorites();
   const { items: reminders, toggle: toggleNotify } = useReminders();
   const showToast = useToast();
-  const onToggleWatch = async (productId) => {
-    const wasWatched = watchlist.some((w) => w.product_id === productId);
+  const onToggleFavorite = async (productId) => {
+    const wasFavorited = favorites.some((w) => w.product_id === productId);
     try {
-      await toggleWatch(productId);
-      showToast(wasWatched ? 'Removed from watchlist' : 'Added to watchlist');
+      await toggleFavorite(productId);
+      showToast(wasFavorited ? 'Removed from favorites' : 'Added to favorites');
     } catch (e) {
-      console.error('Watchlist toggle failed', e);
-      showToast('Failed to update watchlist');
+      console.error('Favorites toggle failed', e);
+      showToast('Failed to update favorites');
     }
   };
   const onToggleNotify = async (auctionId) => {
@@ -49,7 +49,7 @@ export default function LiveAuctions({ auctions: propAuctions }) {
 
   const filtered = useMemo(() => (auctions || []).filter((a) => {
     const name = (a.name || a.product || '').toLowerCase();
-    return name.includes(q.toLowerCase()) && (!statusFilter || a.status === statusFilter) && (!branchFilter || a.branch_id === branchFilter) && (!categoryFilter || a.category === categoryFilter);
+    return name.includes(q.toLowerCase()) && (!statusFilter || a.status === statusFilter) && (!branchFilter || String(a.branch_id) === String(branchFilter)) && (!categoryFilter || a.category === categoryFilter);
   }), [auctions, q, statusFilter, branchFilter, categoryFilter]);
   const [detailAuction, setDetailAuction] = useState(null);
   useEffect(() => {
@@ -112,12 +112,12 @@ export default function LiveAuctions({ auctions: propAuctions }) {
       </div>
       <div className="watch-grid">
         {filtered.length ? filtered.map((a) => {
-          const isWatched = watchlist.some((w) => w.product_id === (a.productId || a.product_id));
+          const isFavorited = favorites.some((w) => w.product_id === (a.productId || a.product_id));
           const isNotifying = reminders.some((r) => r.auction_id === a.id);
-          return <AuctionCard key={a.id} auction={a} isWatched={isWatched} isNotifying={isNotifying} onOpenDetail={setDetailId} onToggleWatch={onToggleWatch} onToggleNotify={onToggleNotify} onPlaceBid={handlePlaceBid} />;
+          return <AuctionCard key={a.id} auction={a} isFavorited={isFavorited} isNotifying={isNotifying} onOpenDetail={setDetailId} onToggleFavorite={onToggleFavorite} onToggleNotify={onToggleNotify} onPlaceBid={handlePlaceBid} />;
         }) : <div className="empty-state" style={{ gridColumn: '1/-1' }}><p>No auctions match your search.</p></div>}
       </div>
-      {detailAuction && <DetailModal auction={detailAuction} isWatched={watchlist.some((w) => w.product_id === (detailAuction.productId || detailAuction.product_id))} isNotifying={reminders.some((r) => r.auction_id === detailAuction.id)} onClose={() => setDetailId(null)} onToggleWatch={onToggleWatch} onToggleNotify={onToggleNotify} onPlaceBid={handlePlaceBid} />}
+      {detailAuction && <DetailModal auction={detailAuction} isFavorited={favorites.some((w) => w.product_id === (detailAuction.productId || detailAuction.product_id))} isNotifying={reminders.some((r) => r.auction_id === detailAuction.id)} onClose={() => setDetailId(null)} onToggleFavorite={onToggleFavorite} onToggleNotify={onToggleNotify} onPlaceBid={handlePlaceBid} />}
     </div>
   );
 }

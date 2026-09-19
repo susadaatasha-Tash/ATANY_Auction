@@ -4,7 +4,15 @@ import { listAuctions as listAuctionsService } from '../../services/auctionServi
 const VALID_CATEGORIES = ['Rings', 'Necklaces', 'Bracelets', 'Earrings', 'Pendants', 'Chains', 'Watches', 'Other'];
 
 export const listAuctions = async (req, res) => {
-  const shop = (await pool.query('SELECT id FROM shops WHERE user_id=$1', [req.user.id])).rows[0];
+  let shop = (await pool.query('SELECT id FROM shops WHERE user_id=$1', [req.user.id])).rows[0];
+  if (!shop) {
+    try {
+      const { rows: u } = await pool.query('SELECT name,email FROM users WHERE id=$1', [req.user.id]);
+      const name = u[0]?.name || u[0]?.email || 'My Shop';
+      await pool.query('INSERT INTO shops (user_id, shop_name) VALUES ($1,$2) ON CONFLICT DO NOTHING', [req.user.id, name]);
+      shop = (await pool.query('SELECT id FROM shops WHERE user_id=$1', [req.user.id])).rows[0];
+    } catch {}
+  }
   const rows = await listAuctionsService({ shopId: shop?.id });
   res.json(rows);
 };
@@ -66,6 +74,20 @@ export const createAuction = async (req, res) => {
             'INSERT INTO notifications (user_id, type, message) VALUES ($1, $2, $3)',
             [cust.id, 'auction', notifMsg]
           );
+        }
+        // Other-branch live auction notification: notify customers with different preferred branch (popup)
+        if (status === 'live') {
+          const otherNotifMsg = `New Live Auction at ${branchName}\n\nA new auction is now live at ${branchName}.\n${name || 'Jewelry'} — Starting price: ₱${startBid.toLocaleString()}\n\nView Auction`;
+          const otherCustomers = await pool.query(
+            'SELECT id FROM users WHERE preferred_branch_id IS NOT NULL AND preferred_branch_id != $1 AND role = $2',
+            [branchId, 'customer']
+          );
+          for (const cust of otherCustomers.rows) {
+            await pool.query(
+              'INSERT INTO notifications (user_id, type, message) VALUES ($1, $2, $3)',
+              [cust.id, 'auction', otherNotifMsg]
+            );
+          }
         }
       }
     } catch (notifErr) {
@@ -132,26 +154,39 @@ export const updateAuction = async (req, res) => {
   if (!fields.length) return res.status(400).json({ message: 'No fields to update' });
   params.push(req.params.id);
   const { rows } = await pool.query(`UPDATE auctions SET ${fields.join(', ')} WHERE id=$${idx} RETURNING *`, params);
+  // Audit log (best-effort — never blocks the response)
+  try {
+    if (rows[0]) {
+      await pool.query(
+        'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details) VALUES ($1, $2, $3, $4, $5)',
+        [req.user.id, 'auction_updated', 'auction', rows[0].id, JSON.stringify({ start_price: rows[0].start_price })]
+      );
+    }
+  } catch (logErr) {
+    console.warn('[audit log] failed:', logErr.message);
+  }
   res.json(rows[0]);
 };
 
-// Cancel own scheduled/no-bid auction — removes the auction and the item created with it.
+// Delete own scheduled/no-bid auction — removes only the auction record; the product remains.
 export const deleteAuction = async (req, res) => {
   const { auction, error } = await loadOwnEditableAuction(req);
   if (error) return res.status(error.code).json({ message: error.message });
 
-  const client = await pool.connect();
   try {
-    await client.query('BEGIN');
-    await client.query('DELETE FROM auctions WHERE id=$1', [req.params.id]);
-    await client.query('DELETE FROM products WHERE id=$1', [auction.product_id]);
-    await client.query('COMMIT');
+    await pool.query('DELETE FROM auctions WHERE id=$1', [req.params.id]);
+    // Audit log (best-effort — never blocks the response)
+    try {
+      await pool.query(
+        'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details) VALUES ($1, $2, $3, $4, $5)',
+        [req.user.id, 'auction_deleted', 'auction', req.params.id, JSON.stringify({ product_id: auction.product_id })]
+      );
+    } catch (logErr) {
+      console.warn('[audit log] failed:', logErr.message);
+    }
     res.status(204).end();
   } catch (e) {
-    await client.query('ROLLBACK');
     console.error('[shop-owner/deleteAuction]', e.message);
-    res.status(500).json({ message: 'Failed to cancel auction' });
-  } finally {
-    client.release();
+    res.status(500).json({ message: 'Failed to delete auction' });
   }
 };

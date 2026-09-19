@@ -30,25 +30,32 @@ export const listLiveAuctions = async (req, res) => {
   return listAuctions(req, res);
 };
 export const getAuction = async (req, res) => {
-  const { rows } = await pool.query(`
-    SELECT a.id, a.auction_code, a.product_id as "productId", a.start_price as "startPrice", a.current_bid as "currentBid",
-           (SELECT COUNT(*) FROM bids WHERE auction_id = a.id)::int as bids,
-           a.status, a.start_time as "startTime", a.end_time as "endTime",
-           p.name, p.image_url as img, p.category, p.description as desc,
-           b.id as branch_id, b.name as branch_name, b.address as branch_address,
-           EXTRACT(EPOCH FROM (a.end_time - NOW()))::int as "endsInSec"
-    FROM auctions a
-    JOIN products p ON p.id=a.product_id
-    JOIN shops s ON s.id=p.shop_id
-    JOIN branches b ON b.id=s.home_branch_id
-    WHERE a.id=$1`, [req.params.id]);
-  if (!rows.length) return res.status(404).json({ message: 'Not found' });
-  const auction = rows[0];
-  const customerBranch = await resolveCustomerBranch(req, auction.branch_id);
-  if (!customerBranch || auction.branch_id !== customerBranch) {
+  const { rows: auctionRows } = await pool.query('SELECT * FROM auctions WHERE id=$1', [req.params.id]);
+  if (!auctionRows.length) return res.status(404).json({ message: 'Not found' });
+  const a = auctionRows[0];
+  const { rows: productRows } = await pool.query('SELECT * FROM products WHERE id=$1', [a.product_id]);
+  const p = productRows[0];
+  if (!p) return res.status(404).json({ message: 'Not found' });
+  const { rows: shopRows } = await pool.query('SELECT * FROM shops WHERE id=$1', [p.shop_id]);
+  const s = shopRows[0];
+  if (!s || !s.home_branch_id) return res.status(404).json({ message: 'Not found' });
+  const { rows: branchRows } = await pool.query('SELECT * FROM branches WHERE id=$1', [s.home_branch_id]);
+  const b = branchRows[0];
+  if (!b) return res.status(404).json({ message: 'Not found' });
+  const customerBranch = await resolveCustomerBranch(req, b.id);
+  if (!customerBranch || b.id !== customerBranch) {
     return res.status(404).json({ message: 'Not found' });
   }
-  const bidders = (await pool.query('SELECT u.name, b.amount, b.created_at FROM bids b JOIN users u ON u.id=b.user_id WHERE b.auction_id=$1 ORDER BY b.amount DESC LIMIT 10', [req.params.id])).rows;
-  const computedStatus = effectiveStatus(rows[0].startTime, rows[0].endTime);
-  res.json({ ...rows[0], status: computedStatus, bidders });
+  const { rows: bidCountRows } = await pool.query('SELECT COUNT(*)::int as cnt FROM bids WHERE auction_id=$1', [a.id]);
+  const bids = bidCountRows[0]?.cnt || 0;
+  const { rows: bidderRows } = await pool.query('SELECT b.amount, b.created_at, u.name FROM bids b LEFT JOIN users u ON u.id=b.user_id WHERE b.auction_id=$1 ORDER BY b.amount DESC LIMIT 10', [a.id]);
+  const computedStatus = effectiveStatus(a.start_time, a.end_time);
+  const endsInSec = Math.max(0, Math.floor((new Date(a.end_time) - new Date()) / 1000));
+  res.json({
+    id: a.id, auction_code: a.auction_code, productId: a.product_id, startPrice: a.start_price, currentBid: a.current_bid,
+    bids, status: computedStatus, startTime: a.start_time, endTime: a.end_time,
+    name: p.name, img: p.image_url, category: p.category, desc: p.description,
+    branch_id: b.id, branch_name: b.name, branch_address: b.address,
+    endsInSec, bidders: bidderRows,
+  });
 };

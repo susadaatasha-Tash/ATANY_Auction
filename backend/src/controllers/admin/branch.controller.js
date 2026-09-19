@@ -11,7 +11,7 @@ export const createBranch = async (req, res) => {
   if (address && typeof address === 'string' && address.length > 500) return res.status(400).json({ message: 'Address must be at most 500 characters' });
   if (lat !== undefined && lat !== null && lat !== '' && (Number(lat) < -90 || Number(lat) > 90)) return res.status(400).json({ message: 'Latitude must be between -90 and 90' });
   if (lng !== undefined && lng !== null && lng !== '' && (Number(lng) < -180 || Number(lng) > 180)) return res.status(400).json({ message: 'Longitude must be between -180 and 180' });
-  const allowedStatus = ['Open', 'Closed', 'Maintenance'];
+  const allowedStatus = ['Open', 'Temporarily Closed'];
   const branchStatus = status || 'Open';
   if (!allowedStatus.includes(branchStatus)) return res.status(400).json({ message: `Status must be one of: ${allowedStatus.join(', ')}` });
   try {
@@ -30,7 +30,7 @@ export const updateBranch = async (req, res) => {
   if (address !== undefined && address && typeof address === 'string' && address.length > 500) return res.status(400).json({ message: 'Address must be at most 500 characters' });
   if (lat !== undefined && lat !== null && lat !== '' && (Number(lat) < -90 || Number(lat) > 90)) return res.status(400).json({ message: 'Latitude must be between -90 and 90' });
   if (lng !== undefined && lng !== null && lng !== '' && (Number(lng) < -180 || Number(lng) > 180)) return res.status(400).json({ message: 'Longitude must be between -180 and 180' });
-  const allowedStatus = ['Open', 'Closed', 'Maintenance'];
+  const allowedStatus = ['Open', 'Temporarily Closed'];
   if (status && !allowedStatus.includes(status)) return res.status(400).json({ message: `Status must be one of: ${allowedStatus.join(', ')}` });
   try {
     const { rows } = await pool.query('UPDATE branches SET name=$1, address=$2, lat=$3, lng=$4, hours=$5, phone=$6, status=$7 WHERE id=$8 RETURNING *', [name?.trim() || null, address || null, lat || null, lng || null, hours || null, phone || null, status || null, req.params.id]);

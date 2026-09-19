@@ -83,7 +83,7 @@ export const logout = async (_req, res) => { await supabase.auth.signOut(); res.
 // automatically create the public.users row to prevent login loops.
 export const getMe = async (req, res) => {
   try {
-    let { rows } = await pool.query('SELECT id, name, email, role, status FROM public.users WHERE id = $1', [req.user.id]);
+    let { rows } = await pool.query('SELECT id, name, email, role, status, preferred_branch_id FROM public.users WHERE id = $1', [req.user.id]);
     if (!rows[0]) {
       // User exists in auth.users (requireAuth verified the token) but not in public.users.
       // Auto-sync: create the public.users row from auth user metadata.
@@ -105,7 +105,7 @@ export const getMe = async (req, res) => {
             await pool.query('INSERT INTO shops (user_id, shop_name) VALUES ($1,$2) ON CONFLICT DO NOTHING', [authUser.id, name]);
           }
         }
-        ({ rows } = await pool.query('SELECT id, name, email, role, status FROM public.users WHERE id = $1', [authUser.id]));
+        ({ rows } = await pool.query('SELECT id, name, email, role, status, preferred_branch_id FROM public.users WHERE id = $1', [authUser.id]));
       } catch (syncErr) {
         console.error('getMe auto-sync failed:', syncErr.message);
       }

@@ -3,8 +3,9 @@ import { Router } from 'express';
 import { listListings, createListing, resubmitListing, updateListing } from '../controllers/shop-owner/listing.controller.js';
 import { listAuctions, createAuction, updateAuction, deleteAuction } from '../controllers/shop-owner/auction.controller.js';
 import { listSales, updateOrderStatus } from '../controllers/shop-owner/sales.controller.js';
-import { getShop, updateShop } from '../controllers/shop-owner/shop.controller.js';
+import { getShop, updateShop, branchImageUploadUrl, updateBranchImage } from '../controllers/shop-owner/shop.controller.js';
 import { listNotifications as listShopNotifications, markAllRead as markShopRead, markOneRead as markShopOneRead } from '../controllers/shop-owner/notification.controller.js';
+import { listActivity } from '../controllers/shop-owner/activity.controller.js';
 import { createUploadUrl } from '../services/storageService.js';
 
 const router = Router();
@@ -34,6 +35,9 @@ router.get('/sales', listSales);
 router.patch('/orders/:id/status', updateOrderStatus);
 router.get('/shop', getShop);
 router.put('/shop', updateShop);
+router.post('/shop/branch-image/upload-url', branchImageUploadUrl);
+router.put('/shop/branch-image', updateBranchImage);
+router.get('/activity', listActivity); // own audit_logs only, newest first
 router.get('/notifications', listShopNotifications);
 router.put('/notifications/read', markShopRead);
 router.put('/notifications/:id/read', markShopOneRead);

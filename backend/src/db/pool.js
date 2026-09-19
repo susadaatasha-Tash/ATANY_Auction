@@ -237,15 +237,26 @@ async function restQuery(sql, params) {
     return { rows: [data] };
   }
 
-  // DELETE FROM table WHERE col = $N
+  // DELETE FROM table WHERE col = $N [AND col2 = $M]
   if (upper.startsWith('DELETE')) {
-    const whereM = sql.match(/WHERE\s+([a-z_]+)\s*=\s*\$(\d+)/i);
-    if (!whereM) throw new Error('REST fallback: cannot parse DELETE WHERE');
-    const idCol = whereM[1];
-    const whereVal = params[Number(whereM[2]) - 1];
-    const { error } = await supabase.from(table).delete().eq(idCol, whereVal);
+    const whereClause = sql.match(/WHERE\s+([\s\S]+)/i);
+    if (!whereClause) throw new Error('REST fallback: cannot parse DELETE WHERE');
+    const whereStr = whereClause[1];
+    // Support up to two conditions: id=$1 AND user_id=$2
+    const condRe = /([a-z_]+)\s*=\s*\$(\d+)/gi;
+    let m;
+    let q = supabase.from(table).delete();
+    let hasCond = false;
+    while ((m = condRe.exec(whereStr)) !== null) {
+      const col = m[1];
+      const val = params[Number(m[2]) - 1];
+      q = q.eq(col, val);
+      hasCond = true;
+    }
+    if (!hasCond) throw new Error('REST fallback: cannot parse DELETE WHERE');
+    const { error, data } = await q.select();
     if (error) throw new Error(error.message);
-    return { rows: [] };
+    return { rowCount: data ? data.length : 0, rows: [] };
   }
 
   throw new Error(`REST fallback: unsupported SQL: ${upper.slice(0, 50)}`);
@@ -284,7 +295,7 @@ async function connect() {
   return {
     query: async (sql, params) => {
       const upper = sql.trim().toUpperCase();
-      if (upper === 'BEGIN' || upper === 'COMMIT' || upper === 'ROLLBACK') return { rows: [] };
+      if (upper.startsWith('BEGIN') || upper.startsWith('COMMIT') || upper.startsWith('ROLLBACK')) return { rows: [] };
       return restQuery(sql, params);
     },
     release: () => {},

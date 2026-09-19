@@ -1,0 +1,94 @@
+/* ATANY Fixed Dashboard — Seller & Admin — Same as Customer Fixed */
+.app {
+  display: grid !important;
+  grid-template-columns: 260px 1fr !important;
+  gap: 0 !important;
+  padding: 0 !important;
+  min-height: 100vh !important;
+  background: #FAF9F6 !important;
+}
+.admin-app {
+  background: #FAF9F6 !important;
+}
+.admin-app .main {
+  background: #FAF9F6 !important;
+}
+.admin-app .content {
+  background: #FAF9F6 !important;
+}
+.app .sidebar {
+  width: 260px !important;
+  background: #FFFDFC !important;
+  backdrop-filter: none !important;
+  border: none !important;
+  border-right: 1px solid rgba(190,160,100,0.20) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  margin: 0 !important;
+  height: 100vh !important;
+  top: 0 !important;
+  position: sticky !important;
+}
+.app .sidebar-brand {
+  height: 64px !important;
+  padding: 0 20px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  background: #FFFDFC !important;
+  border-bottom: 1px solid #E8E5DE !important;
+}
+.admin-app .sidebar-brand {
+  height: 64px !important;
+  padding: 0 20px !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  border-bottom: 1px solid rgba(190,160,100,0.20) !important;
+  background: #FFFDFC !important;
+}
+.admin-app .topbar {
+  height: 64px !important;
+  border-bottom: 1px solid rgba(190,160,100,0.20) !important;
+  background: #FFFDFC !important;
+}
+.app .sidebar-nav { padding: 12px 10px !important; }
+.app .nav-item { min-height: 38px !important; border-radius: 8px !important; }
+.app .nav-item.active { background: #FDF6E3 !important; border-left: 3px solid #C89B3C !important; }
+.app .nav-item.active::before { display: none !important; }
+.app .main { background: #FAF9F6; padding: 0; overflow-y: auto; }
+.customer-app .main { background: #FAF9F6 !important; }
+.app .content { padding: 24px 28px 32px !important; gap: 20px !important; }
+.app .topbar {
+  height: 64px !important;
+  background: #FFFDFC !important;
+  backdrop-filter: none !important;
+  border: none !important;
+  border-bottom: 1px solid rgba(190,160,100,0.20) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  top: 0 !important;
+  position: sticky !important;
+}
+.app .kpi-grid { gap: 16px !important; }
+.app .kpi-card {
+  background: #FFFDFC !important;
+  backdrop-filter: none !important;
+  border: 1px solid rgba(190,160,100,0.20) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 1px 3px rgba(22,43,77,0.06) !important;
+}
+.app .panel {
+  background: #FFFDFC !important;
+  backdrop-filter: none !important;
+  border: 1px solid rgba(190,160,100,0.20) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 1px 3px rgba(22,43,77,0.06) !important;
+}
+.app .two-col { gap: 20px !important; }
+@media (max-width: 760px) {
+  .app { grid-template-columns: 1fr !important; }
+  .app .sidebar { position: fixed !important; width: 260px !important; }
+  .app .main { padding: 0 !important; }
+  .app .content { padding: 16px !important; }
+}

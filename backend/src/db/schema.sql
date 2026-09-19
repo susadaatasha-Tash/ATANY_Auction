@@ -139,6 +139,13 @@ CREATE TABLE watchlists (
   PRIMARY KEY (user_id, product_id)
 );
 
+CREATE TABLE favorites (
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  product_id UUID REFERENCES products(id) ON DELETE CASCADE,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  PRIMARY KEY (user_id, product_id)
+);
+
 CREATE TABLE product_reviews (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   product_id UUID REFERENCES products(id) ON DELETE CASCADE,
@@ -164,8 +171,10 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS totp_enabled BOOLEAN DEFAULT false;
 
 -- Watchlists + reviews RLS
 ALTER TABLE watchlists ENABLE ROW LEVEL SECURITY;
+ALTER TABLE favorites ENABLE ROW LEVEL SECURITY;
 ALTER TABLE product_reviews ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "watchlists: owner" ON watchlists FOR ALL USING (auth.uid() = user_id);
+CREATE POLICY "favorites: owner" ON favorites FOR ALL USING (auth.uid() = user_id);
 CREATE POLICY "reviews: public read" ON product_reviews FOR SELECT USING (true);
 CREATE POLICY "reviews: authenticated can insert own" ON product_reviews FOR INSERT WITH CHECK (auth.uid() = user_id);
 

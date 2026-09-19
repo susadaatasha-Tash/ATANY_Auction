@@ -6,17 +6,29 @@ import { effectiveStatus } from '../../services/auctionService.js';
 const VALID_CATEGORIES = ['Rings', 'Necklaces', 'Bracelets', 'Earrings', 'Pendants', 'Chains', 'Watches', 'Other'];
 
 export const listListings = async (req, res) => {
-  const shop = (await pool.query('SELECT id FROM shops WHERE user_id=$1', [req.user.id])).rows[0];
-  const { rows } = await pool.query(`
-    SELECT p.*,
-           a.start_time AS auction_start_time,
-           a.end_time AS auction_end_time,
-           a.id AS auction_id
-    FROM products p
-    LEFT JOIN auctions a ON a.product_id = p.id
-    WHERE p.shop_id=$1
-    ORDER BY p.created_at DESC
-  `, [shop?.id]);
+  let shop = (await pool.query('SELECT id FROM shops WHERE user_id=$1', [req.user.id])).rows[0];
+  if (!shop) {
+    try {
+      const { rows: u } = await pool.query('SELECT name,email FROM users WHERE id=$1', [req.user.id]);
+      const name = u[0]?.name || u[0]?.email || 'My Shop';
+      await pool.query('INSERT INTO shops (user_id, shop_name) VALUES ($1,$2) ON CONFLICT DO NOTHING', [req.user.id, name]);
+      shop = (await pool.query('SELECT id FROM shops WHERE user_id=$1', [req.user.id])).rows[0];
+    } catch {}
+  }
+  // REST-compatible: two simple queries + JS compose (JOIN fails on REST fallback)
+  const { rows: products } = await pool.query('SELECT * FROM products WHERE shop_id=$1 ORDER BY created_at DESC', [shop?.id]);
+  const productIds = products.map(p => p.id);
+  let auctionMap = {};
+  if (productIds.length) {
+    const { rows: auctions } = await pool.query(`SELECT id, product_id, start_time, end_time FROM auctions WHERE product_id IN (${productIds.map((_,i)=>`$${i+1}`).join(',')})`, productIds);
+    auctionMap = Object.fromEntries(auctions.map(a => [a.product_id, a]));
+  }
+  const rows = products.filter(p => p.status === 'pending' || auctionMap[p.id]).map(p => ({
+    ...p,
+    auction_start_time: auctionMap[p.id]?.start_time || null,
+    auction_end_time: auctionMap[p.id]?.end_time || null,
+    auction_id: auctionMap[p.id]?.id || null,
+  }));
   // Compute effective status from auction timestamps when available
   const result = rows.map(p => {
     let computedStatus = p.status;
@@ -57,11 +69,33 @@ export const createListing = async (req, res) => {
     "INSERT INTO products (shop_id, name, category, karat_weight, price, description, image_url, status, proposed_start_time, proposed_end_time, proposed_duration_days) VALUES ($1,$2,$3,$4,$5,$6,$7,'pending',$8,$9,$10) RETURNING *",
     [shop.id, name, category, karat, price, desc, image_url, pStart, pEnd, duration]
   );
+  // Audit log (best-effort — never blocks the response)
+  try {
+    await pool.query(
+      'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details) VALUES ($1, $2, $3, $4, $5)',
+      [req.user.id, 'listing_created', 'product', rows[0].id, JSON.stringify({ name, category, price: Number(price) || null })]
+    );
+  } catch (logErr) {
+    console.warn('[audit log] failed:', logErr.message);
+  }
   res.status(201).json(rows[0]);
 };
 
 export const resubmitListing = async (req, res) => {
-  const { rows } = await pool.query("UPDATE products SET status='pending' WHERE id=$1 RETURNING *", [req.params.id]);
+  const shop = (await pool.query('SELECT id FROM shops WHERE user_id=$1', [req.user.id])).rows[0];
+  if (!shop) return res.status(404).json({ message: 'Shop not found' });
+  const { rows } = await pool.query("UPDATE products SET status='pending' WHERE id=$1 AND shop_id=$2 RETURNING *", [req.params.id, shop.id]);
+  // Audit log (best-effort — never blocks the response)
+  try {
+    if (rows[0]) {
+      await pool.query(
+        'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details) VALUES ($1, $2, $3, $4, $5)',
+        [req.user.id, 'listing_resubmitted', 'product', rows[0].id, JSON.stringify({ name: rows[0].name })]
+      );
+    }
+  } catch (logErr) {
+    console.warn('[audit log] failed:', logErr.message);
+  }
   res.json(rows[0]);
 };
 
@@ -108,5 +142,16 @@ export const updateListing = async (req, res) => {
   if (fields.length === 0) return res.status(400).json({ message: 'No fields to update' });
   params.push(req.params.id);
   const { rows } = await pool.query(`UPDATE products SET ${fields.join(', ')} WHERE id=$${idx} RETURNING *`, params);
+  // Audit log (best-effort — never blocks the response)
+  try {
+    if (rows[0]) {
+      await pool.query(
+        'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details) VALUES ($1, $2, $3, $4, $5)',
+        [req.user.id, 'listing_updated', 'product', rows[0].id, JSON.stringify({ name: rows[0].name })]
+      );
+    }
+  } catch (logErr) {
+    console.warn('[audit log] failed:', logErr.message);
+  }
   res.json(rows[0]);
 };

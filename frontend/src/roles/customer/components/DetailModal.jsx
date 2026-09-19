@@ -1,6 +1,7 @@
 // frontend/src/roles/customer/components/DetailModal.jsx
 // Port of customer-dashboard.html:510-538 detail modal + 669-729 renderDetailModal
 // Handles live vs scheduled, bidder list, pickup note, and fraud-flag surfacing
+import { useState } from 'react';
 import { formatCountdown, useAuctionCountdown } from '../../../shared/hooks/useAuctionCountdown';
 
 function peso(n) {
@@ -9,17 +10,18 @@ function peso(n) {
   return '₱' + num.toLocaleString();
 }
 
-export function DetailModal({ auction, isWatched, isNotifying, onClose, onToggleWatch, onToggleNotify, onPlaceBid }) {
+export function DetailModal({ auction, isFavorited, isNotifying, onClose, onToggleFavorite, onToggleNotify, onPlaceBid }) {
   if (!auction) return null;
   const isLive = auction.status === 'live';
   const isEnded = auction.status === 'ended';
   const liveSec = useAuctionCountdown(auction.endsInSec);
+  const [bidInput, setBidInput] = useState('');
   return (
     <div className="modal-overlay show" onClick={(e) => e.target.id === 'detailModal' && onClose()}>
       <div className="modal-box detail-box" id="detailModal">
         <button className="detail-close" onClick={onClose}>×</button>
-        <button type="button" className={`heart-btn heart-btn-lg ${isWatched ? 'saved' : ''}`} style={{ top: 14, right: 58 }} onClick={(e) => { e.stopPropagation(); onToggleWatch(auction.productId || auction.product_id || auction.id); }} aria-label="Save">
-          <svg viewBox="0 0 24 24" fill={isWatched ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8"><path d="M20.8 8.8C20.8 13.8 12 19.1 12 19.1S3.2 13.8 3.2 8.8C3.2 5.9 5.2 4 7.9 4c1.7 0 3.2.9 4.1 2.2C12.9 4.9 14.4 4 16.1 4c2.7 0 4.7 1.9 4.7 4.8Z"/></svg>
+        <button type="button" className={`heart-btn heart-btn-lg ${isFavorited ? 'saved' : ''}`} style={{ top: 14, right: 58 }} onClick={(e) => { e.stopPropagation(); onToggleFavorite(auction.productId || auction.product_id || auction.id); }} aria-label="Toggle favorite">
+          <svg viewBox="0 0 24 24" fill={isFavorited ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.8"><path d="M20.8 8.8C20.8 13.8 12 19.1 12 19.1S3.2 13.8 3.2 8.8C3.2 5.9 5.2 4 7.9 4c1.7 0 3.2.9 4.1 2.2C12.9 4.9 14.4 4 16.1 4c2.7 0 4.7 1.9 4.7 4.8Z"/></svg>
         </button>
         <div className="detail-img-wrap"><img src={auction.img} alt="" /></div>
         <div className="detail-body">
@@ -36,10 +38,11 @@ export function DetailModal({ auction, isWatched, isNotifying, onClose, onToggle
             <div style={{ padding: '12px 16px', background: 'var(--soft, #f5f5f5)', borderRadius: 8, textAlign: 'center', color: 'var(--muted, #888)', fontWeight: 600 }}>Auction Has Ended</div>
           ) : isLive ? (
             <div className="detail-bidbox">
-              <input type="number" id="detailBidInput" placeholder={`₱${(auction.currentBid + 1000).toLocaleString()}+`} />
+              <input type="number" value={bidInput} onChange={(e) => setBidInput(e.target.value)} placeholder={`₱${(auction.currentBid + 1000).toLocaleString()}+`} />
               <button className="btn btn-primary" onClick={() => {
-                const v = Number(document.getElementById('detailBidInput').value);
+                const v = Number(bidInput);
                 onPlaceBid(auction.id, v);
+                setBidInput('');
               }}>Place Bid</button>
             </div>
           ) : (

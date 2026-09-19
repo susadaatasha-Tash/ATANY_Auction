@@ -29,10 +29,10 @@ async function authHeaders() {
 
 export async function apiFetch(path, opts = {}) {
   const isFormData = typeof FormData !== 'undefined' && opts.body instanceof FormData;
-  const auth = await authHeaders();
+  let auth = await authHeaders();
   // For FormData (image upload) do NOT manually set Content-Type — browser must set multipart boundary.
   // Manually setting 'multipart/form-data' without boundary strips the header and can cause Authorization to be lost on some fetch/axios implementations.
-  const headers = { ...auth, ...(opts.headers || {}) };
+  let headers = { ...auth, ...(opts.headers || {}) };
   if (!isFormData && !headers['Content-Type'] && !headers['content-type']) {
     headers['Content-Type'] = 'application/json';
   } else if (isFormData && headers['Content-Type']) {
@@ -40,7 +40,22 @@ export async function apiFetch(path, opts = {}) {
     delete headers['Content-Type'];
     delete headers['content-type'];
   }
-  const res = await fetch(`${BASE}${path}`, { ...opts, headers });
+  let res = await fetch(`${BASE}${path}`, { ...opts, headers });
+  // If 401 Invalid token, try once to refresh and retry (handles expired token race)
+  if (res.status === 401) {
+    const errBody = await res.clone().json().catch(() => ({}));
+    const msg = (errBody.message || '').toLowerCase();
+    if (msg.includes('invalid token') || msg.includes('missing token') || msg.includes('jwt expired')) {
+      try {
+        const { data: refreshed } = await supabase.auth.refreshSession();
+        const newToken = refreshed.session?.access_token;
+        if (newToken) {
+          headers = { ...headers, Authorization: `Bearer ${newToken}` };
+          res = await fetch(`${BASE}${path}`, { ...opts, headers });
+        }
+      } catch {}
+    }
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
     throw new Error(err.message || 'Request failed');

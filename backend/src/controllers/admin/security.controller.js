@@ -1,16 +1,17 @@
 import { pool } from '../../db/pool.js';
 export const listAlerts = async (_req, res) => {
   try {
-    const { rows } = await pool.query(`
-      SELECT sa.*, u.name as customer, u.email as customer_email
-      FROM security_alerts sa
-      LEFT JOIN users u ON u.id = sa.user_id
-      ORDER BY sa.created_at DESC
-    `);
-    // Ensure activity_trail is parsed array and customer fallback
-    const mapped = rows.map(r => ({
+    const { rows: alerts } = await pool.query('SELECT * FROM security_alerts ORDER BY created_at DESC');
+    const userIds = [...new Set(alerts.map(a => a.user_id).filter(Boolean))];
+    let userMap = {};
+    if (userIds.length) {
+      const { rows: users } = await pool.query(`SELECT id, name, email FROM users WHERE id IN (${userIds.map((_,i)=>`$${i+1}`).join(',')})`, userIds);
+      userMap = Object.fromEntries(users.map(u => [u.id, u]));
+    }
+    const mapped = alerts.map(r => ({
       ...r,
-      customer: r.customer || (r.user_id ? r.user_id.slice(0,8) : 'Unknown (Guest Checkout)'),
+      customer: userMap[r.user_id]?.name || r.customer || (r.user_id ? r.user_id.slice(0,8) : 'Unknown (Guest Checkout)'),
+      customer_email: userMap[r.user_id]?.email || r.customer_email || null,
       activity_trail: typeof r.activity_trail === 'string' ? JSON.parse(r.activity_trail || '[]') : (r.activity_trail || []),
     }));
     res.json(mapped);

@@ -44,16 +44,15 @@ export const createApplication = async (req, res) => {
 
 export const getMyApplication = async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      `SELECT sa.*, b.name as branch_name
-       FROM seller_applications sa
-       LEFT JOIN branches b ON b.id = sa.branch_id
-       WHERE sa.applicant_id = $1
-       ORDER BY sa.created_at DESC LIMIT 1`,
-      [req.user.id]
-    );
-    if (!rows[0]) return res.status(404).json({ message: 'No application found' });
-    res.json(rows[0]);
+    const { rows: apps } = await pool.query('SELECT * FROM seller_applications WHERE applicant_id=$1 ORDER BY created_at DESC LIMIT 1', [req.user.id]);
+    if (!apps[0]) return res.status(404).json({ message: 'No application found' });
+    const a = apps[0];
+    let branch = null;
+    if (a.branch_id) {
+      const { rows: branches } = await pool.query('SELECT * FROM branches WHERE id=$1', [a.branch_id]);
+      branch = branches[0] || null;
+    }
+    res.json({ ...a, branch_name: branch?.name || null });
   } catch (e) {
     console.error('getMyApplication failed:', e.message);
     res.status(500).json({ message: 'Failed to fetch application' });
@@ -63,19 +62,35 @@ export const getMyApplication = async (req, res) => {
 export const listApplications = async (req, res) => {
   try {
     const { status } = req.query;
-    let query = `SELECT sa.*, u.name as applicant_name, u.email as applicant_email, b.name as branch_name,
-      reviewer.name as reviewer_name
-      FROM seller_applications sa
-      JOIN users u ON u.id = sa.applicant_id
-      LEFT JOIN branches b ON b.id = sa.branch_id
-      LEFT JOIN users reviewer ON reviewer.id = sa.reviewed_by`;
+    let whereClause = '';
     const params = [];
     if (status) {
       params.push(status);
-      query += ` WHERE sa.status = $${params.length}`;
+      whereClause = `WHERE status = $1`;
     }
-    query += ' ORDER BY sa.created_at DESC';
-    const { rows } = await pool.query(query, params);
+    const { rows: apps } = await pool.query(`SELECT * FROM seller_applications ${whereClause} ORDER BY created_at DESC`, params);
+    if (!apps.length) return res.json([]);
+    const applicantIds = [...new Set(apps.map(a => a.applicant_id).filter(Boolean))];
+    const branchIds = [...new Set(apps.map(a => a.branch_id).filter(Boolean))];
+    const reviewerIds = [...new Set(apps.map(a => a.reviewed_by).filter(Boolean))];
+    let userMap = {};
+    if (applicantIds.length || reviewerIds.length) {
+      const allUserIds = [...new Set([...applicantIds, ...reviewerIds])];
+      const { rows: users } = await pool.query(`SELECT id, name, email FROM users WHERE id IN (${allUserIds.map((_,i)=>`$${i+1}`).join(',')})`, allUserIds);
+      userMap = Object.fromEntries(users.map(u => [u.id, u]));
+    }
+    let branchMap = {};
+    if (branchIds.length) {
+      const { rows: branches } = await pool.query(`SELECT * FROM branches WHERE id IN (${branchIds.map((_,i)=>`$${i+1}`).join(',')})`, branchIds);
+      branchMap = Object.fromEntries(branches.map(b => [b.id, b]));
+    }
+    const rows = apps.map(a => ({
+      ...a,
+      applicant_name: userMap[a.applicant_id]?.name || null,
+      applicant_email: userMap[a.applicant_id]?.email || null,
+      branch_name: branchMap[a.branch_id]?.name || null,
+      reviewer_name: userMap[a.reviewed_by]?.name || null,
+    }));
     res.json(rows);
   } catch (e) {
     console.error('listApplications failed:', e.message);
@@ -85,18 +100,23 @@ export const listApplications = async (req, res) => {
 
 export const getApplication = async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      `SELECT sa.*, u.name as applicant_name, u.email as applicant_email, b.name as branch_name,
-       reviewer.name as reviewer_name
-       FROM seller_applications sa
-       JOIN users u ON u.id = sa.applicant_id
-       LEFT JOIN branches b ON b.id = sa.branch_id
-       LEFT JOIN users reviewer ON reviewer.id = sa.reviewed_by
-       WHERE sa.id = $1`,
-      [req.params.id]
-    );
-    if (!rows[0]) return res.status(404).json({ message: 'Application not found' });
-    res.json(rows[0]);
+    const { rows: apps } = await pool.query('SELECT * FROM seller_applications WHERE id=$1', [req.params.id]);
+    if (!apps[0]) return res.status(404).json({ message: 'Application not found' });
+    const a = apps[0];
+    const { rows: users } = await pool.query(`SELECT id, name, email FROM users WHERE id IN ($1, $2)`, [a.applicant_id, a.reviewed_by].filter(Boolean));
+    const userMap = Object.fromEntries(users.map(u => [u.id, u]));
+    let branch = null;
+    if (a.branch_id) {
+      const { rows: branches } = await pool.query('SELECT * FROM branches WHERE id=$1', [a.branch_id]);
+      branch = branches[0] || null;
+    }
+    res.json({
+      ...a,
+      applicant_name: userMap[a.applicant_id]?.name || null,
+      applicant_email: userMap[a.applicant_id]?.email || null,
+      branch_name: branch?.name || null,
+      reviewer_name: userMap[a.reviewed_by]?.name || null,
+    });
   } catch (e) {
     console.error('getApplication failed:', e.message);
     res.status(500).json({ message: 'Failed to fetch application' });
@@ -130,6 +150,27 @@ export const approveApplication = async (req, res) => {
 
     // Update user role to shop_owner
     await pool.query('UPDATE users SET role = $1 WHERE id = $2 AND role = $3', ['shop_owner', app.applicant_id, 'customer']);
+
+    // Create initial seller subscription (pending) if none exists
+    try {
+      const { rows: existingBill } = await pool.query(
+        `SELECT id FROM billing_records WHERE seller_id=$1 AND status IN ('pending','paid') ORDER BY created_at DESC LIMIT 1`,
+        [app.applicant_id]
+      );
+      if (!existingBill.length) {
+        const now = new Date();
+        const next = new Date(now);
+        next.setMonth(next.getMonth() + 1);
+        const period = now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) + ' – ' + next.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+        const due = next.toISOString().split('T')[0];
+        const startStr = now.toISOString().split('T')[0];
+        const endStr = due;
+        await pool.query(
+          `INSERT INTO billing_records (seller_id, amount, billing_period, status, due_date, current_period_start, current_period_end) VALUES ($1,$2,$3,'pending',$4,$5,$6)`,
+          [app.applicant_id, 1000, period, due, startStr, endStr]
+        );
+      }
+    } catch {}
 
     // Create notification for applicant
     await pool.query(

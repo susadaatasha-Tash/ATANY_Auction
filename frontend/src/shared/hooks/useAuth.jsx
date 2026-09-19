@@ -12,10 +12,16 @@ async function fetchUserMeta(token) {
     const res = await fetch(`${apiBase}/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error(`[useAuth] GET /auth/me failed: ${res.status} ${res.statusText}`);
+      return null;
+    }
     const data = await res.json();
     return { role: data.role || null, preferredBranchId: data.preferred_branch_id || null };
-  } catch { return null; }
+  } catch (e) {
+    console.error('[useAuth] GET /auth/me network/error', e?.message || e);
+    return null;
+  }
 }
 
 export function AuthProvider({ children }) {
@@ -25,29 +31,67 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      const u = data.session?.user ?? null;
-      setUser(u);
-      setLoading(false);
-      if (u && data.session?.access_token) {
-        fetchUserMeta(data.session.access_token).then((meta) => {
-          if (meta) { setRole(meta.role); setPreferredBranchId(meta.preferredBranchId); }
-        });
+    let cancelled = false;
+    async function init() {
+      setLoading(true);
+      try {
+        const { data } = await supabase.auth.getSession();
+        if (cancelled) return;
+        const u = data.session?.user ?? null;
+        setUser(u);
+        if (u && data.session?.access_token) {
+          const meta = await fetchUserMeta(data.session.access_token);
+          if (cancelled) return;
+          if (meta) {
+            setRole(meta.role);
+            setPreferredBranchId(meta.preferredBranchId);
+          } else {
+            console.error('[useAuth] /auth/me returned no metadata for authenticated user');
+            setRole(null);
+            setPreferredBranchId(null);
+          }
+        } else {
+          setRole(null);
+          setPreferredBranchId(null);
+        }
+      } catch (e) {
+        console.error('[useAuth] Session init failed', e?.message || e);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-    }).catch(() => setLoading(false));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      const u = session?.user ?? null;
-      setUser(u);
-      if (u && session?.access_token) {
-        fetchUserMeta(session.access_token).then((meta) => {
-          if (meta) { setRole(meta.role); setPreferredBranchId(meta.preferredBranchId); }
-        });
-      } else {
-        setRole(null);
-        setPreferredBranchId(null);
+    }
+    init();
+    const { data: sub } = supabase.auth.onAuthStateChange(async (_e, session) => {
+      if (cancelled) return;
+      setLoading(true);
+      try {
+        const u = session?.user ?? null;
+        setUser(u);
+        if (u && session?.access_token) {
+          const meta = await fetchUserMeta(session.access_token);
+          if (cancelled) return;
+          if (meta) {
+            setRole(meta.role);
+            setPreferredBranchId(meta.preferredBranchId);
+          } else {
+            console.error('[useAuth] /auth/me returned no metadata on auth change');
+            setRole(null);
+            setPreferredBranchId(null);
+          }
+        } else {
+          setRole(null);
+          setPreferredBranchId(null);
+        }
+      } catch (e) {
+        console.error('[useAuth] Auth state change failed', e?.message || e);
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     });
-    return () => sub.subscription?.unsubscribe();
+    return () => {
+      cancelled = true;
+      sub.subscription?.unsubscribe();
+    };
   }, []);
 
   const signOut = async () => {
@@ -70,7 +114,7 @@ export const useAuth = () => {
 import { Navigate } from 'react-router-dom';
 export function RequireRole({ role, children }) {
   const { user, role: userRole, loading } = useAuth();
-  if (loading || (user && role && !userRole)) return null;
+  if (loading) return null;
   const allowed = Array.isArray(role) ? role : [role];
   if (!user || (role && !allowed.includes(userRole))) {
     return <Navigate to="/login" replace />;

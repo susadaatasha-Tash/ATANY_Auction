@@ -77,6 +77,13 @@ export default function SalesPayouts() {
     return matchesQ && matchesStatus;
   });
 
+  const totals = (() => {
+    const totalSales = sales.reduce((s, r) => s + Number(r.amount || 0), 0);
+    const totalCommission = sales.reduce((s, r) => s + Number(r.commission ?? Math.round(Number(r.amount || 0) * 0.10)), 0);
+    const totalPayout = sales.reduce((s, r) => s + Number(r.payout ?? Math.round(Number(r.amount || 0) * 0.9)), 0);
+    return { totalSales, totalCommission, totalPayout };
+  })();
+
   const actionFor = (s) => {
     const pay = s.payment_status;
     const st = s.status;
@@ -102,9 +109,26 @@ export default function SalesPayouts() {
           <option value="completed">Completed</option>
         </select>
       </div>
+      <div style={{ display: 'flex', gap: 12, margin: '16px 0', flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 150, background: 'var(--ivory)', border: '1px solid var(--line)', borderRadius: 12, padding: '14px 16px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--muted)' }}>Total Sales</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--navy)', marginTop: 4 }}>{peso(totals.totalSales)}</div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>100% — all completed sales</div>
+        </div>
+        <div style={{ flex: 1, minWidth: 150, background: 'var(--ivory)', border: '1px solid var(--line)', borderRadius: 12, padding: '14px 16px' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--muted)' }}>Platform Commission (10%)</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: '#8a6d2b', marginTop: 4 }}>{peso(totals.totalCommission)}</div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>ATANY keeps 10%</div>
+        </div>
+        <div style={{ flex: 1, minWidth: 150, background: 'var(--navy)', borderRadius: 12, padding: '14px 16px', color: '#fff' }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', opacity: .8 }}>Your Total Payout (90%)</div>
+          <div style={{ fontSize: 18, fontWeight: 800, marginTop: 4 }}>{peso(totals.totalPayout)}</div>
+          <div style={{ fontSize: 11, opacity: .7, marginTop: 2 }}>You receive 90%</div>
+        </div>
+      </div>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Order ID</th><th>Item</th><th>Buyer</th><th>Sale Amount</th><th>Your Payout</th><th>Payment</th><th>Status</th><th>Action</th><th>Date</th></tr></thead>
+          <thead><tr><th>Order ID</th><th>Item</th><th>Buyer</th><th>Sale Amount</th><th>Commission (10%)</th><th>Your Payout (90%)</th><th>Payment</th><th>Status</th><th>Action</th><th>Date</th></tr></thead>
           <tbody>{filtered.length ? filtered.map((s) => {
             const displayStatus = mapStatus(s.status);
             const act = actionFor(s);
@@ -115,7 +139,8 @@ export default function SalesPayouts() {
                 <td>{s.item}</td>
                 <td>{s.buyer}</td>
                 <td>{peso(s.amount)}</td>
-                <td className="cell-main">{peso(s.payout ?? Math.round(s.amount * 0.9))}</td>
+                <td>{peso(s.commission ?? Math.round(Number(s.amount) * 0.10))}</td>
+                <td className="cell-main">{peso(s.payout ?? Math.round(Number(s.amount) * 0.9))}</td>
                 <td><span className={`badge ${s.payment_status === 'paid' ? 'paid' : s.payment_status === 'failed' ? 'failed' : 'pending'}`}>{paymentLabel(s.payment_status)}</span></td>
                 <td><span className={`badge ${displayStatus}`}>{statusLabel(s.status)}</span></td>
                 <td>
@@ -137,12 +162,12 @@ export default function SalesPayouts() {
                 <td>{formatDate(s.date || s.created_at)}</td>
               </tr>
             );
-          }) : <tr><td colSpan={9}><div className="empty-state"><p>No sales yet.</p></div></td></tr>}</tbody>
+          }) : <tr><td colSpan={10}><div className="empty-state"><p>No sales yet.</p></div></td></tr>}</tbody>
         </table>
       </div>
       <div className="pager"><span>{filtered.length} sale{filtered.length===1?'':'s'}</span></div>
       <div style={{ padding: '12px 20px', borderTop: '1px solid var(--line)', background: 'rgba(199,166,106,.06)', fontSize: 11, color: 'var(--muted)', lineHeight: 1.5 }}>
-        <b style={{ color: 'var(--navy)' }}>Payout note:</b> Your Payout is <b>90%</b> of Sale Amount (10% platform commission). Payment must be <b>Paid</b> before <b>Start Preparing</b>.
+        <b style={{ color: 'var(--navy)' }}>Payout note:</b> ATANY keeps <b>10% platform commission</b> from each completed sale. You receive <b>90%</b> of the Sale Amount. Payment must be <b>Paid</b> before <b>Start Preparing</b>. &nbsp; Sale Amount (100%) = Commission (10%) + Payout (90%).
       </div>
 
       <Modal

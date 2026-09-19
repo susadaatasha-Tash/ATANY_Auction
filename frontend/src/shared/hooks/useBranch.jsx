@@ -3,6 +3,8 @@
 // Distinguishes: preferred_branch (saved default) vs current browsing branch.
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { apiFetch } from '../lib/apiClient';
+import { useToast } from '../components/Toast';
+import { useAuth } from './useAuth';
 
 const BranchContext = createContext(null);
 
@@ -11,6 +13,8 @@ export function BranchProvider({ children }) {
   const [branchName, setBranchName] = useState('');
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
+  const showToast = useToast();
+  const { setPreferredBranchId } = useAuth();
 
   // Load branches list + user's preferred branch on mount
   useEffect(() => {
@@ -39,18 +43,24 @@ export function BranchProvider({ children }) {
     return () => { cancelled = true; };
   }, []);
 
-  // Switch branch — updates local state + persists to backend
+  // Switch branch — updates local state only after backend succeeds
   const switchBranch = useCallback(async (newBranchId) => {
     const target = branches.find(b => b.id === newBranchId);
     if (!target) return;
-    setBranchId(newBranchId);
-    setBranchName(target.name);
-    // Persist to backend (fire-and-forget — local state is already updated)
-    apiFetch('/customer/preferred-branch', {
-      method: 'PUT',
-      body: JSON.stringify({ branch_id: newBranchId }),
-    }).catch(() => {});
-  }, [branches]);
+    try {
+      await apiFetch('/customer/preferred-branch', {
+        method: 'PUT',
+        body: JSON.stringify({ branch_id: newBranchId }),
+      });
+      setBranchId(newBranchId);
+      setBranchName(target.name);
+      setPreferredBranchId(newBranchId);
+      showToast('Branch updated');
+    } catch (e) {
+      console.error('Failed to save preferred branch', e);
+      showToast('Failed to update branch — please try again');
+    }
+  }, [branches, showToast, setPreferredBranchId]);
 
   return (
     <BranchContext.Provider value={{ branchId, branchName, branches, loading, switchBranch }}>
