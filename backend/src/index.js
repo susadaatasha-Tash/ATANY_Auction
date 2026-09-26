@@ -64,10 +64,24 @@ app.get('/branches', async (_req, res) => {
   }
 });
 app.post('/chat', async (req, res) => {
-  const { query, message, history, mode } = req.body;
+  const { query, message, history, mode, userId } = req.body;
   const text = query || message;
   // mode: 'customer' or 'seller' — from frontend page context (Landing/Login/Signup/Customer vs Shop Owner)
   const result = await chatbotReply(text, { userId: req.user?.id, mode: mode || 'customer', history: history || [] });
+  // Chatbot Logs persistence (Admin Chatbot Logs page). Failure-safe: logging must
+  // never break the chatbot response, so errors are swallowed inside the service.
+  // userId is client-supplied (route is public); the service validates it against
+  // users and falls back to NULL (guest) for missing/invalid ids — no fake accounts.
+  try {
+    const replyText = result?.reply || result?.response || '';
+    if (text && replyText) {
+      const { logChatTurn } = await import('./services/chatbotLogService.js');
+      const escalated = /human|agent|support/i.test(String(text));
+      logChatTurn({ userId: userId || req.user?.id, mode: mode || 'customer', query: text, reply: replyText, escalated }).catch((e) => console.warn('[chatbotLog] async persist failed:', e.message));
+    }
+  } catch (e) {
+    console.warn('[chatbotLog] persist skipped:', e.message);
+  }
   res.json(result);
 });
 app.use(reviewRoutes); // extension d) product reviews: GET/POST /products/:id/reviews

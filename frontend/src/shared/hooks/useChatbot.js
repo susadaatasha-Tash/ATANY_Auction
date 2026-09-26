@@ -93,7 +93,9 @@ export function useChatbot(mode = 'customer', userId = null) {
       const res = await fetch(`${base}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, query: text, history, mode }),
+        // userId lets the server attribute this turn to the caller's chatbot session
+        // (validated server-side; guests send null). No change to local history behavior.
+        body: JSON.stringify({ message: text, query: text, history, mode, userId: userId || null }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -131,7 +133,7 @@ export function useChatbot(mode = 'customer', userId = null) {
       setMessages((m) => [...m, { who: 'bot', text: fallback, suggestions: [] }]);
       setLoading(false);
     }, 380);
-  }, [messages, mode]);
+  }, [messages, mode, userId]);
 
   const quickReplies = mode === 'seller'
     ? ['How do I submit an item?', 'How long does approval take?', 'When do I get paid?', 'Edit a rejected item?']
