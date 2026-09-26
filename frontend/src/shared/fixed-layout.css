@@ -1,10 +1,11 @@
-/* ATANY Fixed Dashboard — Seller & Admin — Same as Customer Fixed */
+/* ATANY Fixed Dashboard — Seller & Admin — Same as Customer Fixed — main is scrolling container */
 .app {
   display: grid !important;
   grid-template-columns: 260px 1fr !important;
   gap: 0 !important;
   padding: 0 !important;
-  min-height: 100vh !important;
+  height: 100vh !important;
+  overflow: hidden !important;
   background: #FAF9F6 !important;
 }
 .admin-app {
@@ -15,68 +16,304 @@
 }
 .admin-app .content {
   background: #FAF9F6 !important;
+  padding: 12px 28px 32px !important;
 }
-.app .sidebar {
+/* Dark navy sidebar #050A16 — Seller & Admin (reuse Customer styling) */
+.app .sidebar,
+.admin-app .sidebar {
   width: 260px !important;
-  background: #FFFDFC !important;
+  background: #050A16 !important;
+  background-color: #050A16 !important;
   backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   border: none !important;
-  border-right: 1px solid rgba(190,160,100,0.20) !important;
+  border-right: 1px solid rgba(255,255,255,0.06) !important;
   border-radius: 0 !important;
   box-shadow: none !important;
   margin: 0 !important;
   height: 100vh !important;
   top: 0 !important;
   position: sticky !important;
+  overflow-y: auto !important;
+  overflow-x: visible !important;
+  color: #E6EAF2 !important;
 }
-.app .sidebar-brand {
-  height: 64px !important;
-  padding: 0 20px !important;
-  display: flex !important;
-  align-items: center !important;
-  gap: 12px !important;
-  background: #FFFDFC !important;
-  border-bottom: 1px solid #E8E5DE !important;
+.app .sidebar,
+.admin-app .sidebar {
+  overflow-x: visible !important;
 }
+.app .sidebar::after,
+.admin-app .sidebar::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: -14px;
+  width: 14px;
+  height: 100%;
+  pointer-events: none;
+  background: linear-gradient(to right, rgba(0, 0, 0, 0.14), rgba(0, 0, 0, 0));
+  z-index: 10;
+}
+.app.sidebar-collapsed .sidebar::after,
+.admin-app.sidebar-collapsed .sidebar::after {
+  display: none !important;
+}
+@media (max-width: 767px) {
+  .app .sidebar::after,
+  .admin-app .sidebar::after {
+    display: none !important;
+  }
+  .app .sidebar.open::after,
+  .admin-app .sidebar.open::after {
+    display: block !important;
+  }
+}
+.app .sidebar-brand,
 .admin-app .sidebar-brand {
   height: 64px !important;
   padding: 0 20px !important;
   display: flex !important;
   align-items: center !important;
   gap: 12px !important;
-  border-bottom: 1px solid rgba(190,160,100,0.20) !important;
-  background: #FFFDFC !important;
+  background: #050A16 !important;
+  background-color: #050A16 !important;
+  border-bottom: none !important;
 }
+.admin-app .sidebar-brand {
+  justify-content: center !important;
+}
+.app .sidebar-brand .brand-icon,
+.admin-app .sidebar-brand .brand-icon {
+  width: 36px; height: 36px; border-radius: 8px;
+  background: rgba(255,255,255,0.08) !important;
+  color: #C89B3C !important;
+  border: 1px solid rgba(200,155,60,0.25) !important;
+}
+.app .sidebar-brand .brand-name,
+.admin-app .sidebar-brand .brand-name { color: #FFFFFF !important; font-size: 16px !important; }
+.app .sidebar-brand .brand-tag,
+.admin-app .sidebar-brand .brand-tag { color: #C89B3C !important; }
 .admin-app .topbar {
   height: 64px !important;
   border-bottom: 1px solid rgba(190,160,100,0.20) !important;
   background: #FFFDFC !important;
 }
-.app .sidebar-nav { padding: 12px 10px !important; }
-.app .nav-item { min-height: 38px !important; border-radius: 8px !important; }
-.app .nav-item.active { background: #FDF6E3 !important; border-left: 3px solid #C89B3C !important; }
-.app .nav-item.active::before { display: none !important; }
-.app .main { background: #FAF9F6; padding: 0; overflow-y: auto; }
-.customer-app .main { background: #FAF9F6 !important; }
-.app .content { padding: 24px 28px 32px !important; gap: 20px !important; }
-.app .topbar {
-  height: 64px !important;
-  background: #FFFDFC !important;
-  backdrop-filter: none !important;
-  border: none !important;
-  border-bottom: 1px solid rgba(190,160,100,0.20) !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  top: 0 !important;
-  position: sticky !important;
+/* Sidebar — Desktop >=1200 full, Tablet 768-1199 compact 68px, Mobile <768 drawer */
+@media (min-width: 1200px) {
+  .app { grid-template-columns: 260px 1fr !important; }
+  .app.sidebar-collapsed,
+  .app.customer-app.sidebar-collapsed,
+  .admin-app.sidebar-collapsed { grid-template-columns: 1fr !important; }
+  .app.sidebar-collapsed .sidebar,
+  .app.customer-app.sidebar-collapsed .sidebar,
+  .admin-app.sidebar-collapsed .sidebar { display: none !important; }
 }
-.app .kpi-grid { gap: 16px !important; }
+@media (min-width: 768px) and (max-width: 1199px) {
+  .app { grid-template-columns: 260px 1fr !important; }
+  .app.sidebar-collapsed,
+  .app.customer-app.sidebar-collapsed,
+  .admin-app.sidebar-collapsed { grid-template-columns: 68px 1fr !important; }
+  .app.sidebar-collapsed .sidebar,
+  .app.customer-app.sidebar-collapsed .sidebar,
+  .admin-app.sidebar-collapsed .sidebar {
+    width: 68px !important;
+    display: flex !important;
+    left: 0 !important;
+  }
+  .app.sidebar-collapsed .sidebar-brand .brand-name,
+  .app.customer-app.sidebar-collapsed .sidebar-brand .brand-name,
+  .admin-app.sidebar-collapsed .sidebar-brand .brand-name,
+  .app.sidebar-collapsed .sidebar-brand .brand-tag,
+  .app.customer-app.sidebar-collapsed .sidebar-brand .brand-tag,
+  .admin-app.sidebar-collapsed .sidebar-brand .brand-tag,
+  .app.sidebar-collapsed .nav-section-label,
+  .app.customer-app.sidebar-collapsed .nav-section-label,
+  .admin-app.sidebar-collapsed .nav-section-label,
+  .app.sidebar-collapsed .nav-label,
+  .app.customer-app.sidebar-collapsed .nav-label,
+  .admin-app.sidebar-collapsed .nav-label,
+  .app.sidebar-collapsed .nav-badge,
+  .app.customer-app.sidebar-collapsed .nav-badge,
+  .admin-app.sidebar-collapsed .nav-badge { display: none !important; }
+  .app.sidebar-collapsed .sidebar-brand,
+  .app.customer-app.sidebar-collapsed .sidebar-brand,
+  .admin-app.sidebar-collapsed .sidebar-brand { justify-content: center !important; padding: 12px 8px !important; gap: 6px !important; }
+  .app.sidebar-collapsed .nav-item,
+  .app.customer-app.sidebar-collapsed .nav-item,
+  .admin-app.sidebar-collapsed .nav-item { justify-content: center !important; padding: 10px !important; }
+}
+@media (max-width: 767px) {
+  .app,
+  .app.customer-app,
+  .admin-app,
+  .customer-app { grid-template-columns: 1fr !important; }
+  .app .sidebar,
+  .app.customer-app .sidebar,
+  .admin-app .sidebar,
+  .customer-app .sidebar {
+    position: fixed !important;
+    left: -280px !important;
+    width: 260px !important;
+    height: 100vh !important;
+    z-index: 900 !important;
+    transition: left .28s var(--ease) !important;
+  }
+  .app .sidebar.open,
+  .app.customer-app .sidebar.open,
+  .admin-app .sidebar.open,
+  .customer-app .sidebar.open { left: 0 !important; }
+  .app.sidebar-collapsed,
+  .app.customer-app.sidebar-collapsed,
+  .admin-app.sidebar-collapsed,
+  .customer-app.sidebar-collapsed { grid-template-columns: 1fr !important; }
+  .app.sidebar-collapsed .sidebar,
+  .app.customer-app.sidebar-collapsed .sidebar,
+  .admin-app.sidebar-collapsed .sidebar,
+  .customer-app.sidebar-collapsed .sidebar { left: -280px !important; display: block !important; }
+  .app.sidebar-collapsed .sidebar.open,
+  .app.customer-app.sidebar-collapsed .sidebar.open,
+  .admin-app.sidebar-collapsed .sidebar.open,
+  .customer-app.sidebar-collapsed .sidebar.open { left: 0 !important; }
+  .app .main,
+  .app.customer-app .main,
+  .admin-app .main,
+  .customer-app .main { width: 100% !important; max-width: 100% !important; min-width: 0 !important; }
+}
+.app .sidebar-nav,
+.admin-app .sidebar-nav {
+  padding: 12px 10px !important;
+  background: #050A16 !important;
+  background-color: #050A16 !important;
+}
+.app .sidebar-nav > div > div[style],
+.admin-app .sidebar-nav > div > div[style] { background: rgba(255,255,255,0.08) !important; }
+.app .nav-section-label,
+.admin-app .nav-section-label { color: rgba(255,255,255,0.45) !important; }
+.app .nav-item,
+.admin-app .nav-item {
+  min-height: 38px !important;
+  border-radius: 8px !important;
+  font-size: 13px !important;
+  color: #A8B2C2 !important;
+  background: transparent !important;
+}
+.app .nav-item svg,
+.admin-app .nav-item svg { opacity: 0.7 !important; color: #A8B2C2 !important; }
+.app .nav-item:hover,
+.admin-app .nav-item:hover { background: rgba(255,255,255,0.06) !important; color: #FFFFFF !important; }
+.app .nav-item:hover svg,
+.admin-app .nav-item:hover svg { opacity: 1 !important; color: #E6C78A !important; }
+.app .nav-item.active,
+.admin-app .nav-item.active {
+  background: rgba(200,155,60,0.14) !important;
+  color: #FFFFFF !important;
+  border-left: 3px solid #C89B3C !important;
+  box-shadow: none !important;
+}
+.app .nav-item.active svg,
+.admin-app .nav-item.active svg { opacity: 1 !important; color: #C89B3C !important; }
+.app .nav-item.active::before { display: none !important; }
+.app .sidebar-foot,
+.admin-app .sidebar-foot {
+  border-top: 1px solid rgba(255,255,255,0.08) !important;
+  background: #050A16 !important;
+  background-color: #050A16 !important;
+  color: #7A8599 !important;
+}
+.app .sidebar-foot a,
+.admin-app .sidebar-foot a { color: #E6C78A !important; }
+.app .sidebar-foot a:hover,
+.admin-app .sidebar-foot a:hover { color: #FFFFFF !important; }
+.app .sidebar *,
+.admin-app .sidebar * { scrollbar-color: rgba(255,255,255,0.15) #050A16 !important; }
+.app .main {
+  background: #FAF9F6;
+  padding: 0;
+  height: 100vh !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+.customer-app .main { background: #FAF9F6 !important; }
+.app .content {
+  padding: 24px 28px 32px !important;
+  gap: 20px !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+.app .main,
+.admin-app .main {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+}
+.app .topbar,
+.admin-app .topbar {
+  height: 70px !important;
+  min-height: 70px !important;
+  background: #FFFEFB !important;
+  backdrop-filter: none !important;
+  border: 1px solid #EDE9E1 !important;
+  border-radius: 16px !important;
+  box-shadow: 0 2px 8px rgba(20,42,74,0.08), 0 1px 3px rgba(20,42,74,0.06) !important;
+  top: 16px !important;
+  position: sticky !important;
+  z-index: 20 !important;
+  margin: 16px 24px 0 !important;
+  width: auto !important;
+  max-width: calc(100% - 48px) !important;
+  box-sizing: border-box !important;
+  padding: 0 24px !important;
+  display: flex !important;
+  align-items: center !important;
+}
+.app .topbar::before,
+.admin-app .topbar::before {
+  content: '';
+  position: absolute;
+  top: -16px;
+  left: -24px;
+  right: -24px;
+  height: 16px;
+  background: #FAF9F6;
+  display: block;
+  z-index: -1;
+}
+@media (min-width: 768px) and (max-width: 1199px) {
+  .app .topbar::before,
+  .admin-app .topbar::before {
+    top: -12px;
+    left: -20px;
+    right: -20px;
+    height: 12px;
+  }
+}
+@media (max-width: 767px) {
+  .app .topbar::before,
+  .admin-app .topbar::before {
+    top: -12px;
+    left: -16px;
+    right: -16px;
+    height: 12px;
+  }
+}
+.app .kpi-grid {
+  display: grid !important;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  gap: 16px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
 .app .kpi-card {
   background: #FFFDFC !important;
   backdrop-filter: none !important;
   border: 1px solid rgba(190,160,100,0.20) !important;
   border-radius: 12px !important;
   box-shadow: 0 1px 3px rgba(22,43,77,0.06) !important;
+  min-width: 0 !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+  overflow: hidden !important;
 }
 .app .panel {
   background: #FFFDFC !important;
@@ -85,10 +322,82 @@
   border-radius: 12px !important;
   box-shadow: 0 1px 3px rgba(22,43,77,0.06) !important;
 }
-.app .two-col { gap: 20px !important; }
-@media (max-width: 760px) {
+.app .two-col {
+  display: grid !important;
+  grid-template-columns: 1.4fr minmax(0, 1fr) !important;
+  gap: 20px !important;
+  min-width: 0 !important;
+  width: 100% !important;
+}
+.app .two-col > *,
+.admin-app .two-col > * {
+  min-width: 0 !important;
+}
+/* Responsive kpi-grid for Seller/Admin — tablet 2 cols, mobile 1 col */
+@media (max-width: 1100px) {
+  .app .kpi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .app .two-col {
+    grid-template-columns: 1fr !important;
+  }
+}
+@media (max-width: 640px) {
+  .app .kpi-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+/* Explore Branches — Desktop 3, Tablet 2, Mobile 1 */
+.admin-branches-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 16px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+.admin-branches-grid > * { min-width: 0 !important; max-width: 100% !important; }
+.admin-branches-grid img { aspect-ratio: 16 / 9 !important; object-fit: cover !important; width: 100% !important; height: auto !important; max-height: 140px !important; }
+@media (max-width: 1199px) and (min-width: 768px) {
+  .admin-branches-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}
+@media (max-width: 767px) {
+  .admin-branches-grid { grid-template-columns: 1fr !important; }
+}
+/* Header tablet — keep floating */
+@media (min-width: 768px) and (max-width: 1199px) {
+  .app .topbar,
+  .admin-app .topbar {
+    padding: 0 20px !important;
+    height: 64px !important;
+    min-height: 64px !important;
+    top: 12px !important;
+    margin: 12px 20px 0 !important;
+    max-width: calc(100% - 40px) !important;
+    border-radius: 14px !important;
+  }
+  .app .content { padding: 20px !important; }
+}
+/* Mobile header — keep floating */
+@media (max-width: 767px) {
+  .app .topbar,
+  .admin-app .topbar {
+    padding: 0 16px !important;
+    height: 56px !important;
+    top: 12px !important;
+    margin: 12px 16px 0 !important;
+    max-width: calc(100% - 32px) !important;
+    border-radius: 14px !important;
+  }
+  .app .topbar-title h1 { font-size: 15px !important; }
+  .app .topbar-title p { display: none !important; }
+  .app .topbar .admin-chip .name,
+  .app .topbar .admin-chip .role { display: none !important; }
+  .app .topbar .admin-chip { padding: 4px !important; gap: 0 !important; }
+}
+@media (max-width: 768px) {
   .app { grid-template-columns: 1fr !important; }
   .app .sidebar { position: fixed !important; width: 260px !important; }
   .app .main { padding: 0 !important; }
   .app .content { padding: 16px !important; }
+  .admin-app .content { padding: 12px 16px !important; }
 }

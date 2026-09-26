@@ -2,15 +2,25 @@ import { pool } from '../../db/pool.js';
 
 export const getAccount = async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      `SELECT u.id, u.name, u.email, u.role, u.status, u.created_at, u.preferred_branch_id,
-       b.name as preferred_branch_name
-       FROM users u
-       LEFT JOIN branches b ON b.id = u.preferred_branch_id
-       WHERE u.id = $1`,
-      [req.user.id]
-    );
-    res.json(rows[0]);
+    const { rows: users } = await pool.query('SELECT * FROM users WHERE id=$1', [req.user.id]);
+    const u = users[0];
+    if (!u) return res.status(404).json({ message: 'Account not found' });
+    let preferred_branch_name = null;
+    if (u.preferred_branch_id) {
+      const { rows: branches } = await pool.query('SELECT name FROM branches WHERE id=$1', [u.preferred_branch_id]);
+      preferred_branch_name = branches[0]?.name || null;
+    }
+    res.json({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      status: u.status,
+      created_at: u.created_at,
+      preferred_branch_id: u.preferred_branch_id,
+      preferred_branch_name,
+      phone: u.phone || null,
+    });
   } catch (e) {
     console.error('getAccount failed:', e.message);
     res.status(500).json({ message: 'Failed to fetch account' });
@@ -31,14 +41,15 @@ export const updateAccount = async (req, res) => {
 
 export const getPreferredBranch = async (req, res) => {
   try {
-    const { rows } = await pool.query(
-      `SELECT u.preferred_branch_id, b.name as branch_name, b.address as branch_address
-       FROM users u
-       LEFT JOIN branches b ON b.id = u.preferred_branch_id
-       WHERE u.id = $1`,
-      [req.user.id]
-    );
-    res.json(rows[0] || { preferred_branch_id: null });
+    const { rows: users } = await pool.query('SELECT preferred_branch_id FROM users WHERE id=$1', [req.user.id]);
+    const preferred_branch_id = users[0]?.preferred_branch_id || null;
+    if (!preferred_branch_id) return res.json({ preferred_branch_id: null });
+    const { rows: branches } = await pool.query('SELECT * FROM branches WHERE id=$1', [preferred_branch_id]);
+    res.json({
+      preferred_branch_id,
+      branch_name: branches[0]?.name || null,
+      branch_address: branches[0]?.address || null,
+    });
   } catch (e) {
     console.error('getPreferredBranch failed:', e.message);
     res.status(500).json({ message: 'Failed to fetch preferred branch' });

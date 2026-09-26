@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useNotifications as useCustomerNotifications } from '../../customer/hooks/useNotifications';
+import { resolveShopDestination } from '../../../shared/lib/notificationDestination';
 
 function useShopNotifications() {
   // Reuse generic hook with shop path
@@ -14,10 +15,17 @@ export default function ShopNotifications() {
   const { notifications, unread, markAllRead, markOneRead } = useShopNotifications();
   const navigate = useNavigate();
   const [expandedId, setExpandedId] = useState(null);
-  const handleExpand = (id) => {
-    const isExpanding = expandedId !== id;
-    setExpandedId(isExpanding ? id : null);
-    if (isExpanding) markOneRead(id);
+  const handleRowClick = (n) => {
+    markOneRead(n.id);
+    const destination = resolveShopDestination(n);
+    if (destination) {
+      setExpandedId(null);
+      navigate(destination);
+      return;
+    }
+    // seller_application / unknown rows keep existing expand behavior
+    const isExpanding = expandedId !== n.id;
+    setExpandedId(isExpanding ? n.id : null);
   };
   return (
     <div className="panel">
@@ -32,7 +40,7 @@ export default function ShopNotifications() {
         {notifications.length ? notifications.map(n => {
           const isExpanded = expandedId === n.id;
           return (
-            <div key={n.id} onClick={() => handleExpand(n.id)} className={`notif-item ${n.read ? '' : 'unread'}`} style={{ padding: 12, border: `1px solid ${n.read ? 'var(--line)' : '#0f3d2e'}`, borderRadius: 8, background: n.read ? 'var(--soft)' : '#f0fdf4', cursor: 'pointer' }}>
+            <div key={n.id} onClick={() => handleRowClick(n)} className={`notif-item ${n.read ? '' : 'unread'}`} style={{ padding: 12, border: `1px solid ${n.read ? 'var(--line)' : '#0f3d2e'}`, borderRadius: 8, background: n.read ? 'var(--soft)' : '#f0fdf4', cursor: 'pointer' }}>
               <div style={{ fontSize: 13, whiteSpace: 'pre-wrap', fontWeight: n.read ? 400 : 600 }}>{n.message || n.text}</div>
               <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4 }}>{n.created_at ? new Date(n.created_at).toLocaleString() : n.time} {isExpanded ? '▲' : '▼'}</div>
               {isExpanded && (

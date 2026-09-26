@@ -84,16 +84,20 @@ export async function listAuctions({ shopId, branchId, status } = {}) {
     branchMap = Object.fromEntries(branches.map(b => [b.id, b]));
   }
 
-  // 7. Count bids and unique participants per auction
+  // 7. Count bids and unique participants per auction — REST-compatible (avoid COUNT)
   const auctionIds = filtered.map(a => a.id);
   let bidCounts = {};
   let participantCounts = {};
   if (auctionIds.length) {
+    // Batch fetch all bids for filtered auctions to avoid N+1 COUNT queries
+    const { rows: allBids } = await pool.query(
+      `SELECT auction_id, user_id FROM bids WHERE auction_id IN (${auctionIds.map((_, i) => `$${i + 1}`).join(',')})`,
+      auctionIds
+    );
     for (const aid of auctionIds) {
-      const { rows } = await pool.query('SELECT COUNT(*)::int as cnt FROM bids WHERE auction_id = $1', [aid]);
-      bidCounts[aid] = rows[0]?.cnt || 0;
-      const { rows: pRows } = await pool.query('SELECT COUNT(DISTINCT user_id)::int as cnt FROM bids WHERE auction_id = $1', [aid]);
-      participantCounts[aid] = pRows[0]?.cnt || 0;
+      const bidsForAuction = allBids.filter(b => String(b.auction_id) === String(aid));
+      bidCounts[aid] = bidsForAuction.length;
+      participantCounts[aid] = new Set(bidsForAuction.map(b => b.user_id)).size;
     }
   }
 
@@ -115,6 +119,7 @@ export async function listAuctions({ shopId, branchId, status } = {}) {
       status: computedStatus,
       startTime: a.start_time,
       endTime: a.end_time,
+      startsInSec: Math.max(0, Math.floor((new Date(a.start_time) - now) / 1000)),
       endsInSec: Math.max(0, Math.floor((new Date(a.end_time) - now) / 1000)),
       name: p.name,
       img: p.image_url,

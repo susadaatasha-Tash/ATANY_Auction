@@ -11,6 +11,7 @@ import OrderDetails from './pages/OrderDetails';
 import CompletePayment from './pages/CompletePayment';
 import PaymentSuccess from './pages/PaymentSuccess';
 import AccountSettings from './pages/AccountSettings';
+import Settings from './pages/Settings';
 import Notifications from './pages/Notifications';
 import BranchLocator from './pages/BranchLocator';
 import MessagesPage from '../../shared/components/MessagesPage';
@@ -29,4 +30,5 @@ export const customerRoutes = [
   { path: 'messages', element: <MessagesPage role="customer" /> },
   { path: 'notifications', element: <Notifications /> },
   { path: 'account', element: <AccountSettings /> },
+  { path: 'settings', element: <Settings /> },
 ];

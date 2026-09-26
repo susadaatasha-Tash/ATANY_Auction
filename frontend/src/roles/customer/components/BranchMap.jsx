@@ -26,7 +26,7 @@ export function BranchMap({
   const markersRef = useRef({});
   const [mapInitialized, setMapInitialized] = useState(false);
 
-  // Initialize map (once)
+  // Initialize map (once) — ensure container has dimensions before adding markers
   useEffect(() => {
     if (!mapRef.current || leafletRef.current) return;
 
@@ -37,33 +37,47 @@ export function BranchMap({
     }).addTo(map);
 
     leafletRef.current = map;
+    // Fix: container may have 0 size at init (grid layout), force resize after layout
+    const t1 = setTimeout(() => map.invalidateSize(), 100);
+    const t2 = setTimeout(() => map.invalidateSize(), 500);
     setMapInitialized(true);
     onMapReady?.();
 
     return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
       map.remove();
       leafletRef.current = null;
     };
-  }, [initialCenter, onMapReady]);
+  }, []); // stable — do not re-init on prop changes
 
   // Unified marker sync — handles branches loaded async + selected branch changes
   useEffect(() => {
     if (!leafletRef.current || !mapInitialized) return;
-    if (!Array.isArray(branches)) return;
+    if (!Array.isArray(branches) || branches.length === 0) return;
     const map = leafletRef.current;
+    // Ensure map knows its container size (fixes hidden markers when container had 0 height at init)
+    map.invalidateSize();
 
     const icon = L.divIcon({
       className: 'atany-pin',
-      html: '<div style="width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:#14301f;border:2px solid #c7a66a;"></div>',
+      html: '<div style="width:28px;height:28px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:#14301f;border:2px solid #c7a66a;box-shadow:0 2px 6px rgba(0,0,0,0.3);"></div>',
       iconSize: [28, 28],
       iconAnchor: [14, 28],
     });
     const selectedIcon = L.divIcon({
       className: 'atany-pin-selected',
-      html: '<div style="width:32px;height:32px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:#c7a66a;border:2px solid #14301f;"></div>',
+      html: '<div style="width:32px;height:32px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:#c7a66a;border:2px solid #14301f;box-shadow:0 2px 8px rgba(0,0,0,0.4);"></div>',
       iconSize: [32, 32],
       iconAnchor: [16, 32],
     });
+
+    // Known ATANY coordinates fallback (if DB lat/lng missing or invalid)
+    const fallbackCoords = {
+      'Gmall Branch': [7.07782, 125.61413],
+      'Abreeza Branch': [7.09144, 125.61094],
+      'SM Lanang Branch': [7.0989, 125.631],
+    };
 
     // Remove markers whose branch no longer exists
     Object.keys(markersRef.current).forEach((id) => {
@@ -76,16 +90,20 @@ export function BranchMap({
     // Create missing markers and update icons
     branches.forEach((b) => {
       if (!b.id) return;
-      const lat = Number(b.lat);
-      const lng = Number(b.lng);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      let lat = Number(b.lat);
+      let lng = Number(b.lng);
+      // Fallback to known coordinates if DB values invalid
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        const fb = fallbackCoords[b.name];
+        if (fb) { lat = fb[0]; lng = fb[1]; } else return;
+      }
       const isSelected = String(b.id) === String(selectedBranchId);
       const existing = markersRef.current[b.id];
       if (existing) {
         existing.setIcon(isSelected ? selectedIcon : icon);
         if (isSelected) {
           existing.openPopup();
-          map.setView(existing.getLatLng(), map.getZoom(), { animate: true, duration: 0.5 });
+          map.setView(existing.getLatLng(), Math.max(map.getZoom(), 13), { animate: true, duration: 0.5 });
         }
         return;
       }
@@ -95,9 +113,19 @@ export function BranchMap({
       markersRef.current[b.id] = m;
       if (isSelected) {
         m.openPopup();
-        map.setView(m.getLatLng(), map.getZoom(), { animate: true, duration: 0.5 });
+        map.setView(m.getLatLng(), Math.max(map.getZoom(), 13), { animate: true, duration: 0.5 });
       }
     });
+
+    // Fit all markers in view if no selection and markers exist
+    const allMarkers = Object.values(markersRef.current);
+    if (!selectedBranchId && allMarkers.length) {
+      const group = L.featureGroup(allMarkers);
+      map.fitBounds(group.getBounds().pad(0.2));
+      // Ensure zoom not too far out
+      if (map.getZoom() > 14) map.setZoom(14);
+      if (map.getZoom() < 11) map.setZoom(12);
+    }
   }, [branches, selectedBranchId, mapInitialized, onSelectBranch]);
 
   // Update user location marker when userLocation changes

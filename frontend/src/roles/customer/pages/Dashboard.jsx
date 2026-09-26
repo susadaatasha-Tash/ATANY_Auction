@@ -104,7 +104,6 @@ export default function Dashboard({ stats: propStats, activeBids: propBids, rece
           <div className="customer-hero-eyebrow">YOUR PREFERRED BRANCH</div>
           <h2 className="customer-hero-title">{displayBranchName || 'Select a branch'}</h2>
           <p className="customer-hero-desc">Browse auctions and jewelry from your selected branch.</p>
-          <Link to="/customer/branch-locator" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 12, fontWeight: 700, color: '#C89B3C', textDecoration: 'none' }}>View Branch Locator →</Link>
         </div>
       </div>
 
@@ -119,8 +118,8 @@ export default function Dashboard({ stats: propStats, activeBids: propBids, rece
       {/* Branch Cards */}
       {branches.length > 0 && (
         <div className="panel">
-          <div className="panel-head"><div><h2>Explore Branches</h2><p>Select a branch to browse its exclusive collections.</p></div></div>
-          <div style={{ padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
+          <div className="panel-head"><div><h2>Explore Branches</h2></div></div>
+          <div className="explore-branches-grid" style={{ padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '16px' }}>
             {branches.map(b => (
               <div key={b.id} style={{ background: '#fff', border: '1px solid #E8E5DE', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(20,42,74,0.06)' }}>
                 <div style={{ height: '140px', overflow: 'hidden', background: '#F7F3EA' }}>
@@ -142,7 +141,7 @@ export default function Dashboard({ stats: propStats, activeBids: propBids, rece
       )}
 
       <div className="panel">
-        <div className="panel-head"><div><h2>Recent Activity</h2><p>Updates on your account.</p></div></div>
+        <div className="panel-head"><div><h2>Recent Activity</h2></div></div>
         <div className="activity-list">
           {displayActivity.map((a, i) => (
             <div key={i} className="activity-item">

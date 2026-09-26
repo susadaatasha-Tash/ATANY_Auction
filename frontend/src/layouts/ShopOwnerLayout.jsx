@@ -63,7 +63,7 @@ export default function ShopOwnerLayout() {
 
   return (
     <div className={`app${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
-      <Sidebar brand="ATANY" tag="SHOP OWNER" sections={sections} open={open} onClose={() => setOpen(false)} />
+      <Sidebar brand="ATANY" tag="SHOP OWNER" sections={sections} open={open} onClose={() => setOpen(false)} onSignOut={signOut} />
       {open && <div className="sidebar-backdrop" aria-hidden="true" onClick={() => setOpen(false)} />}
       <div className="main">
         <Topbar title={title} subtitle={subtitle} onMenuToggle={() => setOpen((v) => !v)}

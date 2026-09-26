@@ -150,7 +150,7 @@ export default function LandingPage() {
                       </div>
                       <div className="price">Current bid: {a.currentBid ? `₱${a.currentBid.toLocaleString()}` : 'Starting'}</div>
                       {a.karat_weight && <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>✦ {a.karat_weight}</div>}
-                      <div className="starting">Ends in {a.endsInSec !== undefined ? <Countdown initial={a.endsInSec} /> : 'Unknown'}</div>
+                      <div className="starting"><div>Ends in</div>{a.endsInSec !== undefined ? <Countdown initial={a.endsInSec} /> : <span>Unknown</span>}</div>
                       <div className="bid-box" onClick={(e) => e.stopPropagation()}>
                         {user ? (
                           <button className="btn btn-primary" onClick={() => setBidItem(a)}>Place Bid</button>

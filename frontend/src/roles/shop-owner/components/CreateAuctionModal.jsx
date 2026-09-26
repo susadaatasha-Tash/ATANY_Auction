@@ -35,11 +35,17 @@ export function CreateAuctionModal({ open, onClose, onSubmit, initial }) {
     e.preventDefault();
     if (durationDays < 0) { alert('Auction End must be after Start'); return; }
     const fd = new FormData(e.target);
+    // Convert datetime-local to UTC ISO — ensures seller's local 12:50 PHT stored as 04:50Z correctly regardless of server TZ
+    let submitStart = startVal ? new Date(startVal).toISOString() : undefined;
+    let submitEnd = endVal ? new Date(endVal).toISOString() : undefined;
+    // Validate conversion
+    try { if (submitStart && isNaN(new Date(submitStart).getTime())) submitStart = undefined; } catch {}
+    try { if (submitEnd && isNaN(new Date(submitEnd).getTime())) submitEnd = undefined; } catch {}
     setSaving(true);
     try {
       if (isEdit) {
         // Opening price + schedule only — item details are locked once created.
-        await onSubmit({ startPrice: Number(fd.get('startPrice')), start_time: startVal || undefined, end_time: endVal || undefined });
+        await onSubmit({ startPrice: Number(fd.get('startPrice')), start_time: submitStart, end_time: submitEnd });
       } else {
         let imageUrl = '';
         const file = fd.get('image_file');
@@ -57,7 +63,7 @@ export function CreateAuctionModal({ open, onClose, onSubmit, initial }) {
         await onSubmit({
           name: fd.get('name'), category: fd.get('category'), karat: fd.get('karat'),
           startPrice: Number(fd.get('startPrice')), desc: fd.get('desc'), image_url: imageUrl || undefined,
-          start_time: startVal || undefined, end_time: endVal || undefined,
+          start_time: submitStart, end_time: submitEnd,
         });
         e.target.reset();
       }

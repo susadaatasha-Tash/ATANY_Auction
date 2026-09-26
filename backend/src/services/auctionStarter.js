@@ -4,10 +4,18 @@ import { pool } from '../db/pool.js';
 import { sendNotificationEmail } from './emailService.js';
 
 export async function startScheduledAuctions() {
+  const nowIso = new Date().toISOString();
+  const nowLocal = new Date().toString();
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  // Debug: show scheduler tick
+  // console.log(`[auctionStarter] tick ${nowIso} local ${nowLocal} tz ${tz}`);
   // Simple query — no JOINs (REST-compatible)
   const { rows: toStart } = await pool.query(
-    "SELECT id, product_id FROM auctions WHERE status = 'scheduled' AND start_time <= NOW()"
+    "SELECT id, product_id, start_time, end_time, status FROM auctions WHERE status = 'scheduled' AND start_time <= NOW()"
   );
+  if (toStart.length) {
+    console.log(`[auctionStarter] ${nowIso} (${tz}) found ${toStart.length} to start:`, toStart.map(a=>`${a.id.slice(0,8)} start=${new Date(a.start_time).toISOString()} local=${new Date(a.start_time).toString()} status=${a.status}`).join(' | '));
+  }
   // Fetch product names in bulk
   const productIds = [...new Set(toStart.map(a => a.product_id))];
   let productMap = {};
@@ -20,15 +28,25 @@ export async function startScheduledAuctions() {
   }
   for (const auction of toStart) {
     const productName = productMap[auction.product_id] || 'Unknown';
+    console.log(`[auctionStarter] processing ${auction.id.slice(0,8)} start=${new Date(auction.start_time).toISOString()} end=${new Date(auction.end_time).toISOString()} status before=${auction.status} now=${new Date().toISOString()}`);
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query("UPDATE auctions SET status = 'live' WHERE id = $1", [auction.id]);
+      const up = await client.query("UPDATE auctions SET status = 'live' WHERE id = $1 AND status = 'scheduled'", [auction.id]);
+      if ((up.rowCount ?? 0) === 0) {
+        await client.query('ROLLBACK');
+        console.log(`[auctionStarter] ${auction.id.slice(0,8)} skip — already live (rowCount 0)`);
+        continue;
+      }
+      console.log(`[auctionStarter] ${auction.id.slice(0,8)} transitioned scheduled→live at ${new Date().toISOString()}`);
       // Find users who clicked Notify Me for this auction (separate from watchlist)
       const { rows: watchers } = await client.query('SELECT user_id FROM auction_reminders WHERE auction_id = $1', [auction.id]);
       for (const w of watchers) {
         const message = `Your watched auction "${productName}" is now live! Place your bid now.`;
-        await client.query("INSERT INTO notifications (user_id, type, message) VALUES ($1, 'auction', $2)", [w.user_id, message]);
+        const { shouldDeliverNotification } = await import('./notificationPreference.js');
+        if (await shouldDeliverNotification(w.user_id, 'auction', message)) {
+          await client.query("INSERT INTO notifications (user_id, type, message, auction_id) VALUES ($1, 'auction', $2, $3)", [w.user_id, message, auction.id]);
+        }
         // Fire email via Resend (non-blocking, best effort)
         try {
           const { rows: userRows } = await client.query('SELECT email FROM users WHERE id = $1', [w.user_id]);
@@ -43,8 +61,9 @@ export async function startScheduledAuctions() {
           console.warn('Failed to send live notification email', emailErr.message);
         }
       }
-      // Clean up reminders after notifying (one-time)
-      await client.query('DELETE FROM auction_reminders WHERE auction_id = $1', [auction.id]);
+      // Keep reminders until auction ends or user removes — do NOT delete immediately after start
+      // Deleting before frontend Realtime GET causes race: GET returns 0 → no popup (BUG 2)
+      // Cleanup will happen when auction ends or via explicit user toggle
       await client.query('COMMIT');
       console.log(`Auction ${auction.id} (${productName}) started, notified ${watchers.length} watchers`);
     } catch (e) {
@@ -69,7 +88,28 @@ export async function startScheduledAuctions() {
           const otherNotifMsg = `New Live Auction at ${branchName}\n\nA new auction is now live at ${branchName}.\n${productName} — Starting price: ₱${Number(startPrice).toLocaleString()}\n\nView Auction`;
           const { rows: otherCustomers } = await pool.query('SELECT id FROM users WHERE preferred_branch_id IS NOT NULL AND preferred_branch_id != $1 AND role = $2', [branchId, 'customer']);
           for (const cust of otherCustomers.rows) {
-            await pool.query('INSERT INTO notifications (user_id, type, message) VALUES ($1, $2, $3)', [cust.id, 'auction', otherNotifMsg]);
+            const { shouldDeliverNotification } = await import('./notificationPreference.js');
+            if (await shouldDeliverNotification(cust.id, 'auction', otherNotifMsg)) {
+              // Duplicate guard keyed to this auction; message wording unchanged.
+              let dupOB = [];
+              try {
+                const { rows } = await pool.query(
+                  `SELECT id FROM notifications WHERE user_id=$1 AND auction_id=$2 AND message LIKE $3 LIMIT 1`,
+                  [cust.id, auction.id, 'New Live Auction at%']
+                );
+                dupOB = rows;
+              } catch (gErr) {
+                // notifications.auction_id column absent: fall back to legacy unguarded insert
+                if (gErr.code !== '42703') throw gErr;
+              }
+              if (dupOB.length) continue;
+              try {
+                await pool.query('INSERT INTO notifications (user_id, type, message, auction_id) VALUES ($1, $2, $3, $4)', [cust.id, 'auction', otherNotifMsg, auction.id]);
+              } catch (insErr) {
+                if (insErr.code !== '42703') throw insErr;
+                await pool.query('INSERT INTO notifications (user_id, type, message) VALUES ($1, $2, $3)', [cust.id, 'auction', otherNotifMsg]);
+              }
+            }
           }
           if (otherCustomers.rows.length) console.log(`Other-branch notification for auction ${auction.id} at ${branchName}: notified ${otherCustomers.rows.length} customers`);
         }

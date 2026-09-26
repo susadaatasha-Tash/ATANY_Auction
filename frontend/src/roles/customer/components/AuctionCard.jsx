@@ -1,28 +1,53 @@
 // frontend/src/roles/customer/components/AuctionCard.jsx
-// Fix: controlled bid input + validation + isSubmitting guard (Bug 3)
-import { useState } from 'react';
-import { formatCountdown, useAuctionCountdown } from '../../../shared/hooks/useAuctionCountdown';
+// Fix: controlled bid input + validation + isSubmitting guard (Bug 3) — now uses BidStepper
+import { useState, useEffect } from 'react';
+import { formatCountdown } from '../../../shared/hooks/useAuctionCountdown';
+import { BidStepper } from './BidStepper';
 
 function peso(n) {
   const num = Number(n);
   if (!Number.isFinite(num)) return '₱—';
   return '₱' + num.toLocaleString();
 }
+function effectiveStatus(startTime, endTime) {
+  const now = new Date();
+  const s = new Date(startTime);
+  const e = new Date(endTime);
+  if (isNaN(s.getTime()) || isNaN(e.getTime())) return 'scheduled';
+  if (now < s) return 'scheduled';
+  if (now >= e) return 'ended';
+  return 'live';
+}
 
 export function AuctionCard({ auction, isFavorited, isNotifying, onOpenDetail, onToggleFavorite, onToggleNotify, onPlaceBid }) {
-  const isLive = auction.status === 'live';
-  const isEnded = auction.status === 'ended';
-  const [bidAmount, setBidAmount] = useState('');
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const startRaw = auction.startTime ?? auction.start_time;
+  const endRaw = auction.endTime ?? auction.end_time;
+  const hasTimes = !!(startRaw && endRaw && !isNaN(new Date(startRaw).getTime()) && !isNaN(new Date(endRaw).getTime()));
+  const computedStatus = hasTimes ? effectiveStatus(startRaw, endRaw) : (auction.status || 'scheduled');
+  const isLive = computedStatus === 'live';
+  const isEnded = computedStatus === 'ended';
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const liveSec = useAuctionCountdown(auction.endsInSec);
-  const minBid = Number(auction.currentBid || 0) + 1000;
-  const bidNum = Number(bidAmount);
-  const isValidBid = Number.isFinite(bidNum) && bidNum >= minBid;
+  const countdownSec = (() => {
+    if (!hasTimes) {
+      if (isEnded) return 0;
+      if (isLive) return auction.endsInSec ?? 0;
+      return auction.startsInSec ?? auction.endsInSec ?? 0;
+    }
+    const now = new Date(nowTick);
+    if (isEnded) return 0;
+    if (isLive) return Math.max(0, Math.floor((new Date(endRaw) - now) / 1000));
+    return Math.max(0, Math.floor((new Date(startRaw) - now) / 1000));
+  })();
 
-  const handleBid = async () => {
-    if (!isValidBid || isSubmitting) return;
+  const handleBid = async (amount) => {
+    if (isSubmitting) return;
     setIsSubmitting(true);
-    try { await onPlaceBid(auction.id, bidNum); setBidAmount(''); } catch (e) { console.error('bid failed', e); } finally { setIsSubmitting(false); }
+    try { await onPlaceBid(auction.id, amount); } catch (e) { console.error('bid failed', e); } finally { setIsSubmitting(false); }
   };
 
   return (
@@ -34,15 +59,14 @@ export function AuctionCard({ auction, isFavorited, isNotifying, onOpenDetail, o
       <img src={auction.img} alt="" />
       <div className="watch-card-body">
         <h4>{auction.name}</h4>
-        <div className="live-meta"><span>{auction.bids} bids</span><span>{isEnded ? 'Auction over' : isLive ? `${formatCountdown(liveSec)} left` : `Starts in ${formatCountdown(liveSec)}`}</span></div>
+        <div className="live-meta"><span>{auction.bids} bids</span><span>{isEnded ? 'Auction over' : isLive ? `${formatCountdown(countdownSec)} left` : `Starts in ${formatCountdown(countdownSec)}`}</span></div>
         {auction.branch_name && <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>📍 Pickup at {auction.branch_name}</div>}
         <div className="price">Current bid: <b>{peso(auction.currentBid)}</b></div>
         {isEnded ? (
           <div style={{ padding: '8px 12px', background: 'var(--soft, #f5f5f5)', borderRadius: 8, textAlign: 'center', color: 'var(--muted, #888)', fontSize: 13, fontWeight: 600 }}>Auction Ended</div>
         ) : isLive ? (
           <div className="bid-box" onClick={(e) => e.stopPropagation()}>
-            <input type="number" value={bidAmount} onChange={(e) => setBidAmount(e.target.value)} placeholder={`₱${minBid.toLocaleString()}+`} />
-            <button type="button" className="btn btn-primary" onClick={handleBid} disabled={!isValidBid || isSubmitting} style={{ opacity: !isValidBid || isSubmitting ? 0.5 : 1 }}>{isSubmitting ? '...' : 'Bid'}</button>
+            <BidStepper currentBid={auction.currentBid ?? auction.current_bid} startPrice={auction.start_price ?? auction.startPrice} onPlaceBid={handleBid} size="small" disabled={isSubmitting} />
           </div>
         ) : (
           <button type="button" className={`btn ${isNotifying ? 'btn-primary' : 'btn-outline'}`} style={{ width: '100%', justifyContent: 'center' }} onClick={(e) => { e.stopPropagation(); e.preventDefault(); onToggleNotify(auction.id); }}>{isNotifying ? 'Notifying ✓' : 'Notify Me'}</button>

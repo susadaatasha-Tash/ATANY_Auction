@@ -1,8 +1,16 @@
 import { pool } from '../../db/pool.js';
 
 export const getReminders = async (req, res) => {
-  const { rows } = await pool.query('SELECT r.*, a.product_id FROM auction_reminders r JOIN auctions a ON a.id = r.auction_id WHERE r.user_id = $1', [req.user.id]);
-  res.json(rows);
+  // REST-compatible: avoid JOIN (isComplexQuery → [] via pool fallback)
+  const { rows: reminders } = await pool.query('SELECT * FROM auction_reminders WHERE user_id=$1', [req.user.id]);
+  if (!reminders.length) return res.json([]);
+  const auctionIds = [...new Set(reminders.map((r) => r.auction_id))];
+  const { rows: auctions } = await pool.query(
+    `SELECT id, product_id FROM auctions WHERE id IN (${auctionIds.map((_, i) => `$${i + 1}`).join(',')})`,
+    auctionIds
+  );
+  const map = Object.fromEntries(auctions.map((a) => [a.id, a.product_id]));
+  res.json(reminders.map((r) => ({ ...r, product_id: map[r.auction_id] || null })));
 };
 
 export const addReminder = async (req, res) => {

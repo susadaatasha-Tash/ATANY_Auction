@@ -99,9 +99,14 @@ export default function OrderDetails() {
             <div className="order-summary-title">Payment Summary</div>
             <div className="order-summary-row"><span>Winning Bid</span><span>{peso(order.amount)}</span></div>
             <div className="order-summary-row total"><span>Total Amount</span><span>{peso(order.amount)}</span></div>
+            {order.payment_deadline && order.status === 'pending' && payment?.status !== 'paid' && (
+              <div className="form-hint" style={{ marginTop: 8, color: order.is_expired ? 'var(--danger)' : 'var(--muted)', fontWeight: order.is_expired ? 700 : 400 }}>
+                {order.is_expired ? 'Payment deadline has passed. This order has expired and may be offered to the next bidder.' : `Payment deadline: ${fmtDateTime(order.payment_deadline)} (7 days from win)`}
+              </div>
+            )}
             <div className="order-payment-status">
-              <span className={`purchase-status-badge ${payment?.status === 'paid' ? 'completed' : 'pending'}`}><span className="purchase-status-dot" />{payment?.status === 'paid' ? 'Payment Confirmed' : 'Payment Pending'}</span>
-              <p className="form-hint">{payment?.status === 'paid' ? 'Your payment has been confirmed.' : 'Please complete your payment to confirm your order.'}</p>
+              <span className={`purchase-status-badge ${payment?.status === 'paid' ? 'completed' : order.is_expired ? 'expired' : 'pending'}`}><span className="purchase-status-dot" />{payment?.status === 'paid' ? 'Payment Confirmed' : order.is_expired ? 'Expired' : 'Payment Pending'}</span>
+              <p className="form-hint">{payment?.status === 'paid' ? 'Your payment has been confirmed.' : order.is_expired ? 'This payment period has expired.' : 'Please complete your payment to confirm your order.'}</p>
             </div>
             {isPayable ? (
               <button className="btn btn-primary" style={{width:'100%', marginTop:12}} onClick={() => navigate(`/customer/orders/${order.id}/payment`)}>Pay Now →</button>

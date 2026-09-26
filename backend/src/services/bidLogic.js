@@ -30,10 +30,34 @@ export async function placeBid({ auctionId, userId, amount }) {
         [userId, fraud.type, fraud.detail, JSON.stringify(fraud.trail)]
       );
     }
-    // Notify previous highest bidder they were outbid (spec 4.6)
+    // Notify previous highest bidder they were outbid (spec 4.6) — respect preference.
+    // Duplicate guard is keyed to this exact outbid event (auction + new bid amount)
+    // so legitimate later outbids at higher amounts still notify. Message wording unchanged.
     const prev = await client.query('SELECT user_id FROM bids WHERE auction_id=$1 AND user_id != $2 ORDER BY amount DESC LIMIT 1', [auctionId, userId]);
     if (prev.rows.length) {
-      await client.query("INSERT INTO notifications (user_id, type, message) VALUES ($1,'auction',$2)", [prev.rows[0].user_id, `You were outbid — new current bid is ₱${amount.toLocaleString()}.`]);
+      const { shouldDeliverNotification } = await import('./notificationPreference.js');
+      const msg = `You were outbid — new current bid is ₱${amount.toLocaleString()}.`;
+      if (await shouldDeliverNotification(prev.rows[0].user_id, 'auction', msg)) {
+        let outbidDup = [];
+        try {
+          const { rows } = await client.query(
+            `SELECT id FROM notifications WHERE user_id=$1 AND auction_id=$2 AND message LIKE $3 AND created_at > NOW() - INTERVAL '1 hour' LIMIT 1`,
+            [prev.rows[0].user_id, auctionId, `%₱${amount.toLocaleString()}%`]
+          );
+          outbidDup = rows;
+        } catch (gErr) {
+          // notifications.auction_id column absent: fall back to legacy unguarded insert
+          if (gErr.code !== '42703') throw gErr;
+        }
+        if (!outbidDup.length) {
+          try {
+            await client.query("INSERT INTO notifications (user_id, type, message, auction_id) VALUES ($1,'auction',$2,$3)", [prev.rows[0].user_id, msg, auctionId]);
+          } catch (insErr) {
+            if (insErr.code !== '42703') throw insErr;
+            await client.query("INSERT INTO notifications (user_id, type, message) VALUES ($1,'auction',$2)", [prev.rows[0].user_id, msg]);
+          }
+        }
+      }
     }
 
     await client.query('COMMIT');

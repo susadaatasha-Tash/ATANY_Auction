@@ -2,20 +2,52 @@
 // Shop owner runs their own auctions: create (item + auction together), and edit/cancel while scheduled with no bids.
 // GET/POST/PUT/DELETE /shop-owner/auctions — admin only monitors these (view-only on their side).
 import { useState, useEffect, useMemo } from 'react';
-import { formatCountdown, useAuctionCountdown } from '../../../shared/hooks/useAuctionCountdown';
+import { formatCountdown } from '../../../shared/hooks/useAuctionCountdown';
 import { apiFetch } from '../../../shared/lib/apiClient';
 import { useToast } from '../../../shared/components/Toast';
 import { CreateAuctionModal } from '../components/CreateAuctionModal';
 
 function peso(n) { return '₱' + Number(n).toLocaleString(); }
 function statusLabel(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
-function LiveEnds({ sec, status }) {
-  const liveSec = useAuctionCountdown(sec);
-  const text = status === 'scheduled' ? `Starts in ${formatCountdown(liveSec)}` : status === 'ended' ? 'Ended' : formatCountdown(liveSec);
-  return <span>{text}</span>;
+function effectiveStatus(startTime, endTime) {
+  const now = new Date();
+  const s = new Date(startTime);
+  const e = new Date(endTime);
+  if (isNaN(s.getTime()) || isNaN(e.getTime())) return 'scheduled';
+  if (now < s) return 'scheduled';
+  if (now >= e) return 'ended';
+  return 'live';
+}
+function LiveEnds({ auction }) {
+  const [nowTick, setNowTick] = useState(() => Date.now());
+  useEffect(() => { const id = setInterval(() => setNowTick(Date.now()), 1000); return () => clearInterval(id); }, []);
+  const startRaw = auction.startTime ?? auction.start_time;
+  const endRaw = auction.endTime ?? auction.end_time;
+  const hasTimes = !!(startRaw && endRaw && !isNaN(new Date(startRaw).getTime()) && !isNaN(new Date(endRaw).getTime()));
+  const computedStatus = hasTimes ? effectiveStatus(startRaw, endRaw) : (auction.status || 'scheduled');
+  const countdownSec = (() => {
+    if (!hasTimes) {
+      if (computedStatus === 'ended') return 0;
+      if (computedStatus === 'live') return auction.endsInSec ?? 0;
+      return auction.startsInSec ?? auction.endsInSec ?? 0;
+    }
+    const now = new Date(nowTick);
+    if (computedStatus === 'ended') return 0;
+    if (computedStatus === 'live') return Math.max(0, Math.floor((new Date(endRaw) - now) / 1000));
+    return Math.max(0, Math.floor((new Date(startRaw) - now) / 1000));
+  })();
+  if (computedStatus === 'ended') return <span>Ended</span>;
+  if (computedStatus === 'scheduled') return <span>Starts in {formatCountdown(countdownSec)}</span>;
+  return <span>Ends in {formatCountdown(countdownSec)}</span>;
 }
 // Owner can edit/cancel only before the auction starts and before any bids (fair to bidders).
-function isEditable(a) { return a.status === 'scheduled' && (a.bids ?? 0) === 0; }
+function isEditable(a) {
+  const startRaw = a.startTime ?? a.start_time;
+  const endRaw = a.endTime ?? a.end_time;
+  const hasTimes = !!(startRaw && endRaw && !isNaN(new Date(startRaw).getTime()) && !isNaN(new Date(endRaw).getTime()));
+  const st = hasTimes ? effectiveStatus(startRaw, endRaw) : a.status;
+  return st === 'scheduled' && (a.bids ?? 0) === 0;
+}
 
 export default function MyAuctions() {
   const [auctions, setAuctions] = useState([]);
@@ -88,25 +120,33 @@ export default function MyAuctions() {
       </div>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Item</th><th>Starting Price</th><th>Current Bid</th><th>Bids</th><th>Ends</th><th>Status</th><th /></tr></thead>
-          <tbody>{filtered.length ? filtered.map((a) => (
-              <tr key={a.id}>
-                <td><div className="cell-main">{a.item || a.name}</div><div className="cell-sub">{a.auction_code || a.id.slice(0,8)}</div></td>
-                <td>{peso(a.startPrice ?? a.start_price)}</td>
-                <td className="cell-main">{peso(a.currentBid ?? a.current_bid)}</td>
-                <td>{a.bids ?? 0}</td>
-                <td><LiveEnds sec={a.endsInSec} status={a.status} /></td>
-                <td><span className={`badge ${a.status}`}>{statusLabel(a.status)}</span></td>
-                <td>
-                  {isEditable(a) ? (
-                    <div className="row-actions">
-                      <button className="btn-ghost" onClick={() => { setEditing(a); setOpen(true); }}>Edit</button>
-                      <button className="btn-danger-ghost" onClick={() => handleCancel(a)}>Cancel</button>
-                    </div>
-                  ) : <span className="cell-sub">—</span>}
-                </td>
-              </tr>
-            )) : <tr><td colSpan={7}><div className="empty-state"><p>No auctions match your filters.</p></div></td></tr>}</tbody>
+          <thead><tr><th>Item</th><th>Starting Price</th><th>Current Bid</th><th>Bids</th><th>Time</th><th>Status</th><th /></tr></thead>
+          <tbody>{filtered.length ? filtered.map((a) => {
+              const st = (() => {
+                const sRaw = a.startTime ?? a.start_time;
+                const eRaw = a.endTime ?? a.end_time;
+                if (sRaw && eRaw && !isNaN(new Date(sRaw).getTime()) && !isNaN(new Date(eRaw).getTime())) return effectiveStatus(sRaw, eRaw);
+                return a.status;
+              })();
+              return (
+                <tr key={a.id}>
+                  <td><div className="cell-main">{a.item || a.name}</div><div className="cell-sub">{a.auction_code || a.id.slice(0,8)}</div></td>
+                  <td>{peso(a.startPrice ?? a.start_price)}</td>
+                  <td className="cell-main">{peso(a.currentBid ?? a.current_bid)}</td>
+                  <td>{a.bids ?? 0}</td>
+                  <td><LiveEnds auction={a} /></td>
+                  <td><span className={`badge ${st}`}>{statusLabel(st)}</span></td>
+                  <td>
+                    {isEditable(a) ? (
+                      <div className="row-actions">
+                        <button className="btn-ghost" onClick={() => { setEditing(a); setOpen(true); }}>Edit</button>
+                        <button className="btn-danger-ghost" onClick={() => handleCancel(a)}>Cancel</button>
+                      </div>
+                    ) : <span className="cell-sub">—</span>}
+                  </td>
+                </tr>
+              );
+            }) : <tr><td colSpan={7}><div className="empty-state"><p>No auctions match your filters.</p></div></td></tr>}</tbody>
         </table>
       </div>
       <div className="pager"><span>{filtered.length} auction{filtered.length===1?'':'s'}</span></div>

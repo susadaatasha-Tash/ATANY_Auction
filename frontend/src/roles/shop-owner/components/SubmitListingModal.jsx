@@ -58,8 +58,11 @@ export function SubmitListingModal({ open, onClose, onSubmit, initial, mode }) {
         if (!imageUrl) imageUrl = 'https://images.unsplash.com/photo-1617038220319-276d3cfab638?auto=format&fit=crop&w=400&q=70';
       }
     }
-    const startTime = fd.get('auction_start_time') || startVal || null;
-    const endTime = fd.get('auction_end_time') || endVal || null;
+    let startTime = fd.get('auction_start_time') || startVal || null;
+    let endTime = fd.get('auction_end_time') || endVal || null;
+    // Convert datetime-local (local time, no TZ) to UTC ISO for consistent DB storage — seller's local 12:50 PHT => 04:50Z
+    try { if (startTime) startTime = new Date(startTime).toISOString(); } catch {}
+    try { if (endTime) endTime = new Date(endTime).toISOString(); } catch {}
     // Duration is derived from Start/End, not independently edited — prevents conflict where stale "7 days" mismatches actual gap
     const duration = String(durationDays);
     onSubmit({ name: fd.get('name'), category: fd.get('category'), karat: fd.get('karat'), price: Number(fd.get('price')), desc: fd.get('desc'), image_url: imageUrl, auction_start_time: startTime || undefined, auction_end_time: endTime || undefined, duration_days: duration || undefined, proposed_start_time: startTime || undefined, proposed_end_time: endTime || undefined, proposed_duration_days: duration || undefined });

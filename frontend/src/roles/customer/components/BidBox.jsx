@@ -1,14 +1,16 @@
 // frontend/src/roles/customer/components/BidBox.jsx
-// Reusable bid input — used inside AuctionCard and DetailModal
-export function BidBox({ minBid, onBid }) {
-  const handle = () => {
-    const val = Number(document.getElementById('detailBidInput')?.value);
-    onBid(val);
-  };
+// Reusable bid input — now delegates to BidStepper (kept for backward compat)
+import { BidStepper } from './BidStepper';
+
+export function BidBox({ minBid, currentBid, startPrice, onBid }) {
+  // Prefer explicit currentBid/startPrice over legacy minBid
+  const baseBid = currentBid ?? (minBid != null ? minBid - 1000 : undefined) ?? startPrice;
   return (
-    <div className="detail-bidbox">
-      <input type="number" id="detailBidInput" placeholder={`₱${minBid.toLocaleString()}+`} />
-      <button className="btn btn-primary" onClick={handle}>Place Bid</button>
-    </div>
+    <BidStepper
+      currentBid={baseBid}
+      startPrice={startPrice}
+      onPlaceBid={onBid}
+      size="large"
+    />
   );
 }

@@ -11,9 +11,9 @@ import SecurityAlerts from './pages/SecurityAlerts';
 import AdminBranches from './pages/Branches';
 import SellerApplications from './pages/SellerApplications';
 import AuditLogs from './pages/AuditLogs';
-import Notifications from './pages/Notifications';
 import ChatbotLogs from './pages/ChatbotLogs';
 import AdminBilling from './pages/Billing';
+import Notifications from './pages/Notifications';
 
 export const adminRoutes = [
   { path: '', element: <Dashboard /> },
@@ -29,6 +29,6 @@ export const adminRoutes = [
   { path: 'security', element: <SecurityAlerts /> },
   { path: 'branches', element: <AdminBranches /> },
   { path: 'audit-logs', element: <AuditLogs /> },
-  { path: 'notifications', element: <Notifications /> },
   { path: 'chatbot', element: <ChatbotLogs /> },
+  { path: 'notifications', element: <Notifications /> },
 ];

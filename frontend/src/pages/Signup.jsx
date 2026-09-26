@@ -4,6 +4,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import { supabase } from '../shared/lib/supabaseClient';
 import { useToast } from '../shared/components/Toast';
 import { AssistantWidget } from '../shared/components/AssistantWidget';
+import TermsPolicyModal from '../components/TermsPolicyModal';
+import loginBg from '../assests/Login_bg.jpg';
 
 export default function Signup() {
   const [firstName, setFirstName] = useState('');
@@ -14,12 +16,19 @@ export default function Signup() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [role, setRole] = useState('customer');
+  const role = 'customer';
+  const [termsModalOpen, setTermsModalOpen] = useState(false);
+  const [termsAgreed, setTermsAgreed] = useState(false);
+  const [modalAgreementChecked, setModalAgreementChecked] = useState(false);
   const showToast = useToast();
   const navigate = useNavigate();
 
   const handle = async (e) => {
     e.preventDefault();
+    if (!termsAgreed) {
+      showToast('Please agree to the Terms & Policy to create an account.');
+      return;
+    }
     const firstTrim = firstName.trim();
     const lastTrim = lastName.trim();
     if (!firstTrim || !lastTrim) {
@@ -115,24 +124,13 @@ export default function Signup() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--cream)' }}>
-      <div style={{ padding: 26, textAlign: 'center', borderBottom: '1px solid var(--line)', background: 'rgba(255,255,252,.9)' }}>
-        <Link to="/" style={{ fontSize: 24, fontWeight: 800, color: 'var(--navy)' }}>ATANY</Link>
-      </div>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundImage: `url(${loginBg})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }}>
       <main style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 20px' }}>
-        <div style={{ width: 'min(480px,100%)', background: 'var(--ivory)', border: '1px solid var(--line)', borderRadius: 14, padding: '36px 32px', boxShadow: 'var(--shadow)' }}>
-          <div style={{ color: 'var(--gold)', fontSize: 11, fontWeight: 700, letterSpacing: '.12em', marginBottom: 10 }}>JOIN ATANY</div>
-          <h1 style={{ fontSize: 30, color: 'var(--navy)', marginBottom: 6 }}>Create Account</h1>
-          <p style={{ color: 'var(--muted)', fontSize: 12.5, marginBottom: 26 }}>Start discovering timeless pieces worth bidding for.</p>
+        <div style={{ width: 'min(480px,100%)', background: 'var(--ivory)', border: '1px solid #C89B3C', borderRadius: 4, padding: '36px 32px', boxShadow: '0 0 20px rgba(200, 155, 60, 0.30), 0 8px 35px rgba(200, 155, 60, 0.24), 0 2px 10px rgba(200, 155, 60, 0.18)' }}>
+          <div style={{ color: 'var(--gold)', fontSize: 11, fontWeight: 700, letterSpacing: '.12em', marginBottom: 10, textAlign: 'center' }}>JOIN ATANY</div>
+          <h1 style={{ fontSize: 30, color: 'var(--navy)', marginBottom: 6, textAlign: 'center' }}>Create Account</h1>
+          <p style={{ color: 'var(--muted)', fontSize: 12.5, marginBottom: 26, textAlign: 'center' }}>Start discovering timeless pieces worth bidding for.</p>
           <form onSubmit={handle}>
-            <div className="form-row" style={{ marginBottom: 14 }}>
-              <label style={labelStyle}>I'm signing up as</label>
-              <select value={role} onChange={(e) => setRole(e.target.value)} style={{ ...inputStyle, height: 46 }}>
-                <option value="customer">Customer — browse & bid on jewelry</option>
-                <option value="shop_owner">Shop Owner — list jewelry for auction</option>
-              </select>
-            </div>
-
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
               <div>
                 <label style={labelStyle}>First Name</label>
@@ -192,12 +190,63 @@ export default function Signup() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', gap: 8, marginBottom: 20, fontSize: 11.5, color: 'var(--muted)' }}><input type="checkbox" required /><span>I agree to the Terms & Privacy Policy.</span></div>
-            <button type="submit" className="btn btn-primary" style={{ width: '100%', minHeight: 46 }}>Create Account</button>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 20, fontSize: 11.5, color: 'var(--muted)' }}>
+              <input
+                type="checkbox"
+                checked={termsAgreed}
+                onChange={() => {}}
+                onClick={() => {
+                  if (termsAgreed) {
+                    setTermsAgreed(false);
+                  } else {
+                    setModalAgreementChecked(false);
+                    setTermsModalOpen(true);
+                  }
+                }}
+                readOnly
+                style={{ cursor: 'pointer' }}
+              />
+              <span
+                onClick={() => {
+                  if (termsAgreed) {
+                    setTermsAgreed(false);
+                  } else {
+                    setModalAgreementChecked(false);
+                    setTermsModalOpen(true);
+                  }
+                }}
+                style={{ cursor: 'pointer' }}
+              >
+                I agree to the Terms & Privacy Policy.
+              </span>
+            </div>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={!termsAgreed}
+              style={{ width: '100%', minHeight: 46, justifyContent: 'center', textAlign: 'center', opacity: termsAgreed ? 1 : 0.6, cursor: termsAgreed ? 'pointer' : 'not-allowed' }}
+            >
+              Create Account
+            </button>
           </form>
           <p style={{ textAlign: 'center', marginTop: 22, fontSize: 12, color: 'var(--muted)' }}>Already have an account? <Link to="/login" style={{ color: 'var(--navy)', fontWeight: 700 }}>Sign in</Link></p>
         </div>
       </main>
+      <TermsPolicyModal
+        open={termsModalOpen}
+        onClose={() => {
+          setTermsModalOpen(false);
+          setModalAgreementChecked(false);
+        }}
+        agreed={modalAgreementChecked}
+        setAgreed={setModalAgreementChecked}
+        onAgree={() => {
+          if (!modalAgreementChecked) return;
+          setTermsAgreed(true);
+          setTermsModalOpen(false);
+          setModalAgreementChecked(false);
+        }}
+      />
       <AssistantWidget mode="customer" />
     </div>
   );

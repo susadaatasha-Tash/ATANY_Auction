@@ -104,7 +104,16 @@ export const updateOrderStatus = async (req, res) => {
       const msgMap = { preparing: 'Your jewelry is being prepared.', ready_pickup: 'Your jewelry is ready for pickup — bring valid ID + order number.', completed: 'Enjoy your new piece! Picked up confirmed.' };
       if (msgMap[status]) {
         const { rows: o } = await pool.query('SELECT buyer_id FROM orders WHERE id=$1', [req.params.id]);
-        if (o[0]?.buyer_id) await pool.query(`INSERT INTO notifications (user_id, type, message) VALUES ($1,'payout',$2)`, [o[0].buyer_id, msgMap[status]]);
+        // Duplicate guard mirrors shop-owner sales fulfillment: same buyer + same
+        // transition message within 1 hour is a retry, while each distinct transition
+        // (preparing → ready → completed) has its own message and still notifies.
+        if (o[0]?.buyer_id) {
+          const { rows: dup } = await pool.query(
+            `SELECT id FROM notifications WHERE user_id=$1 AND message=$2 AND created_at > NOW() - INTERVAL '1 hour' LIMIT 1`,
+            [o[0].buyer_id, msgMap[status]]
+          );
+          if (!dup.length) await pool.query(`INSERT INTO notifications (user_id, type, message) VALUES ($1,'payout',$2)`, [o[0].buyer_id, msgMap[status]]);
+        }
       }
     } catch {}
     res.json(rows[0]);

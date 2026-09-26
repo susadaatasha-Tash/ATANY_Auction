@@ -50,6 +50,7 @@ export default function BranchLocator({ branches: propBranches }) {
   const handleMapBranchSelect = useCallback((branchId) => {
     setSelectedBranchId(branchId);
   }, []);
+  const handleMapReady = useCallback(() => setMapReady(true), []);
 
   const list = branches
     .filter((b) => (b.name || '').toLowerCase().includes(q.toLowerCase()) || (b.address || '').toLowerCase().includes(q.toLowerCase()))
@@ -142,13 +143,8 @@ export default function BranchLocator({ branches: propBranches }) {
                 userLocation={userLoc}
                 selectedBranchId={selectedBranchId}
                 onSelectBranch={handleMapBranchSelect}
-                initialCenter={selectedBranchId
-                  ? branches.find((b) => b.id === selectedBranchId)
-                    ? [branches.find((b) => b.id === selectedBranchId).lat, branches.find((b) => b.id === selectedBranchId).lng]
-                    : DAVAO_CENTER
-                  : DAVAO_CENTER
-                }
-                onMapReady={() => setMapReady(true)}
+                initialCenter={DAVAO_CENTER}
+                onMapReady={handleMapReady}
               />
             ) : (
               <div className="map-loading">Loading map…</div>

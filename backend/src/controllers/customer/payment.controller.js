@@ -17,6 +17,16 @@ export const getOrderDetails = async (req, res) => {
     );
     if (!orders.length) return res.status(404).json({ message: 'Order not found' });
     const order = orders[0];
+    // Calculate 7-day payment deadline from winner_confirmed_at or created_at (backend source of truth)
+    const winnerConfirmedAt = order.winner_confirmed_at || order.created_at;
+    const paymentDeadline = order.payment_deadline || (winnerConfirmedAt ? new Date(new Date(winnerConfirmedAt).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString() : null);
+    order.winner_confirmed_at = winnerConfirmedAt;
+    order.payment_deadline = paymentDeadline;
+    // Check if deadline has passed and payment not paid (for display, actual expiration is handled by cron)
+    const isExpired = paymentDeadline && new Date() > new Date(paymentDeadline) && order.status === 'pending';
+    if (isExpired) {
+      order.is_expired = true;
+    }
     // latest payment for this order
     const { rows: payments } = await pool.query(
       `SELECT * FROM payments WHERE order_id = $1 ORDER BY created_at DESC LIMIT 1`,
@@ -32,7 +42,13 @@ export const getOrderDetails = async (req, res) => {
         if (status === 'paid' && payment.status !== 'paid') {
           await pool.query(`UPDATE payments SET status='paid', paid_at=now(), updated_at=now(), metadata=$1 WHERE id=$2`, [JSON.stringify({ checkout_sync: true, raw: checkout?.data?.attributes || checkout }), payment.id]);
           try {
-            await pool.query(`INSERT INTO notifications (user_id, type, message) VALUES ($1,'payout',$2)`, [payment.customer_id, `Payment confirmed for order ${payment.order_id} — we are preparing your jewelry.`]);
+            const msg = `Payment confirmed for order ${payment.order_id} — we are preparing your jewelry.`;
+            try {
+              await pool.query(`INSERT INTO notifications (user_id, type, message, auction_id) VALUES ($1,'payout',$2,$3)`, [payment.customer_id, msg, order.auction_id || null]);
+            } catch (insErr) {
+              if (insErr.code !== '42703') throw insErr;
+              await pool.query(`INSERT INTO notifications (user_id, type, message) VALUES ($1,'payout',$2)`, [payment.customer_id, msg]);
+            }
           } catch {}
           const { rows: upd } = await pool.query(`SELECT * FROM payments WHERE id=$1`, [payment.id]);
           payment = upd[0] || payment;
@@ -41,6 +57,25 @@ export const getOrderDetails = async (req, res) => {
           await pool.query(`UPDATE payments SET status=$1, updated_at=now(), metadata=$2 WHERE id=$3`, [status, JSON.stringify({ checkout_sync: true, raw: checkout?.data?.attributes || checkout }), payment.id]);
           const { rows: upd } = await pool.query(`SELECT * FROM payments WHERE id=$1`, [payment.id]);
           payment = upd[0] || payment;
+          // Definitive failure only (not mere checkout-session expiry): notify once per event.
+          // Same message shape as the webhook path so the 1-hour guard dedups across both paths.
+          if (status === 'failed') {
+            try {
+              const failMsg = `Payment for order ${order.transaction_code || orderId} was unsuccessful. Please try again before your payment deadline.`;
+              const { rows: dup } = await pool.query(
+                `SELECT id FROM notifications WHERE user_id=$1 AND message=$2 AND created_at > NOW() - INTERVAL '1 hour' LIMIT 1`,
+                [payment.customer_id, failMsg]
+              );
+              if (!dup.length) {
+                try {
+                  await pool.query(`INSERT INTO notifications (user_id, type, message, auction_id) VALUES ($1,'payout',$2,$3)`, [payment.customer_id, failMsg, order.auction_id || null]);
+                } catch (insErr) {
+                  if (insErr.code !== '42703') throw insErr;
+                  await pool.query(`INSERT INTO notifications (user_id, type, message) VALUES ($1,'payout',$2)`, [payment.customer_id, failMsg]);
+                }
+              }
+            } catch {}
+          }
         }
       } catch (e) {
         console.warn(`[payment-sync] Unable to verify checkout session ${payment.checkout_session_id}: ${e.message}`);

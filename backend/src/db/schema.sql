@@ -102,7 +102,8 @@ CREATE TABLE notifications (
   type TEXT NOT NULL,
   message TEXT NOT NULL,
   read BOOLEAN DEFAULT false,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  auction_id UUID REFERENCES auctions(id) ON DELETE SET NULL
 );
 
 -- RLS (spec 5.4) — customers see own rows, shop owners see own shop's rows, admin bypasses via service_role

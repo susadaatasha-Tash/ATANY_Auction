@@ -1,17 +1,20 @@
 // frontend/src/roles/customer/pages/LiveAuctions.jsx
 // Branch-aware per spec: auctions → products → shops → branches (home_branch_id). No branch_id on auctions.
 // Frontend filter dropdown populated from GET /branches (Open only). Selecting re-queries with ?branch_id=.
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { AuctionCard } from '../components/AuctionCard';
 import { DetailModal } from '../components/DetailModal';
 import { apiFetch } from '../../../shared/lib/apiClient';
+import { supabase } from '../../../shared/lib/supabaseClient';
+import { useAuth } from '../../../shared/hooks/useAuth';
 import { useBranch } from '../../../shared/hooks/useBranch';
 import { useFavorites } from '../hooks/useFavorites';
 import { useReminders } from '../hooks/useReminders';
 import { useToast } from '../../../shared/components/Toast';
 
 export default function LiveAuctions({ auctions: propAuctions }) {
+  const { user } = useAuth();
   const { branchId: contextBranchId } = useBranch();
   const [searchParams, setSearchParams] = useSearchParams();
   const [q, setQ] = useState('');
@@ -52,6 +55,12 @@ export default function LiveAuctions({ auctions: propAuctions }) {
     return name.includes(q.toLowerCase()) && (!statusFilter || a.status === statusFilter) && (!branchFilter || String(a.branch_id) === String(branchFilter)) && (!categoryFilter || a.category === categoryFilter);
   }), [auctions, q, statusFilter, branchFilter, categoryFilter]);
   const [detailAuction, setDetailAuction] = useState(null);
+  const handleCloseDetail = (e) => {
+    e?.preventDefault?.();
+    e?.stopPropagation?.();
+    setDetailId(null);
+    setDetailAuction(null);
+  };
   useEffect(() => {
     if (!detailId) { setDetailAuction(null); return; }
     const base = auctions.find((a) => a.id === detailId);
@@ -89,12 +98,69 @@ export default function LiveAuctions({ auctions: propAuctions }) {
       setBranchFilter(contextBranchId);
     }
   }, [contextBranchId]);
-  // Real mode: always fetch from backend (no mock fallback)
-  useEffect(() => {
+  const fetchAuctions = useCallback(async () => {
     const qs = branchFilter ? `?branch_id=${branchFilter}` : '';
     const path = statusFilter ? `/customer/auctions?status=${statusFilter}${branchFilter ? `&branch_id=${branchFilter}` : ''}` : `/customer/auctions${qs}`;
-    apiFetch(path).then(setAuctions).catch(() => apiFetch(`/api/auctions/live${qs}`).then(setAuctions).catch(() => setAuctions([])));
-  }, [statusFilter, branchFilter]);
+    console.log('[LiveAuctions] fetchAuctions called', { branchFilter, statusFilter, path });
+    try {
+      const rows = await apiFetch(path);
+      console.log('[LiveAuctions] fetchAuctions success', rows.length, 'auctions');
+      setAuctions(rows);
+    } catch (e) {
+      console.log('[LiveAuctions] fetchAuctions failed, trying fallback', e.message);
+      try {
+        const rows = await apiFetch(`/api/auctions/live${qs}`);
+        console.log('[LiveAuctions] fallback success', rows.length);
+        setAuctions(rows);
+      } catch (e2) {
+        console.log('[LiveAuctions] fallback failed', e2.message);
+        setAuctions([]);
+      }
+    }
+  }, [branchFilter, statusFilter]);
+
+  // Real mode: always fetch from backend (no mock fallback)
+  useEffect(() => {
+    console.log('[LiveAuctions] initial fetch', { branchFilter, statusFilter });
+    fetchAuctions();
+  }, [fetchAuctions]);
+
+  // Realtime: new auction INSERT -> refresh list without page reload (reuses existing fetch)
+  useEffect(() => {
+    const channelName = `customer-auctions-${user?.id || 'anon'}`;
+    console.log('[LiveAuctions Realtime] Creating subscription...', channelName, 'userId', user?.id, 'branchFilter', branchFilter, 'statusFilter', statusFilter);
+    const channel = supabase.channel(channelName);
+    console.log('[LiveAuctions Realtime] Channel created', channelName);
+    channel.on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'auctions' }, (payload) => {
+      console.log('[LiveAuctions Realtime] INSERT received', JSON.stringify({ eventType: payload.eventType, new: payload.new, table: payload.table }));
+      console.log('[LiveAuctions Realtime] INSERT payload new.id', payload.new?.id, 'status', payload.new?.status, 'start_time', payload.new?.start_time, 'branch via product?', payload.new?.product_id);
+      // Check if INSERT should be visible given current filters
+      const newStatus = payload.new?.status;
+      const newBranch = payload.new?.branch_id || 'unknown (need product→shop→branch lookup)';
+      if (statusFilter && newStatus && newStatus !== statusFilter) {
+        console.log('[LiveAuctions] INSERT received but filtered out - status mismatch', { newStatus, statusFilter });
+      }
+      if (branchFilter) {
+        console.log('[LiveAuctions] INSERT received - branch filter active, will refetch and filter via backend', { branchFilter, newBranch });
+      }
+      console.log('[LiveAuctions] Fetching auctions after realtime INSERT');
+      fetchAuctions();
+    }).on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'auctions' }, (payload) => {
+      console.log('[LiveAuctions Realtime] UPDATE received', JSON.stringify({ eventType: payload.eventType, new: payload.new, old: payload.old }));
+      console.log('[LiveAuctions Realtime] UPDATE payload new.id', payload.new?.id, 'status', payload.new?.status, 'old status', payload.old?.status);
+      fetchAuctions();
+    }).subscribe((status, err) => {
+      console.log('[LiveAuctions Realtime] Subscription status:', status, 'channel', channelName, err || '');
+      if (status === 'SUBSCRIBED') console.log('[LiveAuctions Realtime] SUBSCRIBED', channelName, 'userId', user?.id);
+      if (status === 'CHANNEL_ERROR') console.warn('[LiveAuctions Realtime] CHANNEL_ERROR', channelName, err);
+      if (status === 'TIMED_OUT') console.warn('[LiveAuctions Realtime] TIMED_OUT', channelName);
+      if (status === 'CLOSED') console.log('[LiveAuctions Realtime] CLOSED', channelName);
+    });
+    return () => {
+      console.log('[LiveAuctions Realtime] Cleaning up', channelName);
+      try { supabase.removeChannel(channel); } catch {}
+    };
+  }, [fetchAuctions, user?.id]);
 
   return (
     <div className="panel">
@@ -117,7 +183,7 @@ export default function LiveAuctions({ auctions: propAuctions }) {
           return <AuctionCard key={a.id} auction={a} isFavorited={isFavorited} isNotifying={isNotifying} onOpenDetail={setDetailId} onToggleFavorite={onToggleFavorite} onToggleNotify={onToggleNotify} onPlaceBid={handlePlaceBid} />;
         }) : <div className="empty-state" style={{ gridColumn: '1/-1' }}><p>No auctions match your search.</p></div>}
       </div>
-      {detailAuction && <DetailModal auction={detailAuction} isFavorited={favorites.some((w) => w.product_id === (detailAuction.productId || detailAuction.product_id))} isNotifying={reminders.some((r) => r.auction_id === detailAuction.id)} onClose={() => setDetailId(null)} onToggleFavorite={onToggleFavorite} onToggleNotify={onToggleNotify} onPlaceBid={handlePlaceBid} />}
+      {detailAuction && <DetailModal auction={detailAuction} isFavorited={favorites.some((w) => w.product_id === (detailAuction.productId || detailAuction.product_id))} isNotifying={reminders.some((r) => r.auction_id === detailAuction.id)} onClose={handleCloseDetail} onToggleFavorite={onToggleFavorite} onToggleNotify={onToggleNotify} onPlaceBid={handlePlaceBid} />}
     </div>
   );
 }

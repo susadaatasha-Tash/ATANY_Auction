@@ -64,16 +64,39 @@ export const createAuction = async (req, res) => {
         const branchRow = await pool.query('SELECT name FROM branches WHERE id = $1', [branchId]);
         const branchName = branchRow.rows[0]?.name || 'Branch';
         const notifMsg = `New Auction at ${branchName}\n\nA new ${name || 'jewelry'} auction has started.\nStarting price: ₱${startBid.toLocaleString()}.\n\nView Auction`;
-        // Notify customers whose preferred branch matches
+        // Notify customers whose preferred branch matches.
+        // Duplicate guard is keyed to this auction (auction_id + broadcast prefix) so
+        // reprocessing the same auction never duplicates, while different auctions pass.
+        // Message wording unchanged.
         const customers = await pool.query(
           'SELECT id FROM users WHERE preferred_branch_id = $1 AND role = $2',
           [branchId, 'customer']
         );
         for (const cust of customers.rows) {
-          await pool.query(
-            'INSERT INTO notifications (user_id, type, message) VALUES ($1, $2, $3)',
-            [cust.id, 'auction', notifMsg]
-          );
+          let dupB = [];
+          try {
+            const { rows } = await pool.query(
+              `SELECT id FROM notifications WHERE user_id=$1 AND auction_id=$2 AND message LIKE $3 LIMIT 1`,
+              [cust.id, auc[0].id, 'New Auction at%']
+            );
+            dupB = rows;
+          } catch (gErr) {
+            // notifications.auction_id column absent: fall back to legacy unguarded insert
+            if (gErr.code !== '42703') throw gErr;
+          }
+          if (dupB.length) continue;
+          try {
+            await pool.query(
+              'INSERT INTO notifications (user_id, type, message, auction_id) VALUES ($1, $2, $3, $4)',
+              [cust.id, 'auction', notifMsg, auc[0].id]
+            );
+          } catch (insErr) {
+            if (insErr.code !== '42703') throw insErr;
+            await pool.query(
+              'INSERT INTO notifications (user_id, type, message) VALUES ($1, $2, $3)',
+              [cust.id, 'auction', notifMsg]
+            );
+          }
         }
         // Other-branch live auction notification: notify customers with different preferred branch (popup)
         if (status === 'live') {
@@ -83,10 +106,29 @@ export const createAuction = async (req, res) => {
             [branchId, 'customer']
           );
           for (const cust of otherCustomers.rows) {
-            await pool.query(
-              'INSERT INTO notifications (user_id, type, message) VALUES ($1, $2, $3)',
-              [cust.id, 'auction', otherNotifMsg]
-            );
+            let dupOB = [];
+            try {
+              const { rows } = await pool.query(
+                `SELECT id FROM notifications WHERE user_id=$1 AND auction_id=$2 AND message LIKE $3 LIMIT 1`,
+                [cust.id, auc[0].id, 'New Live Auction at%']
+              );
+              dupOB = rows;
+            } catch (gErr) {
+              if (gErr.code !== '42703') throw gErr;
+            }
+            if (dupOB.length) continue;
+            try {
+              await pool.query(
+                'INSERT INTO notifications (user_id, type, message, auction_id) VALUES ($1, $2, $3, $4)',
+                [cust.id, 'auction', otherNotifMsg, auc[0].id]
+              );
+            } catch (insErr) {
+              if (insErr.code !== '42703') throw insErr;
+              await pool.query(
+                'INSERT INTO notifications (user_id, type, message) VALUES ($1, $2, $3)',
+                [cust.id, 'auction', otherNotifMsg]
+              );
+            }
           }
         }
       }

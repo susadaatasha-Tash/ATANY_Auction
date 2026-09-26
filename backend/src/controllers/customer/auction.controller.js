@@ -46,16 +46,36 @@ export const getAuction = async (req, res) => {
   if (!customerBranch || b.id !== customerBranch) {
     return res.status(404).json({ message: 'Not found' });
   }
-  const { rows: bidCountRows } = await pool.query('SELECT COUNT(*)::int as cnt FROM bids WHERE auction_id=$1', [a.id]);
-  const bids = bidCountRows[0]?.cnt || 0;
-  const { rows: bidderRows } = await pool.query('SELECT b.amount, b.created_at, u.name FROM bids b LEFT JOIN users u ON u.id=b.user_id WHERE b.auction_id=$1 ORDER BY b.amount DESC LIMIT 10', [a.id]);
+  // REST-compatible: avoid COUNT/JOIN which fail under Supabase REST fallback
+  const { rows: bidCountRaw } = await pool.query('SELECT id FROM bids WHERE auction_id=$1', [a.id]);
+  const bids = bidCountRaw.length;
+  const { rows: bidsRaw } = await pool.query('SELECT * FROM bids WHERE auction_id=$1 ORDER BY amount DESC LIMIT 10', [a.id]);
+  const userIds = [...new Set(bidsRaw.map(b => b.user_id).filter(Boolean))];
+  let userMap = {};
+  if (userIds.length) {
+    const { rows: users } = await pool.query(
+      `SELECT id, name FROM users WHERE id IN (${userIds.map((_, i) => `$${i + 1}`).join(',')})`,
+      userIds
+    );
+    userMap = Object.fromEntries(users.map(u => [u.id, u.name]));
+  }
+  const bidderRows = bidsRaw.map(b => ({
+    amount: b.amount,
+    created_at: b.created_at,
+    time: b.created_at,
+    name: userMap[b.user_id] || 'Unknown',
+    user_id: b.user_id,
+    id: b.id,
+  }));
   const computedStatus = effectiveStatus(a.start_time, a.end_time);
-  const endsInSec = Math.max(0, Math.floor((new Date(a.end_time) - new Date()) / 1000));
+  const now = new Date();
+  const startsInSec = Math.max(0, Math.floor((new Date(a.start_time) - now) / 1000));
+  const endsInSec = Math.max(0, Math.floor((new Date(a.end_time) - now) / 1000));
   res.json({
     id: a.id, auction_code: a.auction_code, productId: a.product_id, startPrice: a.start_price, currentBid: a.current_bid,
     bids, status: computedStatus, startTime: a.start_time, endTime: a.end_time,
     name: p.name, img: p.image_url, category: p.category, desc: p.description,
     branch_id: b.id, branch_name: b.name, branch_address: b.address,
-    endsInSec, bidders: bidderRows,
+    startsInSec, endsInSec, bidders: bidderRows,
   });
 };

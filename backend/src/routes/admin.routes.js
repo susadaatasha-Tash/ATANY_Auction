@@ -8,7 +8,7 @@ import { listTransactions, markPaid, updateOrderStatus } from '../controllers/ad
 import { getAnalytics, exportCsv } from '../controllers/admin/analytics.controller.js';
 import { listAlerts, updateAlert } from '../controllers/admin/security.controller.js';
 import { listBranches, createBranch, updateBranch, deleteBranch } from '../controllers/admin/branch.controller.js';
-import { sendNotification, listHistory } from '../controllers/admin/notification.controller.js';
+import { listHistory, markAllRead, markOneRead, deleteNotification } from '../controllers/admin/notification.controller.js';
 import { listChatbotLogs } from '../controllers/admin/chatbot.controller.js';
 
 const router = Router();
@@ -27,8 +27,12 @@ router.get('/analytics', getAnalytics); router.get('/analytics/export', exportCs
 router.get('/security-alerts', listAlerts); router.patch('/security-alerts/:id', updateAlert);
 // Branches — single source of truth spec 4.5
 router.get('/branches', listBranches); router.post('/branches', createBranch); router.put('/branches/:id', updateBranch); router.delete('/branches/:id', deleteBranch);
-// Notifications — spec 4.6
-router.post('/notifications', sendNotification); router.get('/notifications/history', listHistory);
+// Notifications — automatic system-generated only (manual POST removed)
+// Mutations are scoped to the authenticated admin's own rows (see controller).
+router.get('/notifications/history', listHistory);
+router.put('/notifications/read', markAllRead);
+router.put('/notifications/:id/read', markOneRead);
+router.delete('/notifications/:id', deleteNotification);
 // Chatbot logs — spec 4.8
 router.get('/chatbot-logs', listChatbotLogs);
 export default router;

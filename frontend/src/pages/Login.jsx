@@ -7,6 +7,7 @@ import { supabase } from '../shared/lib/supabaseClient';
 import { useAuth } from '../shared/hooks/useAuth';
 import { useToast } from '../shared/components/Toast';
 import { AssistantWidget } from '../shared/components/AssistantWidget';
+import loginBg from '../assests/Login_bg.jpg';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -65,15 +66,12 @@ export default function Login() {
   };
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--cream)' }}>
-      <div style={{ padding: 22, textAlign: 'center', borderBottom: '1px solid var(--line)', background: 'var(--ivory)' }}>
-        <Link to="/" style={{ fontSize: 22, fontWeight: 800, letterSpacing: '.03em', color: 'var(--navy)' }}>ATANY</Link>
-      </div>
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundImage: `url(${loginBg})`, backgroundSize: 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat' }}>
       <main style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 20px' }}>
-        <div style={{ width: 'min(420px,100%)', background: 'var(--ivory)', border: '1px solid var(--line)', borderRadius: 14, padding: '36px 32px', boxShadow: 'var(--shadow)' }}>
-          <div style={{ color: 'var(--gold)', fontSize: 11, fontWeight: 700, letterSpacing: '.12em', marginBottom: 10 }}>WELCOME BACK</div>
-          <h1 style={{ fontSize: 28, color: 'var(--navy)', marginBottom: 6, fontWeight: 800 }}>Sign In</h1>
-          <p style={{ color: 'var(--muted)', fontSize: 12.5, marginBottom: 24 }}>Access your bids, favorites, and purchases.</p>
+        <div style={{ width: 'min(420px,100%)', background: 'white', border: '1px solid #C89B3C', borderRadius: 4, padding: '36px 32px', boxShadow: '0 0 20px rgba(200, 155, 60, 0.30), 0 8px 35px rgba(200, 155, 60, 0.24), 0 2px 10px rgba(200, 155, 60, 0.18)' }}>
+          <div style={{ color: 'var(--gold)', fontSize: 11, fontWeight: 700, letterSpacing: '.12em', marginBottom: 10, textAlign: 'center' }}>WELCOME BACK</div>
+          <h1 style={{ fontSize: 28, color: 'var(--navy)', marginBottom: 6, fontWeight: 800, textAlign: 'center' }}>Sign In</h1>
+          <p style={{ color: 'var(--muted)', fontSize: 12.5, marginBottom: 24, textAlign: 'center' }}>Access your bids, favorites, and purchases.</p>
           <form onSubmit={handle}>
             <div className="form-row"><label>Email Address</label><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" required /></div>
             <div className="form-row"><label>Password</label>
@@ -93,22 +91,8 @@ export default function Login() {
               <label style={{ display: 'flex', gap: 6, color: 'var(--muted)' }}><input type="checkbox" /> Remember me</label>
               <a href="#" onClick={(e) => { e.preventDefault(); showToast('Password reset coming soon.'); }} style={{ color: 'var(--navy)', fontWeight: 700 }}>Forgot password?</a>
             </div>
-            <button type="submit" className="btn btn-primary" disabled={busy} style={{ width: '100%', minHeight: 46 }}>{busy ? 'Signing in…' : 'Sign In'}</button>
+            <button type="submit" className="btn btn-primary" disabled={busy} style={{ width: '100%', minHeight: 46, justifyContent: 'center', textAlign: 'center' }}>{busy ? 'Signing in…' : 'Sign In'}</button>
           </form>
-
-          <div style={{ marginTop: 18, padding: 14, background: 'var(--soft)', borderRadius: 10, fontSize: 11 }}>
-            <div style={{ fontWeight: 700, marginBottom: 8, color: 'var(--navy)' }}>Demo accounts (one-click):</div>
-            {[
-              ['Customer', 'maria.santos@email.com', 'Customer123!'],
-              ['Shop Owner', 'contact@goldenheritage.ph', 'ShopOwner123!'],
-              ['Admin', 'admin@atany.ph', 'Admin123!'],
-            ].map(([label, em, pw]) => (
-              <button key={em} type="button" className="btn btn-outline" style={{ width: '100%', marginTop: 6, justifyContent: 'space-between' }} onClick={() => { setEmail(em); setPassword(pw); }}>
-                <span style={{ fontWeight: 700 }}>{label}</span><span style={{ fontSize: 10, color: 'var(--muted)' }}>{em}</span>
-              </button>
-            ))}
-            <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 8 }}>Real Supabase Auth — these accounts were created via <code>node backend/src/db/seedDemoUsers.js</code></div>
-          </div>
 
           <p style={{ textAlign: 'center', marginTop: 22, fontSize: 12, color: 'var(--muted)' }}>New to ATANY? <Link to="/signup" style={{ color: 'var(--navy)', fontWeight: 700 }}>Create an account</Link></p>
           <Link to="/" style={{ display: 'block', textAlign: 'center', marginTop: 18, fontSize: 11.5, color: 'var(--muted)' }}>&larr; Back to home</Link>

@@ -38,7 +38,7 @@ const titles = {
   '/admin/analytics': ['Reports', 'Sales performance + CSV export.'],
   '/admin/security': ['Security Alerts', 'Suspicious activity flagged for review.'],
   '/admin/audit-logs': ['Audit Logs', 'System action history and records.'],
-  '/admin/notifications': ['Notifications', 'Send and review updates.'],
+  '/admin/notifications': ['Notifications', 'System updates, winners, payouts and applications.'],
   '/admin/chatbot': ['Chatbot Logs', 'Sessions handled by the assistant.'],
   '/admin/branches': ['Branches', 'Manage branches shown on locator.'],
   '/admin/billing': ['Subscriptions', 'Monitor monthly seller subscriptions and payments.'],
@@ -77,7 +77,7 @@ export default function AdminLayout() {
 
   return (
     <div className={`app admin-app${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
-      <Sidebar brand="ATANY" tag="ADMIN" sections={sections} open={open} onClose={() => setOpen(false)} />
+      <Sidebar brand="ATANY" tag="ADMIN" sections={sections} open={open} onClose={() => setOpen(false)} onSignOut={signOut} />
       {open && <div className="sidebar-backdrop" aria-hidden="true" onClick={() => setOpen(false)} />}
       <div className="main">
         <Topbar title={title} subtitle={subtitle} onMenuToggle={() => setOpen((v) => !v)}

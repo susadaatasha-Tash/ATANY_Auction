@@ -119,7 +119,7 @@ export default function ShopDashboard() {
       <div className="two-col">
         <div className="panel">
           <div className="panel-head">
-            <div><h2>Your Auctions Ending Soon</h2><p>High-activity lots requiring attention.</p></div>
+            <div><h2>Your Auctions Ending Soon</h2></div>
             <button className="btn btn-outline" onClick={() => window.location.href = '/shop/auctions'}>View all</button>
           </div>
           <div className="table-wrap">
@@ -141,7 +141,7 @@ export default function ShopDashboard() {
         </div>
 
         <div className="panel">
-          <div className="panel-head"><div><h2>Recent Activity</h2><p>Updates on your shop.</p></div></div>
+          <div className="panel-head"><div><h2>Recent Activity</h2></div></div>
           <div className="activity-list">
             {activityLoading ? (
               <div className="empty-state"><p>Loading recent activity...</p></div>
@@ -167,7 +167,7 @@ export default function ShopDashboard() {
 
       <div className="panel">
         <div className="panel-head">
-          <div><h2>Recent Sales</h2><p>Latest completed orders from your shop.</p></div>
+          <div><h2>Recent Sales</h2></div>
           <button className="btn btn-outline" onClick={() => window.location.href = '/shop/sales'}>View all</button>
         </div>
         <div className="table-wrap">

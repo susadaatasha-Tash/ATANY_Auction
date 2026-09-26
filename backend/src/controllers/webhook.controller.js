@@ -76,11 +76,36 @@ export const paymongoWebhook = async (req, res) => {
       await pool.query(`UPDATE payments SET status='paid', paid_at=now(), updated_at=now(), metadata=$1 WHERE id=$2`, [JSON.stringify({ webhook_type: eventType, raw: attrs }), payment.id]);
       // keep orders.status as pending — fulfillment separate; but ensure notification
       try {
-        await pool.query(`INSERT INTO notifications (user_id, type, message) VALUES ($1,'payout',$2)`, [payment.customer_id, `Payment confirmed for order ${payment.order_id} — we are preparing your jewelry.`]);
+        const { rows: oAuc } = await pool.query(`SELECT auction_id FROM orders WHERE id=$1`, [payment.order_id]);
+        const aucId = oAuc[0]?.auction_id || null;
+        const msg = `Payment confirmed for order ${payment.order_id} — we are preparing your jewelry.`;
+        try {
+          await pool.query(`INSERT INTO notifications (user_id, type, message, auction_id) VALUES ($1,'payout',$2,$3)`, [payment.customer_id, msg, aucId]);
+        } catch (insErr) {
+          if (insErr.code !== '42703') throw insErr;
+          await pool.query(`INSERT INTO notifications (user_id, type, message) VALUES ($1,'payout',$2)`, [payment.customer_id, msg]);
+        }
       } catch {}
       console.log(`[webhook] payment ${payment.id} marked paid for order ${payment.order_id}`);
     } else if (eventType.includes('failed') || attrs?.status === 'failed') {
       await pool.query(`UPDATE payments SET status='failed', updated_at=now(), metadata=$1 WHERE id=$2`, [JSON.stringify({ webhook_type: eventType, raw: attrs }), payment.id]);
+      // Notify the buyer once per failure event (same guard shape as sales fulfillment notices)
+      try {
+        const { rows: oRows } = await pool.query(`SELECT transaction_code, auction_id FROM orders WHERE id=$1`, [payment.order_id]);
+        const failMsg = `Payment for order ${oRows[0]?.transaction_code || payment.order_id} was unsuccessful. Please try again before your payment deadline.`;
+        const { rows: dup } = await pool.query(
+          `SELECT id FROM notifications WHERE user_id=$1 AND message=$2 AND created_at > NOW() - INTERVAL '1 hour' LIMIT 1`,
+          [payment.customer_id, failMsg]
+        );
+        if (!dup.length) {
+          try {
+            await pool.query(`INSERT INTO notifications (user_id, type, message, auction_id) VALUES ($1,'payout',$2,$3)`, [payment.customer_id, failMsg, oRows[0]?.auction_id || null]);
+          } catch (insErr) {
+            if (insErr.code !== '42703') throw insErr;
+            await pool.query(`INSERT INTO notifications (user_id, type, message) VALUES ($1,'payout',$2)`, [payment.customer_id, failMsg]);
+          }
+        }
+      } catch {}
     } else if (eventType.includes('expired') || attrs?.status === 'expired') {
       await pool.query(`UPDATE payments SET status='expired', updated_at=now(), metadata=$1 WHERE id=$2`, [JSON.stringify({ webhook_type: eventType }), payment.id]);
     }

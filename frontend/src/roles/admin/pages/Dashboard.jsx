@@ -86,8 +86,8 @@ export default function AdminDashboard() {
 
       <div className="two-col">
         <div className="panel">
-          <div className="panel-head"><div><h2>Branches</h2><p>All ATANY branches and status.</p></div></div>
-          <div style={{ padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: '16px' }}>
+          <div className="panel-head"><div><h2>Branches</h2></div></div>
+          <div className="explore-branches-grid admin-branches-grid" style={{ padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '16px' }}>
             {(branches || []).slice(0, 4).map(b => (
               <div key={b.id} style={{ background: '#fff', border: '1px solid #EEE8DC', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(22,43,77,0.06)' }}>
                 <div style={{ height: '140px', overflow: 'hidden', background: '#F7F3EA' }}>
@@ -108,7 +108,7 @@ export default function AdminDashboard() {
         </div>
 
         <div className="panel">
-          <div className="panel-head"><div><h2>Recent Activity</h2><p>Signups, orders & seller applications — auto-refreshes every 15s.</p></div></div>
+          <div className="panel-head"><div><h2>Recent Activity</h2></div></div>
           <div className="activity-list">
             {activity.length ? activity.map((a, i) => (
               <div key={i} className="activity-item">
@@ -126,7 +126,7 @@ export default function AdminDashboard() {
       </div>
 
       <div className="panel">
-        <div className="panel-head"><div><h2>Recent Orders</h2><p>Latest payments and pickups across branches.</p></div></div>
+        <div className="panel-head"><div><h2>Recent Orders</h2></div></div>
         <div className="table-wrap">
           <table>
             <thead><tr><th>Transaction ID</th><th>Customer</th><th>Item</th><th>Branch</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>

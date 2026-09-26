@@ -15,6 +15,8 @@ import cron from 'node-cron';
 import { closeExpiredAuctions } from './services/auctionCloser.js';
 import { startScheduledAuctions } from './services/auctionStarter.js';
 import { expireOverdueBillings } from './services/billingExpiration.js';
+import { checkAndExpireWinners } from './services/winnerExpiration.js';
+import { sendPaymentReminders } from './services/paymentReminder.js';
 import { listAuctions as listAuctionsService } from './services/auctionService.js';
 import { createUploadUrl } from './services/storageService.js';
 import { chatbotReply } from './services/chatbotService.js';
@@ -106,6 +108,10 @@ app.post('/admin/products/upload-url', requireAuth, requireRole(['admin']), asyn
 cron.schedule('* * * * *', () => closeExpiredAuctions().catch(console.error));
 // Notify watchers when scheduled auctions go live (start_time reached)
 cron.schedule('* * * * *', () => startScheduledAuctions().catch(console.error));
+// Problem 1: 7-day winner expiration / next-bidder (backend source of truth)
+cron.schedule('* * * * *', () => checkAndExpireWinners().catch(console.error));
+// Problem 4A: payment reminders before the 7-day deadline (3d / 1d / 6h, once per stage)
+cron.schedule('* * * * *', () => sendPaymentReminders().catch(console.error));
 // Billing subscription: mark pending as overdue after due_date (daily 2am)
 cron.schedule('0 2 * * *', () => expireOverdueBillings().catch(console.error));
 

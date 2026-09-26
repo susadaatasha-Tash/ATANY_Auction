@@ -7,6 +7,7 @@ import { Topbar } from '../shared/components/Topbar';
 import { AssistantWidget } from '../shared/components/AssistantWidget';
 import { NotificationBell } from '../shared/components/NotificationBell';
 import OtherBranchLivePopup from '../roles/customer/components/OtherBranchLivePopup';
+import AuctionStartPopup from '../roles/customer/components/AuctionStartPopup';
 import { useAuth } from '../shared/hooks/useAuth';
 import { BranchProvider, useBranch } from '../shared/hooks/useBranch';
 import { Home, Gavel, Tag, Heart, Eye, ShoppingBag, Settings, MapPin } from 'lucide-react';
@@ -22,7 +23,7 @@ const sections = [
     { to: '/customer/branch-locator', name: 'Branch Locator', icon: <MapPin size={16} /> },
   ]},
   { label: 'ORDERS', items: [{ to: '/customer/purchases', name: 'My Purchases', icon: <ShoppingBag size={16} /> }] },
-  { label: 'SETTINGS', items: [{ to: '/customer/account', name: 'Account Settings', icon: <Settings size={16} /> }] },
+  { label: 'SETTINGS', items: [{ to: '/customer/settings', name: 'Settings', icon: <Settings size={16} /> }] },
 ];
 
 const titles = {
@@ -34,7 +35,8 @@ const titles = {
   '/customer/purchases': ['My Purchases', 'Orders, payments, and pickup status.'],
   '/customer/messages': ['Messages', 'Communicate with sellers.'],
   '/customer/notifications': ['Notifications', 'You won! Pickup instructions.'],
-  '/customer/account': ['Account Settings', 'Manage your profile.'],
+  '/customer/account': ['Profile', 'Manage your profile.'],
+  '/customer/settings': ['Settings', 'Manage your preferences and app settings.'],
 };
 
 function BranchSwitcher() {
@@ -43,11 +45,12 @@ function BranchSwitcher() {
   if (!branchId && !preferredBranchId) return null;
   return (
     <button
+      className="topbar-change-btn branch-switcher"
       onClick={() => { window.location.href = '/select-branch'; }}
       style={{
         height: 34,
         padding: '0 12px',
-        borderRadius: 8,
+        borderRadius: 4,
         border: '1px solid var(--line)',
         background: '#fff',
         fontSize: 11.5,
@@ -55,6 +58,7 @@ function BranchSwitcher() {
         color: 'var(--gold)',
         cursor: 'pointer',
         whiteSpace: 'nowrap',
+        flexShrink: 0,
         transition: 'all .18s var(--ease)',
       }}
       title="Change preferred branch"
@@ -91,6 +95,31 @@ function LayoutInner() {
   const [open, setOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { user, signOut, preferredBranchId, loading } = useAuth();
+
+  // Apply saved theme early to avoid flash (customer-only)
+  useEffect(() => {
+    try {
+      const metaTheme = user?.user_metadata?.settings?.theme;
+      const key = user ? `atany_settings_${user.id}` : 'atany_settings_guest';
+      const stored = localStorage.getItem(key);
+      let theme = metaTheme;
+      if (!theme && stored) {
+        try { theme = JSON.parse(stored).theme; } catch {}
+      }
+      if (!theme) {
+        const guestStored = localStorage.getItem('atany_settings_guest');
+        if (guestStored) try { theme = JSON.parse(guestStored).theme; } catch {}
+      }
+      const root = document.querySelector('.customer-app') || document.documentElement;
+      if (theme === 'dark') {
+        root.setAttribute('data-theme', 'dark');
+        document.body.style.background = '#0f172a';
+      } else {
+        root.removeAttribute('data-theme');
+        document.body.style.background = '';
+      }
+    } catch {}
+  }, [user]);
   const { branchId, branchName, branches, loading: branchLoading } = useBranch();
   const { pathname } = useLocation();
   const navigate = useNavigate();
@@ -115,7 +144,7 @@ function LayoutInner() {
 
   return (
     <div className={`app customer-app${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
-      <Sidebar brand="ATANY" tag="JEWELRY AUCTION" sections={sections} open={open} onClose={() => setOpen(false)} />
+      <Sidebar brand="ATANY" tag="JEWELRY AUCTION" sections={sections} open={open} onClose={() => setOpen(false)} onSignOut={signOut} />
       {open && <div className="sidebar-backdrop" aria-hidden="true" onClick={() => setOpen(false)} />}
       <div className="main">
         <Topbar title={title} subtitle={subtitle} onMenuToggle={() => setOpen((v) => !v)}
@@ -127,6 +156,7 @@ function LayoutInner() {
       </div>
       <AssistantWidget mode="customer" userId={user?.id} />
       <OtherBranchLivePopup />
+      <AuctionStartPopup />
     </div>
   );
 }

@@ -41,6 +41,9 @@ function isComplexQuery(sql) {
 
 // Minimal SQL → Supabase REST translation for simple CRUD
 async function restQuery(sql, params) {
+  if (await shouldBlockNotification(sql, params)) {
+    return { rows: [], rowCount: 0 };
+  }
   const upper = sql.trim().toUpperCase();
   const table = extractTable(sql);
   if (!table) throw new Error('REST fallback: cannot parse table from query');
@@ -262,8 +265,68 @@ async function restQuery(sql, params) {
   throw new Error(`REST fallback: unsupported SQL: ${upper.slice(0, 50)}`);
 }
 
+// Helper to check notification preferences before inserting (customer-only)
+async function shouldBlockNotification(sql, params) {
+  const upper = sql.trim().toUpperCase();
+  if (!upper.startsWith('INSERT') || !upper.includes('NOTIFICATIONS')) return false;
+  try {
+    // Extract user_id, type, message from params (assumes order: user_id, type, message)
+    const colsM = sql.match(/INSERT\s+INTO\s+(?:[a-z_]+\.)?[a-z_]+\s*\(([^)]+)\)/i);
+    if (!colsM) return false;
+    const cols = colsM[1].split(',').map(c => c.trim().toLowerCase());
+    const userIdIdx = cols.indexOf('user_id');
+    const typeIdx = cols.indexOf('type');
+    const msgIdx = cols.indexOf('message');
+    if (userIdIdx === -1 || typeIdx === -1 || msgIdx === -1) return false;
+    // Find param indices from VALUES (...$1, $2, $3...)
+    const valsM = sql.match(/VALUES\s*\(([^)]+)\)/i);
+    if (!valsM) return false;
+    const valTokens = valsM[1].split(',').map(s => s.trim());
+    const getParam = (colIdx) => {
+      const tok = valTokens[colIdx];
+      const m = tok && tok.match(/\$(\d+)/);
+      return m ? params[Number(m[1]) - 1] : null;
+    };
+    const userId = getParam(userIdIdx);
+    const type = getParam(typeIdx);
+    const message = getParam(msgIdx);
+    if (!userId || !type) return false;
+    // Use Supabase Admin API to fetch user settings (service role)
+    const supa = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+    const { data, error } = await supa.auth.admin.getUserById(userId);
+    if (error || !data?.user) return false;
+    const settings = data.user.user_metadata?.settings;
+    if (!settings) return false;
+    const msgLower = String(message || '').toLowerCase();
+    let category = null;
+    if (type === 'payout' || msgLower.includes('order') || msgLower.includes('purchase') || msgLower.includes('shipping') || msgLower.includes('payment')) {
+      category = 'order_updates';
+    } else if (msgLower.includes('outbid') || msgLower.includes('win') || (msgLower.includes('bid') && !msgLower.includes('live auction') && !msgLower.includes('new auction'))) {
+      if (msgLower.includes('live auction') || msgLower.includes('ending soon') || msgLower.includes('new auction')) category = 'auction_updates';
+      else category = 'bid_activity';
+    } else if (type === 'auction' && (msgLower.includes('live') || msgLower.includes('ending soon') || msgLower.includes('new auction'))) {
+      category = 'auction_updates';
+    } else if (type === 'promotion' || msgLower.includes('promotion') || msgLower.includes('deal') || msgLower.includes('special')) {
+      category = 'promotions_offers';
+    } else if (type === 'auction') {
+      category = 'auction_updates';
+    }
+    if (!category) return false;
+    if (settings[category] === false) {
+      console.log(`[notifications] Skipped ${type} for ${userId} due to ${category}=OFF`);
+      return true; // block
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 // Expose query() matching pg.Pool.query() signature
 async function query(sql, params = []) {
+  if (await shouldBlockNotification(sql, params)) {
+    return { rows: [], rowCount: 0 };
+  }
   if (directOk) {
     try {
       return await directPool.query(sql, params);
@@ -285,7 +348,15 @@ async function query(sql, params = []) {
 async function connect() {
   if (directOk) {
     try {
-      return await directPool.connect();
+      const client = await directPool.connect();
+      const origQuery = client.query.bind(client);
+      client.query = async (sql, params = []) => {
+        if (await shouldBlockNotification(sql, params)) {
+          return { rows: [], rowCount: 0 };
+        }
+        return origQuery(sql, params);
+      };
+      return client;
     } catch (e) {
       const isConn = ['ENOTFOUND', 'ECONNREFUSED', 'ETIMEDOUT', 'ECONNRESET', 'pool is ended'].some(k => (e.message || '').includes(k));
       if (isConn) directOk = false;

@@ -11,8 +11,17 @@ export async function closeExpiredAuctions() {
     try {
       await client.query('BEGIN');
       await client.query("UPDATE auctions SET status = 'ended' WHERE id = $1", [a.id]);
-      // Winner = highest bid
-      const { rows: top } = await client.query('SELECT user_id, amount FROM bids WHERE auction_id = $1 ORDER BY amount DESC LIMIT 1', [a.id]);
+      // Winner = highest ELIGIBLE bid — same rules as winnerExpiration.js:
+      // exclude flagged bids, dedup per user (keep highest), amount DESC, created_at ASC for ties
+      const { rows: rankedBids } = await client.query(
+        `SELECT user_id, amount, created_at FROM bids WHERE auction_id = $1 AND (flagged = false OR flagged IS NULL) ORDER BY amount DESC, created_at ASC`,
+        [a.id]
+      );
+      const seenBidder = new Map();
+      for (const bid of rankedBids) {
+        if (!seenBidder.has(bid.user_id)) seenBidder.set(bid.user_id, bid);
+      }
+      const top = Array.from(seenBidder.values()).slice(0, 1);
       let winnerId = null;
       let winningAmount = null;
       let orderId = null;
@@ -62,7 +71,7 @@ export async function closeExpiredAuctions() {
       // After commit: notify winner via in-app + email (REST-compatible simple queries)
       if (winnerId) {
         try {
-          const { rows: orderRows } = await pool.query('SELECT amount, transaction_code, buyer_id, auction_id, branch_id FROM orders WHERE id=$1', [orderId]);
+          const { rows: orderRows } = await pool.query('SELECT * FROM orders WHERE id=$1', [orderId]);
           const oRow = orderRows[0];
           const { rows: userRows } = await pool.query('SELECT email, name FROM users WHERE id=$1', [oRow?.buyer_id || winnerId]);
           const { rows: aucRows } = await pool.query('SELECT auction_code, product_id FROM auctions WHERE id=$1', [oRow?.auction_id || a.id]);
@@ -92,11 +101,80 @@ export async function closeExpiredAuctions() {
               [winnerId, `%${d.product_name}%`]
             );
             if (!existingNotif.length) {
-              await pool.query(
-                "INSERT INTO notifications (user_id, type, message) VALUES ($1, 'auction', $2)",
-                [winnerId, `🎉 You won "${d.product_name}" for ₱${Number(d.winning_bid).toLocaleString()}! Transaction ${d.transaction_code} was for auction ${d.auction_code} — Pickup at ${d.branch_name || 'branch'} — bring valid government-issued ID. ${claimDeadlineNote}`]
-              );
+              const { shouldDeliverNotification } = await import('./notificationPreference.js');
+              // Payment deadline = stored payment_deadline, else (winner_confirmed_at || created_at) + 7 days
+              // (same fallback as winnerExpiration + order/payment display controllers)
+              const winnerConfirmedAt = oRow?.winner_confirmed_at || oRow?.created_at;
+              const paymentDeadlineIso = oRow?.payment_deadline || (winnerConfirmedAt ? new Date(new Date(winnerConfirmedAt).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString() : null);
+              const paymentDeadlineStr = paymentDeadlineIso ? new Date(paymentDeadlineIso).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : null;
+              const winMsg = `🎉 You won "${d.product_name}" for ₱${Number(d.winning_bid).toLocaleString()}! Transaction ${d.transaction_code} was for auction ${d.auction_code} — Pickup at ${d.branch_name || 'branch'} — bring valid government-issued ID.${paymentDeadlineStr ? ` Your PAYMENT is due by ${paymentDeadlineStr}. You have 7 days to complete payment.` : ''} ${claimDeadlineNote}`;
+              if (await shouldDeliverNotification(winnerId, 'auction', winMsg)) {
+                // Include auction_id when the column exists (migration 022); fall back without it
+                try {
+                  await pool.query(
+                    "INSERT INTO notifications (user_id, type, message, auction_id) VALUES ($1, 'auction', $2, $3)",
+                    [winnerId, winMsg, oRow?.auction_id || a.id]
+                  );
+                } catch (insErr) {
+                  if (insErr.code !== '42703') throw insErr;
+                  await pool.query(
+                    "INSERT INTO notifications (user_id, type, message) VALUES ($1, 'auction', $2)",
+                    [winnerId, winMsg]
+                  );
+                }
+              }
             }
+            // Problem 4B: seller + admin winner notifications (additive; failures never break winner flow)
+            try {
+              const { rows: prodShopRows } = await pool.query('SELECT shop_id FROM products WHERE id=$1', [aucRows[0]?.product_id]);
+              const shopId = prodShopRows[0]?.shop_id;
+              let sellerId = null;
+              let shopName = null;
+              if (shopId) {
+                const { rows: shopRows } = await pool.query('SELECT user_id, shop_name FROM shops WHERE id=$1', [shopId]);
+                sellerId = shopRows[0]?.user_id || null;
+                shopName = shopRows[0]?.shop_name || null;
+              }
+              const txRef = d.transaction_code || String(orderId).slice(0, 8);
+              const sellerMsg = `🏆 Your auction for "${d.product_name}" has a winner: ${d.user_name || 'A customer'} with a winning bid of ₱${Number(d.winning_bid).toLocaleString()}. Order ${txRef}. Status: Awaiting Payment. The winner has 7 days to complete payment. [Seller Winner Notice ${txRef}]`;
+              const adminMsg = `🏆 Auction winner confirmed: "${d.product_name}" — ${d.user_name || 'A customer'} won with ₱${Number(d.winning_bid).toLocaleString()}. Order ${txRef}. Shop: ${shopName || 'Unknown shop'}.${d.branch_name ? ` Branch: ${d.branch_name}.` : ''} Status: Awaiting Payment. [Admin Winner Notice ${txRef}]`;
+              const { shouldDeliverNotification: shouldDeliver4B } = await import('./notificationPreference.js');
+              const insert4B = async (uid, msg) => {
+                try {
+                  await pool.query("INSERT INTO notifications (user_id, type, message, auction_id) VALUES ($1, 'auction', $2, $3)", [uid, msg, oRow?.auction_id || a.id]);
+                } catch (insErr) {
+                  if (insErr.code !== '42703') throw insErr;
+                  await pool.query("INSERT INTO notifications (user_id, type, message) VALUES ($1, 'auction', $2)", [uid, msg]);
+                }
+              };
+              // Seller (skip when the shop has no owner; never throws)
+              if (sellerId) {
+                try {
+                  const { rows: dupS } = await pool.query(
+                    `SELECT id FROM notifications WHERE user_id=$1 AND message LIKE $2 AND message LIKE $3 LIMIT 1`,
+                    [sellerId, `%${txRef}%`, `%Seller Winner Notice%`]
+                  );
+                  if (!dupS.length && await shouldDeliver4B(sellerId, 'auction', sellerMsg)) {
+                    await insert4B(sellerId, sellerMsg);
+                  }
+                } catch (e) { console.warn('[4B] seller winner notification failed for auction', a.id, e.message); }
+              }
+              // Admins individually (one failure never blocks the others)
+              try {
+                const { rows: admins } = await pool.query(`SELECT id FROM users WHERE role='admin' LIMIT 5`);
+                for (const adm of admins) {
+                  try {
+                    const { rows: dupA } = await pool.query(
+                      `SELECT id FROM notifications WHERE user_id=$1 AND message LIKE $2 AND message LIKE $3 LIMIT 1`,
+                      [adm.id, `%${txRef}%`, `%Admin Winner Notice%`]
+                    );
+                    if (!dupA.length && await shouldDeliver4B(adm.id, 'auction', adminMsg)) {
+                      await insert4B(adm.id, adminMsg);
+                    }
+                  } catch (e) { console.warn('[4B] admin winner notification failed for auction', a.id, e.message); }
+                }
+              } catch (e) { console.warn('[4B] admin lookup failed for auction', a.id, e.message); }
+            } catch (e) { console.warn('[4B] seller/admin winner notifications failed for auction', a.id, e.message); }
             // Email via Resend (reuses existing emailService, handles missing key gracefully)
             if (d.email) {
               const html = `

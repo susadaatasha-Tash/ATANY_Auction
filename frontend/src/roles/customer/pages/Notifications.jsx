@@ -2,11 +2,11 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Trash2 } from 'lucide-react';
 import { useNotifications } from '../hooks/useNotifications';
+import { resolveCustomerDestination } from '../../../shared/lib/notificationDestination';
 
 export default function Notifications() {
   const { notifications, unread, markAllRead, markOneRead, remove, error } = useNotifications();
   const navigate = useNavigate();
-  const [expandedId, setExpandedId] = useState(null);
   const [q, setQ] = useState('');
   const [category, setCategory] = useState('All');
 
@@ -37,10 +37,14 @@ export default function Notifications() {
     return list;
   }, [notifications, q, category]);
 
-  const handleExpand = (id) => {
-    const isExpanding = expandedId !== id;
-    setExpandedId(isExpanding ? id : null);
-    if (isExpanding) markOneRead(id);
+  const handleNotificationClick = async (n) => {
+    markOneRead(n.id);
+    try {
+      const destination = await resolveCustomerDestination(n);
+      if (destination) navigate(destination);
+    } catch {
+      navigate('/customer/live');
+    }
   };
 
   const handleDelete = async (e, id) => {
@@ -114,7 +118,6 @@ export default function Notifications() {
       {/* Cards */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {filtered.length ? filtered.map(n => {
-          const isExpanded = expandedId === n.id;
           const d = parseDetails(n.message);
           const isUnread = !n.read;
           let typeLabel = getCategory(n.message);
@@ -125,7 +128,7 @@ export default function Notifications() {
           return (
             <div
               key={n.id}
-              onClick={() => handleExpand(n.id)}
+              onClick={() => handleNotificationClick(n)}
               style={{
                 display: 'flex', alignItems: 'center', gap: 16,
                 padding: '14px 16px',
@@ -150,18 +153,6 @@ export default function Notifications() {
                 <div style={{ marginTop: 6 }}>
                   <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: '.04em', textTransform: 'uppercase', padding: '2px 8px', borderRadius: 999, background: typeLabel === 'Auction Win' ? '#FEF3C7' : typeLabel === 'Auction Update' ? '#EAF3ED' : '#F3F1EC', color: typeLabel === 'Auction Win' ? '#92400e' : typeLabel === 'Auction Update' ? '#2f5e44' : '#7B8493', border: '1px solid rgba(0,0,0,0.04)' }}>{typeLabel}</span>
                 </div>
-                {isExpanded && (
-                  <div style={{ marginTop: 10, padding: 12, background: '#FAF9F6', border: '1px solid #E6E2DA', borderRadius: 8, fontSize: 12.5, lineHeight: 1.5 }}>
-                    {d.item && <div><strong>Item:</strong> {d.item}</div>}
-                    {d.amount && <div><strong>Winning bid:</strong> {d.amount}</div>}
-                    {d.branch && <div><strong>Pickup:</strong> {d.branch}</div>}
-                    <div style={{ marginTop: 6, color: '#7B8493' }}>Bring a valid government-issued ID to claim. Claim within 7 business days.</div>
-                    <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button className="btn btn-primary" style={{ fontSize: 12, height: 32, padding: '0 12px' }} onClick={(e) => { e.stopPropagation(); window.location.href = '/customer/purchases'; }}>Go to My Purchases</button>
-                      <button className="btn btn-outline" style={{ fontSize: 12, height: 32, padding: '0 12px' }} onClick={(e) => { e.stopPropagation(); window.location.href = '/customer/live'; }}>View Live Auctions</button>
-                    </div>
-                  </div>
-                )}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0, textAlign: 'right', minWidth: 90 }}>
                 <div style={{ fontSize: 12, color: '#142A4A', fontWeight: 600 }}>{dateStr}</div>

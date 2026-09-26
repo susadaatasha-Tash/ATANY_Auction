@@ -27,3 +27,19 @@ export const sendNotification = async (req, res) => {
   }
 };
 export const listHistory = async (_req, res) => res.json((await pool.query('SELECT * FROM notifications ORDER BY created_at DESC LIMIT 50')).rows);
+// Admin's own notification mutations — always scoped to the authenticated admin's
+// own rows (same ownership rule as customer/shop-owner controllers). Never touches
+// another admin's notifications. RLS is left unchanged.
+export const markAllRead = async (req, res) => {
+  await pool.query('UPDATE notifications SET read=true WHERE user_id=$1', [req.user.id]);
+  res.json({ ok: true });
+};
+export const markOneRead = async (req, res) => {
+  await pool.query('UPDATE notifications SET read=true WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id]);
+  res.json({ ok: true });
+};
+export const deleteNotification = async (req, res) => {
+  const { rowCount } = await pool.query('DELETE FROM notifications WHERE id=$1 AND user_id=$2', [req.params.id, req.user.id]);
+  if (!rowCount) return res.status(404).json({ message: 'Notification not found' });
+  res.status(204).end();
+};

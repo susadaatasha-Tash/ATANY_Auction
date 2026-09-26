@@ -1,6 +1,7 @@
 // frontend/src/shared/components/Sidebar.jsx
 // Premium jewelry marketplace sidebar — gem brand, section dividers, polished nav
 import { NavLink } from 'react-router-dom';
+import { LogOut } from 'lucide-react';
 
 const GemIcon = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
@@ -11,7 +12,7 @@ const GemIcon = () => (
   </svg>
 );
 
-export function Sidebar({ brand, tag, sections, open, onClose }) {
+export function Sidebar({ brand, tag, sections, open, onClose, onSignOut }) {
   return (
     <aside className={`sidebar ${open ? 'open' : ''}`} aria-label="Primary navigation">
       <div className="sidebar-brand">
@@ -35,16 +36,21 @@ export function Sidebar({ brand, tag, sections, open, onClose }) {
                 onClick={onClose}
               >
                 {item.icon}
-                {item.name}
+                <span className="nav-label">{item.name}</span>
                 {item.badge != null && <span className="nav-badge">{item.badge}</span>}
               </NavLink>
             ))}
           </div>
         ))}
       </nav>
-      <div className="sidebar-foot">
-        ATANY · <a href="/">View storefront</a>
-      </div>
+      {onSignOut && (
+        <div className="sidebar-foot">
+          <button type="button" onClick={onSignOut} className="nav-item" style={{ width: '100%', justifyContent: 'flex-start' }}>
+            <LogOut size={16} />
+            <span className="nav-label">Sign Out</span>
+          </button>
+        </div>
+      )}
     </aside>
   );
 }
