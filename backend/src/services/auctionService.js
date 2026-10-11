@@ -5,7 +5,16 @@ import { pool } from '../db/pool.js';
 
 // Compute the effective auction status from start/end times instead of trusting the stored DB status.
 // The DB status is set once at creation and only updated by cron jobs, which may lag behind real time.
-export function effectiveStatus(startTime, endTime) {
+// Terminal/authoritative stored states always win:
+// - 'paused' stays paused regardless of time window (clock frozen, resume shifts end_time).
+// - 'ended' stays ended regardless of time window. A manually ended auction keeps
+//   its original (future) end_time, so time-only computation would resurrect it
+//   as 'live' in every feed (seller My Auctions, portal sidebar, customer lists).
+//   Ended is terminal — relisting creates a NEW auction row, never revives this one.
+export function effectiveStatus(startTime, endTime, storedStatus) {
+  const stored = String(storedStatus).toLowerCase();
+  if (stored === 'paused') return 'paused';
+  if (stored === 'ended') return 'ended';
   const now = new Date();
   const start = new Date(startTime);
   const end = new Date(endTime);
@@ -18,13 +27,13 @@ export async function listAuctions({ shopId, branchId, status } = {}) {
   // 1. Fetch auctions with simple WHERE (no JOINs)
   let auctionSql = 'SELECT * FROM auctions WHERE 1=1';
   const params = [];
-  if (status && ['live', 'scheduled', 'ended'].includes(status)) {
+  if (status && ['live', 'scheduled', 'ended', 'paused'].includes(status)) {
     params.push(status);
     auctionSql += ` AND status = $${params.length}`;
   } else if (status === 'all') {
-    // no filter
+    // no filter — effective filter will keep only live+scheduled
   } else {
-    // Public default: live + scheduled only
+    // Customer/default: live + scheduled only (paused/ended excluded)
     auctionSql += ` AND status IN ('live','scheduled')`;
   }
   auctionSql += ' ORDER BY end_time';
@@ -107,7 +116,7 @@ export async function listAuctions({ shopId, branchId, status } = {}) {
     const p = productMap[a.product_id] || {};
     const s = shopMap[p.shop_id] || {};
     const b = branchMap[s.home_branch_id] || {};
-    const computedStatus = effectiveStatus(a.start_time, a.end_time);
+    const computedStatus = effectiveStatus(a.start_time, a.end_time, a.status);
     return {
       id: a.id,
       auction_code: a.auction_code,
@@ -133,11 +142,13 @@ export async function listAuctions({ shopId, branchId, status } = {}) {
     };
   }).filter(a => {
     // Apply effective status filtering on top of DB status
+    // Customer Auctions supports Live+Scheduled only — paused/ended excluded by default
     if (status === 'ended') return a.status === 'ended';
     if (status === 'live') return a.status === 'live';
     if (status === 'scheduled') return a.status === 'scheduled';
-    if (status === 'all') return true; // explicit 'all' — show everything
-    // Default (no status param): exclude ended by effective status
-    return a.status !== 'ended';
+    if (status === 'paused') return a.status === 'paused';
+    if (status === 'all') return a.status === 'live' || a.status === 'scheduled';
+    // Default (no status param): All = live+scheduled, paused/ended excluded
+    return a.status === 'live' || a.status === 'scheduled';
   });
 }

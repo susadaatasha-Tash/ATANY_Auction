@@ -2,20 +2,176 @@
 // Transparent wrapper: tries direct pg first, falls back to Supabase REST when IPv6 DNS is unreachable.
 import pg from 'pg';
 import { createClient } from '@supabase/supabase-js';
+import { describeConnectionString, isTransactionPooler, isConnFailure, isQueryError } from './connectionInfo.js';
 
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
 
+// Pool sizing is explicit (pg default max is 10 — 4 concurrent per-minute cron jobs
+// plus API traffic can burst; exhaustion surfaces as "timeout exceeded").
+// connectionTimeout 10s: Supabase direct over IPv6 from local dev routinely exceeds 5s
+// on cold start/DNS; 5s turned single blips into 60s of REST fallback (pause 503s).
 const directPool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-  connectionTimeoutMillis: 5000,
-  idleTimeoutMillis: 10000,
+  // PG_SSL_DISABLED=true only for local non-SSL dev databases (e.g. Homebrew
+  // Postgres without certs). Supabase always requires SSL — default stays on.
+  ssl: process.env.PG_SSL_DISABLED === 'true' ? false : { rejectUnauthorized: false },
+  max: 10,
+  connectionTimeoutMillis: 10000,
+  idleTimeoutMillis: 30000,
+  // Bound every query: a response that never arrives (stalled TCP, firewall,
+  // VPN-mangled loopback) must error instead of parking a pool client forever.
+  // 15s is generous — legitimate queries here run in ms (measured: role check
+  // ~1ms, mutations commit in ~30ms end-to-end). A wedged query surfaces at
+  // 15s instead of 30s, halving worst-case mutation latency. Expiry surfaces
+  // as 'Query read timeout', which isConnFailure() treats as a query error
+  // (never flips the pool unhealthy).
+  query_timeout: 15000,
+  keepAlive: true,
+  application_name: 'atany-backend',
 });
 
 let directOk = true;
 
+// Sanitized diagnostics — pool counters + connection mode only.
+// Never logs DATABASE_URL, credentials, or full connection string.
+export function logPoolStatus(reason = '') {
+  try {
+    const info = describeConnectionString(process.env.DATABASE_URL);
+    console.log(
+      `[pool] status${reason ? ` (${reason})` : ''}: total=${directPool.totalCount} idle=${directPool.idleCount} waiting=${directPool.waitingCount} directOk=${directOk} mode=${info.mode} port=${info.port ?? '?'} ssl=true`
+    );
+  } catch {}
+}
+
+// Health timestamps (ISO strings, no sensitive data). Updated on every direct
+// success and every flip to fallback — powers GET /api/health/database.
+let lastSuccessAt = null;
+let lastFailureAt = null;
+let lastFailureCode = null;
+
+function noteDirectSuccess() {
+  lastSuccessAt = new Date().toISOString();
+}
+
+function noteDirectFailure(e) {
+  lastFailureAt = new Date().toISOString();
+  lastFailureCode = (e && typeof e.code === 'string' ? e.code : 'UNKNOWN').slice(0, 24);
+}
+
+export function getPoolHealth() {
+  const info = describeConnectionString(process.env.DATABASE_URL);
+  const out = {
+    direct_pg: directOk,
+    mode: info.mode === 'supabase-direct' ? 'direct' : info.mode,
+    pool: { total: directPool.totalCount, idle: directPool.idleCount, waiting: directPool.waitingCount },
+    last_success: lastSuccessAt,
+    last_failure: lastFailureAt,
+    last_failure_code: lastFailureCode,
+  };
+  return out;
+}
+
+// On-demand health verification for transaction-sensitive mutations.
+// requireDirectPg() trusts the cached directOk flag, which can go stale: a
+// transient failure flips it false, and subsequent mutations are rejected
+// without ever trying the database again until the background reprobe fires.
+// This probes direct pg immediately when the flag is false — if the DB has
+// recovered, the mutation proceeds; if not, it still fails closed (never REST).
+//
+// The probe uses a DEDICATED pg.Client — never directPool — so a saturated
+// main pool (all clients checked out, waiters queued) cannot block the health
+// signal itself. A saturated pool previously made every probe time out behind
+// waiters, pinning directOk=false permanently (resume/end 503s forever).
+// Direct pg only: no REST fallback involved in this path.
+export async function ensureDirectPg(timeoutMs = 5000) {
+  if (directOk) return true;
+  let client = null;
+  try {
+    client = new pg.Client({
+      connectionString: process.env.DATABASE_URL,
+      ssl: process.env.PG_SSL_DISABLED === 'true' ? false : { rejectUnauthorized: false },
+      connectionTimeoutMillis: Math.min(timeoutMs, 5000),
+      query_timeout: timeoutMs,
+      application_name: 'atany-backend-probe',
+    });
+    await Promise.race([
+      (async () => {
+        await client.connect();
+        await client.query('SELECT 1');
+      })(),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('health probe timeout')), timeoutMs))
+    ]);
+    directOk = true;
+    noteDirectSuccess();
+    console.log('[pool] direct pg recovered on demand, resuming direct queries');
+    logPoolStatus('recovered-on-demand');
+    return true;
+  } catch (e) {
+    noteDirectFailure(e);
+    return false;
+  } finally {
+    // Always release the probe connection — a leaked probe per mutation would
+    // exhaust the database exactly when it is recovering.
+    if (client) {
+      try { await client.end(); } catch {}
+    }
+  }
+}
+
+// Transaction-pooler (:6543) does NOT support advisory locks / multi-statement
+// transactions this backend relies on (jobLock, SERIALIZABLE bids, auction close).
+// Warn once at startup; behavior is unchanged (fail closed, never downgrade).
+if (isTransactionPooler(process.env.DATABASE_URL)) {
+  console.warn('[pool] WARNING: DATABASE_URL uses transaction pooler (:6543) — advisory locks and multi-statement transactions are unsupported there. Use direct (db.*.supabase.co:5432) or session pooler (:5432).');
+}
+
 // Quick probe on startup
-directPool.query('SELECT 1').then(() => { directOk = true; }).catch(() => { directOk = false; });
+directPool.query('SELECT 1').then(() => { directOk = true; noteDirectSuccess(); }).catch((e) => { directOk = false; noteDirectFailure(e); });
+
+// Failure classification lives in connectionInfo.js (pure, unit-tested):
+// only true network/system failures flip the pool unhealthy — SQLSTATE query
+// errors (unique violations, enum errors, syntax) never poison directOk.
+
+// Retry once on direct before flipping to REST fallback: a single transient blip
+// (cold connect, IPv6, DNS, brief pool exhaustion) must not pin the process to
+// non-atomic fallback for a full minute (pause/resume/extend/end 503s).
+async function directQueryWithRetry(sql, params) {
+  try {
+    const r = await directPool.query(sql, params);
+    noteDirectSuccess();
+    return r;
+  } catch (e) {
+    if (!isConnFailure(e)) throw e;
+    // One immediate retry — absorbs single transient failures.
+    try {
+      const r = await directPool.query(sql, params);
+      noteDirectSuccess();
+      return r;
+    } catch (e2) {
+      if (isConnFailure(e2)) {
+        console.error('[pool] direct pg failed (after retry), switching to REST fallback:', e2.message);
+        directOk = false;
+        noteDirectFailure(e2);
+        logPoolStatus('fallback');
+      }
+      throw e2;
+    }
+  }
+}
+
+// While on REST fallback, periodically re-probe direct pg so a transient
+// network blip doesn't pin the process to non-atomic mock transactions forever.
+// 15s (was 60s): fail-closed mutations (pause/resume/extend/end) recover faster.
+const reprobeTimer = setInterval(() => {
+  if (!directOk) {
+    directPool.query('SELECT 1').then(() => {
+      directOk = true;
+      console.log('[pool] direct pg recovered, resuming direct queries');
+      logPoolStatus('recovered');
+    }).catch(() => {});
+  }
+}, 15000);
+if (reprobeTimer.unref) reprobeTimer.unref();
 
 // Extract table name, skipping schema prefix and trailing alias
 function extractTable(sql) {
@@ -37,6 +193,106 @@ function extractTable(sql) {
 function isComplexQuery(sql) {
   const upper = sql.toUpperCase();
   return /\bJOIN\b/.test(upper) || /\bGROUP\s+BY\b/.test(upper) || /\bHAVING\b/.test(upper) || /\bUNION\b/.test(upper) || /\(\s*SELECT\b/.test(upper) || /\bCOUNT\s*\(/.test(upper) || /\bSUM\s*\(/.test(upper) || /\bSUBSTRING\b/.test(upper) || /\bARRAY\b/.test(upper) || /\bJSONB\b/.test(upper) || /\bCOALESCE\b/.test(upper);
+}
+
+// Parse ALL simple WHERE equality/IN/IS NULL predicates.
+// H2 ownership safety: UPDATE ... WHERE id=$1 AND user_id=$2 must keep BOTH
+// predicates on REST fallback. Complex WHERE (OR, parentheses, expressions)
+// cannot be proven safe → fail closed rather than drop ownership conditions.
+function parseSimpleWhere(whereStr, params) {
+  const conds = [];
+  // Split on AND at top level (no nested parens expected in our write paths)
+  const parts = whereStr.split(/\bAND\b/i).map((p) => p.trim()).filter(Boolean);
+  for (const part of parts) {
+    let m;
+    // Simple IN lists first: col IN ('a','b') / col IN ($1,$2) — outer parens
+    // are IN syntax, not complex expressions. Values must be literals or params.
+    if ((m = part.match(/^([a-z_]+(?:\.[a-z_]+)?)\s*IN\s*\(([^)]+)\)$/i))) {
+      const col = m[1].split('.').pop();
+      const vals = m[2].split(',').map((s) => {
+        const pm = s.trim().match(/\$(\d+)/);
+        return pm ? params[Number(pm[1]) - 1] : s.trim().replace(/^'|'$/g, '');
+      });
+      conds.push({ type: 'in', col, val: vals });
+      continue;
+    }
+    // Reject OR / parentheses / function calls we cannot faithfully translate
+    if (/\bOR\b/i.test(part) || /[()]/.test(part) || /\bCASE\b/i.test(part)) {
+      throw new Error(`REST fallback: unsupported WHERE predicate (requires direct Postgres): ${part.slice(0, 80)}`);
+    }
+    if ((m = part.match(/^([a-z_]+(?:\.[a-z_]+)?)\s*=\s*\$(\d+)$/i))) {
+      const col = m[1].split('.').pop();
+      conds.push({ type: 'eq', col, val: params[Number(m[2]) - 1] });
+    } else if ((m = part.match(/^([a-z_]+(?:\.[a-z_]+)?)\s*=\s*'([^']*)'$/i))) {
+      const col = m[1].split('.').pop();
+      conds.push({ type: 'eq', col, val: m[2] });
+    } else if ((m = part.match(/^([a-z_]+(?:\.[a-z_]+)?)\s*!=\s*\$(\d+)$/i))
+      || (m = part.match(/^([a-z_]+(?:\.[a-z_]+)?)\s*<>\s*\$(\d+)$/i))) {
+      conds.push({ type: 'neq', col: m[1].split('.').pop(), val: params[Number(m[2]) - 1] });
+    } else if ((m = part.match(/^([a-z_]+(?:\.[a-z_]+)?)\s*(?:!=|<>)\s*'([^']*)'$/i))) {
+      conds.push({ type: 'neq', col: m[1].split('.').pop(), val: m[2] });
+    } else if ((m = part.match(/^([a-z_]+(?:\.[a-z_]+)?)\s+IS\s+NULL$/i))) {
+      conds.push({ type: 'isNull', col: m[1].split('.').pop() });
+    } else if ((m = part.match(/^([a-z_]+(?:\.[a-z_]+)?)\s+IS\s+NOT\s+NULL$/i))) {
+      conds.push({ type: 'isNotNull', col: m[1].split('.').pop() });
+    } else if ((m = part.match(/^([a-z_]+(?:\.[a-z_]+)?)\s*=\s*NOW\(\)$/i))) {
+      conds.push({ type: 'eq', col: m[1].split('.').pop(), val: new Date().toISOString() });
+    } else if ((m = part.match(/^([a-z_]+(?:\.[a-z_]+)?)\s*<=\s*NOW\(\)$/i))) {
+      conds.push({ type: 'lte', col: m[1].split('.').pop(), val: new Date().toISOString() });
+    } else if ((m = part.match(/^([a-z_]+(?:\.[a-z_]+)?)\s*>=\s*NOW\(\)$/i))) {
+      conds.push({ type: 'gte', col: m[1].split('.').pop(), val: new Date().toISOString() });
+    } else if ((m = part.match(/^([a-z_]+(?:\.[a-z_]+)?)\s*<=\s*\$(\d+)$/i))) {
+      conds.push({ type: 'lte', col: m[1].split('.').pop(), val: params[Number(m[2]) - 1] });
+    } else if ((m = part.match(/^([a-z_]+(?:\.[a-z_]+)?)\s*>=\s*\$(\d+)$/i))) {
+      conds.push({ type: 'gte', col: m[1].split('.').pop(), val: params[Number(m[2]) - 1] });
+    } else if ((m = part.match(/^([a-z_]+(?:\.[a-z_]+)?)\s+IS\s+DISTINCT\s+FROM\s*'([^']*)'$/i))) {
+      // IS DISTINCT FROM 'literal' ≡ neq for non-null enum/text (enum values are never null here)
+      conds.push({ type: 'neq', col: m[1].split('.').pop(), val: m[2] });
+    } else if ((m = part.match(/^([a-z_]+(?:\.[a-z_]+)?)\s+IS\s+DISTINCT\s+FROM\s*\$(\d+)$/i))) {
+      conds.push({ type: 'neq', col: m[1].split('.').pop(), val: params[Number(m[2]) - 1] });
+    } else {
+      throw new Error(`REST fallback: unsupported WHERE predicate (requires direct Postgres): ${part.slice(0, 80)}`);
+    }
+  }
+  if (!conds.length) throw new Error('REST fallback: write requires WHERE conditions');
+  return conds;
+}
+
+function applySimpleWhere(q, conds) {
+  for (const c of conds) {
+    if (c.type === 'eq') q = q.eq(c.col, c.val);
+    else if (c.type === 'neq') q = q.neq(c.col, c.val);
+    else if (c.type === 'in') q = q.in(c.col, c.val);
+    else if (c.type === 'isNull') q = q.is(c.col, null);
+    else if (c.type === 'isNotNull') q = q.not(c.col, null);
+    else if (c.type === 'lte') q = q.lte(c.col, c.val);
+    else if (c.type === 'gte') q = q.gte(c.col, c.val);
+  }
+  return q;
+}
+
+// Parse SET assignments for simple col=$N / col='literal' / col=NOW()
+function parseSimpleSet(setClause, params) {
+  // Reject complex expressions that REST cannot honor (money paths must use direct pg)
+  if (/\bCOALESCE\s*\(/i.test(setClause) || /\bCASE\b/i.test(setClause) || /::/.test(setClause)) {
+    throw new Error('REST fallback: complex SET expressions require direct Postgres');
+  }
+  const updates = {};
+  const setParamRe = /([a-z_]+)\s*=\s*\$(\d+)/gi;
+  let sm;
+  while ((sm = setParamRe.exec(setClause)) !== null) {
+    updates[sm[1]] = params[Number(sm[2]) - 1];
+  }
+  const setLitRe = /([a-z_]+)\s*=\s*'([^']+)'/gi;
+  while ((sm = setLitRe.exec(setClause)) !== null) {
+    if (!(sm[1] in updates)) updates[sm[1]] = sm[2];
+  }
+  const setNowRe = /([a-z_]+)\s*=\s*NOW\(\)/gi;
+  while ((sm = setNowRe.exec(setClause)) !== null) {
+    if (!(sm[1] in updates)) updates[sm[1]] = new Date().toISOString();
+  }
+  if (Object.keys(updates).length === 0) throw new Error('REST fallback: no update fields parsed');
+  return updates;
 }
 
 // Minimal SQL → Supabase REST translation for simple CRUD
@@ -211,52 +467,39 @@ async function restQuery(sql, params) {
     return { rows: [data] };
   }
 
-  // UPDATE table SET … WHERE id=$N RETURNING *
+  // UPDATE table SET … WHERE id=$N [AND owner_col=$M] [AND status='x'] RETURNING *
+  // H2 ownership safety: ALL simple WHERE predicates must be applied — never drop owner conditions.
   if (upper.startsWith('UPDATE')) {
     const setM = sql.match(/SET\s+([\s\S]+?)\s+WHERE/i);
     if (!setM) throw new Error('REST fallback: cannot parse UPDATE SET');
     const setClause = setM[1];
-    const whereM = sql.match(/WHERE\s+([a-z_.]+)\s*=\s*\$(\d+)/i);
+    const whereM = sql.match(/WHERE\s+([\s\S]+?)(?:\s+RETURNING\b|$)/i);
     if (!whereM) throw new Error('REST fallback: cannot parse UPDATE WHERE');
-    const idCol = whereM[1].split('.').pop();
-    const whereVal = params[Number(whereM[2]) - 1];
-
-    const updates = {};
-    // col = $N
-    const setParamRe = /([a-z_]+)\s*=\s*\$(\d+)/gi;
-    let sm;
-    while ((sm = setParamRe.exec(setClause)) !== null) {
-      updates[sm[1]] = params[Number(sm[2]) - 1];
+    const updates = parseSimpleSet(setClause, params);
+    const conds = parseSimpleWhere(whereM[1], params);
+    // Require at least one predicate on a primary key-like column when present
+    const hasIdLike = conds.some((c) => /(^|_)(id|uuid)$/.test(c.col) || c.col === 'id');
+    if (!hasIdLike) {
+      // e.g. UPDATE seller_payment_methods SET is_default=false WHERE seller_id=$1 — seller_id is ownership
+      const hasOwnership = conds.some((c) => /user_id|buyer_id|seller_id|owner_id|shop_id|customer_id/.test(c.col));
+      if (!hasOwnership) {
+        throw new Error('REST fallback: UPDATE without id or ownership predicate requires direct Postgres');
+      }
     }
-    // col = 'literal'
-    const setLitRe = /([a-z_]+)\s*=\s*'([^']+)'/gi;
-    while ((sm = setLitRe.exec(setClause)) !== null) {
-      if (!(sm[1] in updates)) updates[sm[1]] = sm[2];
-    }
-
-    if (Object.keys(updates).length === 0) throw new Error('REST fallback: no update fields parsed');
-    const { data, error } = await supabase.from(table).update(updates).eq(idCol, whereVal).select().single();
+    let q = supabase.from(table).update(updates);
+    q = applySimpleWhere(q, conds);
+    const { data, error } = await q.select();
     if (error) throw new Error(error.message);
-    return { rows: [data] };
+    return { rows: data || [], rowCount: data ? data.length : 0 };
   }
 
-  // DELETE FROM table WHERE col = $N [AND col2 = $M]
+  // DELETE FROM table WHERE col = $N [AND col2 = $M] — apply ALL predicates
   if (upper.startsWith('DELETE')) {
-    const whereClause = sql.match(/WHERE\s+([\s\S]+)/i);
+    const whereClause = sql.match(/WHERE\s+([\s\S]+?)(?:\s+RETURNING\b|$)/i);
     if (!whereClause) throw new Error('REST fallback: cannot parse DELETE WHERE');
-    const whereStr = whereClause[1];
-    // Support up to two conditions: id=$1 AND user_id=$2
-    const condRe = /([a-z_]+)\s*=\s*\$(\d+)/gi;
-    let m;
+    const conds = parseSimpleWhere(whereClause[1], params);
     let q = supabase.from(table).delete();
-    let hasCond = false;
-    while ((m = condRe.exec(whereStr)) !== null) {
-      const col = m[1];
-      const val = params[Number(m[2]) - 1];
-      q = q.eq(col, val);
-      hasCond = true;
-    }
-    if (!hasCond) throw new Error('REST fallback: cannot parse DELETE WHERE');
+    q = applySimpleWhere(q, conds);
     const { error, data } = await q.select();
     if (error) throw new Error(error.message);
     return { rowCount: data ? data.length : 0, rows: [] };
@@ -291,9 +534,23 @@ async function shouldBlockNotification(sql, params) {
     const type = getParam(typeIdx);
     const message = getParam(msgIdx);
     if (!userId || !type) return false;
-    // Use Supabase Admin API to fetch user settings (service role)
+    // Use Supabase Admin API to fetch user settings (service role).
+    // Bounded: a stalled settings lookup must not wedge pool.query callers
+    // (bid/outbid paths). On timeout, deliver the notification (fail-open,
+    // same as the catch-all below).
     const supa = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
-    const { data, error } = await supa.auth.admin.getUserById(userId);
+    let data = null;
+    let error = null;
+    try {
+      const res = await Promise.race([
+        supa.auth.admin.getUserById(userId),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('settings lookup timeout')), 5000)),
+      ]);
+      data = res?.data ?? null;
+      error = res?.error ?? null;
+    } catch {
+      return false;
+    }
     if (error || !data?.user) return false;
     const settings = data.user.user_metadata?.settings;
     if (!settings) return false;
@@ -322,6 +579,7 @@ async function shouldBlockNotification(sql, params) {
   }
 }
 
+directPool.on('error', (e) => { try { console.log('[pool] idle client error:', e && e.message); } catch {} });
 // Expose query() matching pg.Pool.query() signature
 async function query(sql, params = []) {
   if (await shouldBlockNotification(sql, params)) {
@@ -329,12 +587,10 @@ async function query(sql, params = []) {
   }
   if (directOk) {
     try {
-      return await directPool.query(sql, params);
+      return await directQueryWithRetry(sql, params);
     } catch (e) {
-      const isConn = ['ENOTFOUND', 'ECONNREFUSED', 'ETIMEDOUT', 'ECONNRESET', 'pool is ended'].some(k => (e.message || '').includes(k));
-      if (isConn) {
-        console.error('[pool] direct pg failed, switching to REST fallback:', e.message);
-        directOk = false;
+      if (isConnFailure(e)) {
+        // directOk already flipped inside directQueryWithRetry; fall through to REST.
       } else {
         throw e;
       }
@@ -358,12 +614,32 @@ async function connect() {
       };
       return client;
     } catch (e) {
-      const isConn = ['ENOTFOUND', 'ECONNREFUSED', 'ETIMEDOUT', 'ECONNRESET', 'pool is ended'].some(k => (e.message || '').includes(k));
-      if (isConn) directOk = false;
+      if (!isConnFailure(e)) throw e;
+      // One retry before flipping — same transient-blip rationale as query().
+      try {
+        const client = await directPool.connect();
+        const origQuery = client.query.bind(client);
+        client.query = async (sql, params = []) => {
+          if (await shouldBlockNotification(sql, params)) {
+            return { rows: [], rowCount: 0 };
+          }
+          return origQuery(sql, params);
+        };
+        return client;
+      } catch (e2) {
+        if (isConnFailure(e2)) {
+          console.error('[pool] direct pg connect failed (after retry), switching to REST fallback:', e2.message);
+          directOk = false;
+          noteDirectFailure(e2);
+          logPoolStatus('fallback-connect');
+        } else throw e2;
+      }
     }
   }
   // Mock client for REST fallback — executes queries sequentially
+  // __restFallback marks non-atomic path so critical writes (bids) can fail closed.
   return {
+    __restFallback: true,
     query: async (sql, params) => {
       const upper = sql.trim().toUpperCase();
       if (upper.startsWith('BEGIN') || upper.startsWith('COMMIT') || upper.startsWith('ROLLBACK')) return { rows: [] };
@@ -374,4 +650,7 @@ async function connect() {
 }
 
 export const pool = { query, connect, on: directPool.on.bind(directPool) };
+export function isDirectPg() { return directOk; }
+// Exported for ownership-predicate regression tests (H2) + failure-classification tests
+export const __test = { parseSimpleWhere, parseSimpleSet, applySimpleWhere, isComplexQuery, extractTable, isConnFailure, isQueryError };
 export default pool;

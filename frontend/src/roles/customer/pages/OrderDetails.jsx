@@ -7,6 +7,11 @@ import { apiFetch } from '../../../shared/lib/apiClient';
 function peso(n) { return '₱' + Number(n || 0).toLocaleString(); }
 function fmtDate(d) { if (!d) return '—'; const dt = new Date(d); return isNaN(dt) ? d : dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); }
 function fmtDateTime(d) { if (!d) return '—'; const dt = new Date(d); return isNaN(dt) ? d : dt.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }); }
+function hoursRemaining(deadline) {
+  if (!deadline) return null;
+  const ms = new Date(deadline).getTime() - Date.now();
+  return ms > 0 ? Math.ceil(ms / (1000 * 60 * 60)) : 0;
+}
 
 const STATUS_LABEL = { pending: 'Payment Pending', preparing: 'Preparing', ready_pickup: 'Ready for Pickup', completed: 'Picked Up' };
 const STATUS_CLS = { pending: 'pending', preparing: 'pending', ready_pickup: 'ready', completed: 'completed' };
@@ -26,10 +31,12 @@ const STEPS = ['Auction Won','Payment Pending','Payment Confirmed','Preparing Yo
 function stepState(idx, order, payment) {
   const payPaid = payment?.status === 'paid';
   const o = order?.status;
+  const expired = !!order.is_expired;
   // map: 0 Auction Won always done
   if (idx === 0) return 'done';
   if (idx === 1) {
     if (payPaid || ['preparing','ready_pickup','completed'].includes(o)) return 'done';
+    if (expired) return 'expired';
     return 'active';
   }
   if (idx === 2) {
@@ -70,7 +77,11 @@ export default function OrderDetails() {
 
   const { order, payment, product, branch } = data;
   const meta = statusMeta(order, payment);
-  const isPayable = order.status === 'pending' && payment?.status !== 'paid';
+  const payPaid = payment?.status === 'paid';
+  const isExpired = !!order.is_expired;
+  const isPayable = order.status === 'pending' && !payPaid && !isExpired;
+  const hrsLeft = hoursRemaining(order.payment_deadline);
+  const isUrgent = hrsLeft !== null && hrsLeft <= 24 && hrsLeft > 0;
 
   return (
     <div className="order-details-page">
@@ -99,23 +110,55 @@ export default function OrderDetails() {
             <div className="order-summary-title">Payment Summary</div>
             <div className="order-summary-row"><span>Winning Bid</span><span>{peso(order.amount)}</span></div>
             <div className="order-summary-row total"><span>Total Amount</span><span>{peso(order.amount)}</span></div>
-            {order.payment_deadline && order.status === 'pending' && payment?.status !== 'paid' && (
-              <div className="form-hint" style={{ marginTop: 8, color: order.is_expired ? 'var(--danger)' : 'var(--muted)', fontWeight: order.is_expired ? 700 : 400 }}>
-                {order.is_expired ? 'Payment deadline has passed. This order has expired and may be offered to the next bidder.' : `Payment deadline: ${fmtDateTime(order.payment_deadline)} (7 days from win)`}
-              </div>
-            )}
+
             <div className="order-payment-status">
-              <span className={`purchase-status-badge ${payment?.status === 'paid' ? 'completed' : order.is_expired ? 'expired' : 'pending'}`}><span className="purchase-status-dot" />{payment?.status === 'paid' ? 'Payment Confirmed' : order.is_expired ? 'Expired' : 'Payment Pending'}</span>
-              <p className="form-hint">{payment?.status === 'paid' ? 'Your payment has been confirmed.' : order.is_expired ? 'This payment period has expired.' : 'Please complete your payment to confirm your order.'}</p>
+              <span className={`purchase-status-badge ${payPaid ? 'completed' : isExpired ? 'expired' : 'pending'}`}>
+                <span className="purchase-status-dot" />
+                {payPaid ? 'Payment Confirmed' : isExpired ? 'Expired' : 'Payment Pending'}
+              </span>
+              <p className="form-hint">
+                {payPaid ? 'Your payment has been confirmed.' : isExpired ? 'This payment period has expired.' : 'Please complete your payment to confirm your order.'}
+              </p>
             </div>
+
             {isPayable ? (
-              <button className="btn btn-primary" style={{width:'100%', marginTop:12}} onClick={() => navigate(`/customer/orders/${order.id}/payment`)}>Pay Now →</button>
-            ) : (
+              <button className="btn btn-primary" style={{ width: '100%', marginTop: 12 }} onClick={() => navigate(`/customer/orders/${order.id}/payment`)}>Pay Now →</button>
+            ) : payPaid ? (
               <div className="order-paid-note">✓ Payment Confirmed — {fmtDate(payment?.paid_at || payment?.updated_at)}</div>
-            )}
+            ) : isExpired ? (
+              <div className="order-expired-note">Payment no longer available — eligibility has expired.</div>
+            ) : null}
           </div>
         </div>
       </div>
+
+      {/* Payment Deadline — separate full-width card */}
+      {order.payment_deadline && order.status === 'pending' && !payPaid && (
+        <div className={`order-deadline-card ${isExpired ? 'expired' : isUrgent ? 'urgent' : 'active'}`}>
+          <div className="order-deadline-card-icon" aria-hidden="true">
+            {isExpired ? '✕' : '⚠'}
+          </div>
+          <div className="order-deadline-card-body">
+            <div className="order-deadline-card-label">
+              {isExpired ? 'PAYMENT ELIGIBILITY EXPIRED' : isUrgent ? 'PAYMENT DUE SOON' : 'PAYMENT DEADLINE'}
+            </div>
+            <div className="order-deadline-card-date">{fmtDateTime(order.payment_deadline)}</div>
+            {isExpired ? (
+              <p className="order-deadline-card-desc">
+                Your 7-day payment period has ended. The item may have been offered to the next eligible bidder.
+              </p>
+            ) : isUrgent ? (
+              <p className="order-deadline-card-desc">
+                Complete payment before the deadline to keep your winning eligibility.
+              </p>
+            ) : (
+              <p className="order-deadline-card-desc">
+                Complete payment within your 7-day payment period. If payment is not completed by the deadline, your payment eligibility will expire and the item may be offered to the next eligible bidder.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Payment & Pickup Process */}
       <div className="panel">
@@ -125,9 +168,9 @@ export default function OrderDetails() {
             const state = stepState(i, order, payment);
             return (
               <div key={label} className={`order-step ${state}`}>
-                <div className="order-step-icon">{state === 'done' ? '✓' : state === 'active' ? '●' : '○'}</div>
+                <div className="order-step-icon">{state === 'done' ? '✓' : state === 'active' ? '●' : state === 'expired' ? '✕' : '○'}</div>
                 <div className="order-step-label">{label}</div>
-                <div className="order-step-sub">{state === 'done' ? 'Completed' : state === 'active' ? 'Current' : 'Pending'}</div>
+                <div className="order-step-sub">{state === 'done' ? 'Completed' : state === 'active' ? 'Current' : state === 'expired' ? 'Expired' : 'Pending'}</div>
               </div>
             );
           })}

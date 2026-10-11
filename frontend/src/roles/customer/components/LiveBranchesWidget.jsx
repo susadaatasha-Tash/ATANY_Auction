@@ -1,6 +1,6 @@
 // frontend/src/roles/customer/components/LiveBranchesWidget.jsx
 // Consult form request: "pag gawas sa dashboard naay makita na murag branch na nakalive for auction"
-// Shows which branches currently have a live auction, linking straight to LiveAuctions filtered by branch.
+// Shows which branches currently have a live auction, linking straight to Auctions filtered by branch.
 import { useNavigate } from 'react-router-dom';
 import { formatCountdown } from '../../../shared/hooks/useAuctionCountdown';
 
@@ -37,7 +37,7 @@ export default function LiveBranchesWidget({ liveAuctions = [] }) {
         {branches.map((b) => (
           <button
             key={b.branch_id || b.branch_name}
-            onClick={() => navigate(`/customer/live?branch_id=${b.branch_id || ''}`)}
+            onClick={() => navigate(`/customer/auctions?branch_id=${b.branch_id || ''}`)}
             className="btn btn-outline"
             style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4, padding: '12px 16px', minWidth: 180 }}
           >

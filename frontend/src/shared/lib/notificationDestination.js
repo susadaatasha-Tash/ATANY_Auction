@@ -24,7 +24,7 @@ function isOrderLike(n) {
 
 // Customer: payout rows always resolve through the order path (transaction_code ->
 // /customer/orders/:id, fallback /customer/purchases) even when auction_id is set.
-// Auction-type rows with auction_id -> /customer/live (no customer detail route).
+// Auction-type rows with auction_id -> /customer/auctions (no customer detail route).
 // Anything else -> role list fallback. Existing 4C outcomes are preserved.
 async function resolveCustomerOrder(code) {
   try {
@@ -43,10 +43,10 @@ export async function resolveCustomerDestination(n) {
     if (code) return resolveCustomerOrder(code);
     return '/customer/purchases';
   }
-  if (n?.auction_id) return '/customer/live';
+  if (n?.auction_id) return '/customer/auctions';
   const code = extractTransactionCode(n?.message);
   if (code) return resolveCustomerOrder(code);
-  return '/customer/live';
+  return '/customer/auctions';
 }
 
 // Seller: payout rows -> /shop/sales even when auction_id is set (order list;
@@ -64,11 +64,12 @@ export function resolveShopDestination(n) {
 
 // Admin: payout rows -> /admin/transactions even when auction_id is set.
 // Auction rows with auction_id -> /admin/auctions/:id (real detail route).
-// seller_application -> /admin/seller-applications.
+// seller_application is a removed feature — historical rows resolve to null
+// so the caller keeps existing expand behavior (no dead admin route).
 // Unknown rows return null so the caller keeps existing expand behavior.
 export function resolveAdminDestination(n) {
   const type = n?.type || '';
-  if (type === 'seller_application') return '/admin/seller-applications';
+  if (type === 'seller_application') return null;
   if (type === 'payout' || (!n?.auction_id && isOrderLike(n))) return '/admin/transactions';
   if (n?.auction_id) return `/admin/auctions/${n.auction_id}`;
   if (extractTransactionCode(n?.message)) return '/admin/transactions';

@@ -54,10 +54,13 @@ export function CreateAuctionModal({ open, onClose, onSubmit, initial }) {
             const { signedUrl, publicUrl } = await apiFetch('/shop-owner/upload-url', { method: 'POST', body: JSON.stringify({ filename: file.name }) });
             const uploadRes = await fetch(signedUrl, { method: 'PUT', headers: { 'Content-Type': file.type || 'application/octet-stream' }, body: file });
             if (!uploadRes.ok) throw new Error(`Upload failed ${uploadRes.status}`);
+            if (!publicUrl) throw new Error('Upload succeeded but no public URL was returned');
+            // Persist ONLY the real storage URL — never a hardcoded placeholder.
             imageUrl = publicUrl;
           } catch (err) {
             console.error('Image upload failed', err);
-            imageUrl = 'https://images.unsplash.com/photo-1617038220319-276d3cfab638?auto=format&fit=crop&w=400&q=70';
+            alert('Image upload failed. The auction was not created — please try again.');
+            return;
           }
         }
         await onSubmit({

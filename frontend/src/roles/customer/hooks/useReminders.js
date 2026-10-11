@@ -1,11 +1,16 @@
 import { useCallback, useEffect, useState, useRef } from 'react';
 import { apiFetch } from '../../../shared/lib/apiClient';
+import { useAuth } from '../../../shared/hooks/useAuth';
 
 export function useReminders() {
   const [items, setItems] = useState([]);
   const seqRef = useRef(0);
+  const { user, loading: authLoading } = useAuth();
+  const userId = user?.id || null;
 
   const refresh = useCallback(async () => {
+    if (authLoading) return;
+    if (!userId) { setItems([]); return; }
     const seq = ++seqRef.current;
     try {
       const data = await apiFetch('/customer/reminders');
@@ -13,10 +18,11 @@ export function useReminders() {
       setItems(Array.isArray(data) ? data : []);
     } catch (e) {
       if (seq !== seqRef.current) return;
+      if (e?.code === 'AUTH_REQUIRED' || e?.status === 401) { setItems([]); return; }
       console.error('reminders fetch failed', e);
       setItems([]);
     }
-  }, []);
+  }, [authLoading, userId]);
 
   useEffect(() => { refresh(); }, [refresh]);
 

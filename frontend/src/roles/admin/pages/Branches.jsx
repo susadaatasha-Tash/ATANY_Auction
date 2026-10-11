@@ -16,7 +16,7 @@ export default function AdminBranches() {
 
   const refresh = async () => {
     try {
-      const rows = await apiFetch('/branches');
+      const rows = await apiFetch('/branches', { public: true });
       setBranches(Array.isArray(rows) ? rows : []);
     } catch (e) {
       showToast(e.message || 'Failed to load branches');

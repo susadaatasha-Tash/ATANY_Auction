@@ -12,7 +12,6 @@ const sections = [
   { label: 'BRANCH OPERATIONS', items: [
     { to: '/admin/branches', name: 'Branches' },
     { to: '/admin/users', name: 'Users & Roles' },
-    { to: '/admin/seller-applications', name: 'Seller Applications' },
     { to: '/admin/transactions', name: 'Orders' },
   ]},
   { label: 'INVENTORY & AUCTIONS', items: [
@@ -23,25 +22,20 @@ const sections = [
     { to: '/admin/billing', name: 'Subscriptions' },
     { to: '/admin/analytics', name: 'Reports' },
     { to: '/admin/security', name: 'Security Alerts' },
-    { to: '/admin/audit-logs', name: 'Audit Logs' },
-    { to: '/admin/chatbot', name: 'Chatbot Logs' },
   ]},
 ];
 
 const titles = {
-  '/admin': ['Dashboard', 'Multi-branch overview — branches, sellers, customers, and orders.'],
-  '/admin/products': ['Jewelry', 'Add, edit, and track inventory.'],
-  '/admin/auctions': ['Auctions', 'Monitor live, scheduled, and closed auctions.'],
-  '/admin/users': ['Users & Roles', 'Manage customer and admin accounts.'],
-  '/admin/seller-applications': ['Seller Applications', 'Review and approve seller applications.'],
-  '/admin/transactions': ['Orders', 'Track payments, refunds, pickups.'],
-  '/admin/analytics': ['Reports', 'Sales performance + CSV export.'],
-  '/admin/security': ['Security Alerts', 'Suspicious activity flagged for review.'],
-  '/admin/audit-logs': ['Audit Logs', 'System action history and records.'],
-  '/admin/notifications': ['Notifications', 'System updates, winners, payouts and applications.'],
-  '/admin/chatbot': ['Chatbot Logs', 'Sessions handled by the assistant.'],
-  '/admin/branches': ['Branches', 'Manage branches shown on locator.'],
-  '/admin/billing': ['Subscriptions', 'Monitor monthly seller subscriptions and payments.'],
+  '/admin': ['Dashboard'],
+  '/admin/products': ['Jewelry'],
+  '/admin/auctions': ['Auctions'],
+  '/admin/users': ['Users & Roles'],
+  '/admin/transactions': ['Orders'],
+  '/admin/analytics': ['Reports'],
+  '/admin/security': ['Security Alerts'],
+  '/admin/notifications': ['Notifications'],
+  '/admin/branches': ['Branches'],
+  '/admin/billing': ['Subscriptions'],
 };
 
 function getUserInitials(name, email) {
@@ -71,21 +65,31 @@ export default function AdminLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { user, signOut } = useAuth();
   const { pathname } = useLocation();
-  const [title, subtitle] = titles[pathname] || titles['/admin'];
+  const title = titles[pathname]?.[0] || titles['/admin'][0];
   const displayName = getDisplayName(user);
   const initials = getUserInitials(displayName, user?.email);
+  // Subscriptions page owns its flat portal header (search + platform pill)
+  const isBilling = pathname === '/admin/billing';
 
   return (
     <div className={`app admin-app${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
       <Sidebar brand="ATANY" tag="ADMIN" sections={sections} open={open} onClose={() => setOpen(false)} onSignOut={signOut} />
       {open && <div className="sidebar-backdrop" aria-hidden="true" onClick={() => setOpen(false)} />}
       <div className="main">
-        <Topbar title={title} subtitle={subtitle} onMenuToggle={() => setOpen((v) => !v)}
-          sidebarCollapsed={sidebarCollapsed} onSidebarToggle={() => setSidebarCollapsed((v) => !v)}
-          user={{ initials, name: displayName, role: 'Administrator' }} onSignOut={signOut}
-          rightExtra={<NotificationBell to="/admin/notifications" apiPath="/admin/notifications/history" />}
-          settingsTo="/admin" />
-        <div className="content"><Outlet /></div>
+        {!isBilling && (
+          <Topbar
+            title={title}
+            role="admin"
+            onMenuToggle={() => setOpen((v) => !v)}
+            sidebarCollapsed={sidebarCollapsed}
+            onSidebarToggle={() => setSidebarCollapsed((v) => !v)}
+            user={{ initials, name: displayName, role: 'Administrator' }}
+            onSignOut={signOut}
+            rightExtra={<NotificationBell to="/admin/notifications" apiPath="/admin/notifications/history" />}
+            settingsTo="/admin"
+          />
+        )}
+        <div className={`content${isBilling ? ' content-billing' : ''}`}><Outlet /></div>
       </div>
     </div>
   );

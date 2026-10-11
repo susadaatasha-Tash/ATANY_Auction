@@ -16,7 +16,7 @@ import '../roles/customer/customer-dashboard.css';
 const sections = [
   { label: 'OVERVIEW', items: [{ to: '/customer', name: 'Dashboard', end: true, icon: <Home size={16} /> }] },
   { label: 'SHOP', items: [
-    { to: '/customer/live', name: 'Live Auctions', icon: <Gavel size={16} /> },
+    { to: '/customer/auctions', name: 'Auctions', icon: <Gavel size={16} /> },
     { to: '/customer/bids', name: 'My Bids', icon: <Tag size={16} /> },
     { to: '/customer/favorites', name: 'Favorites', icon: <Heart size={16} /> },
     { to: '/customer/watchlist', name: 'Watchlist', icon: <Eye size={16} /> },
@@ -27,16 +27,17 @@ const sections = [
 ];
 
 const titles = {
-  '/customer': ['Dashboard', 'Your bids, orders, and account at a glance.'],
-  '/customer/live': ['Live Auctions', 'Browse every auction running right now.'],
-  '/customer/bids': ['My Bids', "Track every auction you've bid on."],
-  '/customer/favorites': ['Favorites', 'Items you liked — saved for later.'],
-  '/customer/watchlist': ['Watchlist', 'Auctions you participated in by bidding.'],
-  '/customer/purchases': ['My Purchases', 'Orders, payments, and pickup status.'],
-  '/customer/messages': ['Messages', 'Communicate with sellers.'],
-  '/customer/notifications': ['Notifications', 'You won! Pickup instructions.'],
-  '/customer/account': ['Profile', 'Manage your profile.'],
-  '/customer/settings': ['Settings', 'Manage your preferences and app settings.'],
+  '/customer': ['Dashboard'],
+  '/customer/auctions': ['Auctions'],
+  '/customer/live': ['Auctions'],
+  '/customer/bids': ['My Bids'],
+  '/customer/favorites': ['Favorites'],
+  '/customer/watchlist': ['Watchlist'],
+  '/customer/purchases': ['My Purchases'],
+  '/customer/messages': ['Messages'],
+  '/customer/notifications': ['Notifications'],
+  '/customer/account': ['Profile'],
+  '/customer/settings': ['Settings'],
 };
 
 function BranchSwitcher() {
@@ -123,7 +124,9 @@ function LayoutInner() {
   const { branchId, branchName, branches, loading: branchLoading } = useBranch();
   const { pathname } = useLocation();
   const navigate = useNavigate();
-  const [title, subtitle] = titles[pathname] || titles['/customer'];
+  // My Purchases owns its page-level header (title / search / profile)
+  const isPurchases = pathname === '/customer/purchases';
+  const title = titles[pathname]?.[0] || titles['/customer'][0];
   const displayName = getDisplayName(user);
   const initials = getUserInitials(displayName, user?.email);
 
@@ -147,12 +150,20 @@ function LayoutInner() {
       <Sidebar brand="ATANY" tag="JEWELRY AUCTION" sections={sections} open={open} onClose={() => setOpen(false)} onSignOut={signOut} />
       {open && <div className="sidebar-backdrop" aria-hidden="true" onClick={() => setOpen(false)} />}
       <div className="main">
-        <Topbar title={title} subtitle={subtitle} onMenuToggle={() => setOpen((v) => !v)}
-          sidebarCollapsed={sidebarCollapsed} onSidebarToggle={() => setSidebarCollapsed((v) => !v)}
-          user={{ initials, name: displayName, role: displayBranchName || 'Customer' }} onSignOut={signOut}
-          rightExtra={<><BranchSwitcher /><NotificationBell /></>}
-          settingsTo="/customer/account" />
-        <div className="content"><Outlet /></div>
+        {!isPurchases && (
+          <Topbar
+            title={title}
+            role="customer"
+            onMenuToggle={() => setOpen((v) => !v)}
+            sidebarCollapsed={sidebarCollapsed}
+            onSidebarToggle={() => setSidebarCollapsed((v) => !v)}
+            user={{ initials, name: displayName, role: displayBranchName || 'Customer' }}
+            onSignOut={signOut}
+            rightExtra={<><BranchSwitcher /><NotificationBell /></>}
+            settingsTo="/customer/account"
+          />
+        )}
+        <div className={`content${isPurchases ? ' content-purchases' : ''}`}><Outlet /></div>
       </div>
       <AssistantWidget mode="customer" userId={user?.id} />
       <OtherBranchLivePopup />

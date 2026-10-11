@@ -415,7 +415,7 @@ export default function Settings() {
       {showFAQ && (
         <Modal title="Frequently Asked Questions" onClose={() => setShowFAQ(false)}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12, fontSize: 13, lineHeight: 1.6, color: '#142A4A' }}>
-            <div><b>How do I bid?</b><p style={{ color: '#7A8599', fontSize: 12, marginTop: 4 }}>Open Live Auctions, choose an item, use the −/＋ stepper (min increment ₱1,000) and click Place Bid. You will be notified if outbid.</p></div>
+            <div><b>How do I bid?</b><p style={{ color: '#7A8599', fontSize: 12, marginTop: 4 }}>Open Auctions, choose an item, use the −/＋ stepper (min increment ₱1,000) and click Place Bid. You will be notified if outbid.</p></div>
             <div><b>Where do I pick up?</b><p style={{ color: '#7A94A8', fontSize: 12, marginTop: 4 }}>At your selected branch (Gmall, Abreeza, SM Lanang). Bring ID and order number within 7 days.</p></div>
             <div><b>When is payment due?</b><p style={{ color: '#7A94A8', fontSize: 12, marginTop: 4 }}>Pay via PayMongo link after winning, or via Orders → Complete Payment. Orders pending payment expire per ATANY policy.</p></div>
             <div><b>Are items authentic?</b><p style={{ color: '#7A94A8', fontSize: 12, marginTop: 4 }}>Every piece is inspected and certified by karat/weight before listing.</p></div>

@@ -74,7 +74,7 @@ export default function LandingPage() {
       setLoading(true);
       setError(null);
       try {
-        const rows = await apiFetch('/api/auctions/live');
+        const rows = await apiFetch('/api/auctions/live', { public: true });
         setLiveAuctions(rows);
       } catch (e) {
         setError('Unable to load live auctions.');
@@ -87,7 +87,7 @@ export default function LandingPage() {
   }, []);
 
   return (
-    <>
+    <div className="public-page">
       <PublicHeader landing />
 
       <main>
@@ -100,7 +100,6 @@ export default function LandingPage() {
               <div className="hero-buttons">
                 <a className="btn btn-gold" href="#auctions">Explore Auctions</a>
                 <a className="btn btn-outline" href="#jewelry">Shop Jewelry</a>
-                <Link className="btn btn-outline" to="/seller-application">Become a Seller</Link>
               </div>
             </div>
           </div>
@@ -122,8 +121,8 @@ export default function LandingPage() {
         <section id="auctions">
           <div className="container">
             <div className="section-heading">
-              <div><h2>Featured Live Auctions</h2><p>Bid before time runs out — server decides winner.</p></div>
-              <Link to="/customer/live" className="text-link">View all auctions →</Link>
+              <div><h2>Featured Auctions</h2><p>Bid before time runs out — server decides winner.</p></div>
+              <Link to="/customer/auctions" className="text-link">View all auctions →</Link>
             </div>
             <div className="auction-grid">
               {loading ? (
@@ -170,7 +169,7 @@ export default function LandingPage() {
           <div className="container">
             <div className="section-heading">
               <div><h2>Shop Our Jewelry</h2><p>Browse by category — find the perfect piece.</p></div>
-              <Link to="/customer/live" className="text-link">View All Jewelry →</Link>
+              <Link to="/customer/auctions" className="text-link">View All Jewelry →</Link>
             </div>
             <div className="jewelry-grid">
               {[
@@ -180,7 +179,7 @@ export default function LandingPage() {
                 { name: 'Earrings', img: 'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?auto=format&fit=crop&w=400&q=80' },
                 { name: 'Watches', img: 'https://images.unsplash.com/photo-1524592094714-0f0654e20314?auto=format&fit=crop&w=400&q=80' },
               ].map((cat) => (
-                <Link key={cat.name} to={`/customer/live?category=${cat.name}`} className="collection-card">
+                <Link key={cat.name} to={`/customer/auctions?category=${cat.name}`} className="collection-card">
                   <div className="collection-image"><img src={cat.img} alt={cat.name} /></div>
                   <div className="collection-info"><h4>{cat.name}</h4><span>Explore →</span></div>
                 </Link>
@@ -369,7 +368,7 @@ export default function LandingPage() {
               <p>The Philippines' premier jewelry auction platform. Discover, bid, and own timeless pieces with confidence.</p>
             </div>
             <div><h3>Quick Links</h3><a href="#auctions">Live Auctions</a><a href="#jewelry">Shop Jewelry</a><a href="#how-it-works">How It Works</a><Link to="/branches">Find a Branch</Link></div>
-            <div><h3>Account</h3><Link to="/login">Sign In</Link><Link to="/signup">Create Account</Link><Link to="/seller-application">Become a Seller</Link></div>
+            <div><h3>Account</h3><Link to="/login">Sign In</Link><Link to="/signup">Create Account</Link></div>
             <div><h3>Contact</h3><a href="mailto:hello@atany.ph">hello@atany.ph</a><a href="mailto:support@atany.ph">support@atany.ph</a><a>Davao City, Philippines</a></div>
           </div>
           <div className="footer-bottom">
@@ -414,6 +413,6 @@ export default function LandingPage() {
       )}
 
       <AssistantWidget mode="customer" />
-    </>
+    </div>
   );
 }

@@ -39,12 +39,12 @@ export default function Favorites() {
               <div className="price">Current bid: <b>{peso(w.currentBid ?? w.current_bid ?? w.price)}</b></div>
               {w.auction_status && <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>Status: {w.auction_status}</div>}
               <div className="watch-card-actions">
-                <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={() => window.location.href = '/customer/live'}>View Auction</button>
+                <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={() => window.location.href = '/customer/auctions'}>View Auction</button>
                 <button type="button" className="btn btn-outline" onClick={() => onRemove(w.product_id)}>Remove</button>
               </div>
             </div>
           </div>
-        )) : <div className="empty-state" style={{ gridColumn: '1/-1' }}><p>Your favorites is empty — click ♡ on Live Auctions to save items here.</p></div>}
+        )) : <div className="empty-state" style={{ gridColumn: '1/-1' }}><p>Your favorites is empty — click ♡ on Auctions to save items here.</p></div>}
       </div>
     </div>
   );

@@ -22,12 +22,12 @@ export const listSales = async (req, res) => {
     );
     if (!orders.length) return res.json([]);
 
-    // fetch product names
+    // fetch product names + images (for dashboard thumbnails)
     const { rows: prodDetails } = await pool.query(
-      `SELECT id, name FROM products WHERE id IN (${productIds.map((_, i) => `$${i + 1}`).join(',')})`,
+      `SELECT id, name, image_url FROM products WHERE id IN (${productIds.map((_, i) => `$${i + 1}`).join(',')})`,
       productIds
     );
-    const prodMap = Object.fromEntries(prodDetails.map(p => [p.id, p.name]));
+    const prodMap = Object.fromEntries(prodDetails.map(p => [p.id, p]));
 
     // fetch buyer names
     const buyerIds = [...new Set(orders.map(o => o.buyer_id).filter(Boolean))];
@@ -49,11 +49,13 @@ export const listSales = async (req, res) => {
         payment_status = pay[0]?.status || null;
       } catch { payment_status = null; }
       const productId = auctionMap[o.auction_id];
+      const product = prodMap[productId] || {};
       const commission = Math.round(o.amount * 0.10);
       rows.push({
         id: o.id,
         transaction_code: o.transaction_code,
-        item: prodMap[productId] || 'Jewelry Item',
+        item: product.name || 'Jewelry Item',
+        item_image: product.image_url || null,
         buyer: buyerMap[o.buyer_id] || 'Customer',
         amount: o.amount,
         commission,

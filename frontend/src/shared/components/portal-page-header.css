@@ -1,0 +1,237 @@
+/* Shared flat portal page header — integrated, not a floating card */
+/* Title-only: eyebrow/portal labels and page subtitles removed globally */
+
+.portal-page-header.topbar,
+.portal-page-header {
+  /* Outer wrapper — no card chrome */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 52px;
+  max-height: 56px;
+  height: auto;
+  margin: 0;
+  padding: 6px 28px;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--cream, #FAF9F6);
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.portal-page-header.topbar::before,
+.portal-page-header::before {
+  content: none !important;
+  display: none !important;
+  position: static !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
+/* Titles */
+.portal-page-header__left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+}
+
+.portal-page-header__menu,
+.portal-page-header__collapse {
+  flex-shrink: 0;
+}
+
+.portal-page-header__titles {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.portal-page-header__title,
+.portal-page-header.topbar .topbar-title h1,
+.portal-page-header .topbar-title h1 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--cust-navy, var(--navy, #142A4A));
+  letter-spacing: -.015em;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Compact class is always applied — kept for responsive overrides */
+.portal-page-header--compact,
+.portal-page-header.topbar.portal-page-header--compact {
+  min-height: 52px !important;
+  max-height: 56px !important;
+  height: auto !important;
+  padding: 6px 28px !important;
+  align-items: center !important;
+}
+.portal-page-header--compact .portal-page-header__titles {
+  display: flex;
+  align-items: center;
+  min-height: 0;
+}
+.portal-page-header--compact .portal-page-header__title {
+  margin: 0 !important;
+  line-height: 1.2 !important;
+}
+
+/* Optional search — individual control surface */
+.portal-page-header__search {
+  flex-shrink: 0;
+  width: 100%;
+  max-width: 360px;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+.portal-page-header__search .mp-header-search,
+.portal-page-header__search .portal-search,
+.portal-page-header__search input[type='search'],
+.portal-page-header__search input[type='text'] {
+  height: 40px;
+  background: #fff;
+  border: 1px solid var(--cust-border, var(--line, #E8E5DE));
+  border-radius: 10px;
+}
+
+/* Right controls */
+.portal-page-header__right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.portal-page-header__profile {
+  height: 40px;
+  padding: 3px 10px 3px 3px;
+  background: #fff;
+  border: 1px solid var(--cust-border, var(--line, #E8E5DE));
+  border-radius: 999px;
+  box-shadow: none;
+}
+
+.portal-page-header__profile-text {
+  min-width: 0;
+  overflow: hidden;
+  line-height: 1.15;
+}
+
+.portal-page-header__profile .name,
+.portal-page-header__profile .admin-chip .name,
+.portal-page-header .profile-name {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cust-navy, var(--navy, #142A4A));
+  max-width: 140px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.portal-page-header__profile .role,
+.portal-page-header .profile-branch {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--cust-muted, var(--muted, #7B8493));
+  max-width: 140px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Keep name/role selectors working when Topbar markup uses topbar-title */
+.topbar-title h1 {
+  font-size: 18px;
+  color: var(--cust-navy, var(--navy, #142A4A));
+  font-weight: 800;
+  letter-spacing: -.015em;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topbar-branch {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Tablet */
+@media (max-width: 1199px) {
+  .profile-branch {
+    display: none !important;
+  }
+  .profile-name {
+    max-width: 120px !important;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 899px) {
+  .portal-page-header.topbar,
+  .portal-page-header {
+    padding: 6px 20px !important;
+    gap: 10px !important;
+  }
+  .portal-page-header--compact,
+  .portal-page-header.topbar.portal-page-header--compact {
+    padding: 6px 20px !important;
+  }
+  .portal-page-header__right {
+    gap: 8px !important;
+  }
+  .profile-name {
+    max-width: 100px !important;
+  }
+}
+
+/* Mobile */
+@media (max-width: 767px) {
+  .portal-page-header.topbar,
+  .portal-page-header {
+    padding: 6px 16px !important;
+    min-height: 52px !important;
+    max-height: 56px !important;
+  }
+  .portal-page-header--compact,
+  .portal-page-header.topbar.portal-page-header--compact {
+    min-height: 52px !important;
+    max-height: 56px !important;
+    padding: 6px 16px !important;
+  }
+  .portal-page-header__title,
+  .topbar-title h1 {
+    font-size: 15px !important;
+  }
+  .profile-branch {
+    display: none !important;
+  }
+  .profile-name {
+    max-width: 80px !important;
+    font-size: 12px !important;
+  }
+}
+
+@media (max-width: 500px) {
+  .profile-name {
+    display: none !important;
+  }
+}

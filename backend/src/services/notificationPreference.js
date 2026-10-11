@@ -43,7 +43,13 @@ export async function shouldDeliverNotification(userId, type, message) {
   if (!userId) return false;
   if (!supabaseAdmin) return true; // if no admin client, allow
   try {
-    const { data, error } = await supabaseAdmin.auth.admin.getUserById(userId);
+    // Bounded: callers often hold a pg transaction client (bid/outbid paths,
+    // auctionStarter per-auction loop). A stalled settings lookup must never
+    // park a pool client — default allow on timeout, same as on fetch failure.
+    const { data, error } = await Promise.race([
+      supabaseAdmin.auth.admin.getUserById(userId),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('settings lookup timeout')), 5000)),
+    ]);
     if (error || !data?.user) return true; // default allow if fetch fails
     const settings = data.user.user_metadata?.settings;
     if (!settings) return true; // no preferences set, default ON

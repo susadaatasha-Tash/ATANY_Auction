@@ -140,7 +140,7 @@ export default function OtherBranchLivePopup() {
 
   const handleView = useCallback((p) => {
     dismiss(p.id);
-    navigate('/customer/live');
+    navigate('/customer/auctions');
   }, [navigate, dismiss]);
 
   useEffect(() => {
@@ -150,7 +150,7 @@ export default function OtherBranchLivePopup() {
 
     const poll = async () => {
       try {
-        const rows = await apiFetch('/api/auctions/live');
+        const rows = await apiFetch('/api/auctions?status=live', { public: true });
         if (cancelled || !Array.isArray(rows)) return;
         for (const a of rows) {
           if (a.status !== 'live') continue;

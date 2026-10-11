@@ -46,8 +46,10 @@ export const createAuction = async (req, res) => {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    // RETURNING * so the create response can include product display fields (name, image_url)
+    // for immediate My Auctions refresh without a second round-trip guess.
     const { rows: prod } = await client.query(
-      "INSERT INTO products (shop_id, name, category, karat_weight, price, stock, status, description, image_url) VALUES ($1,$2,$3,$4,$5,1,'approved',$6,$7) RETURNING id",
+      "INSERT INTO products (shop_id, name, category, karat_weight, price, stock, status, description, image_url) VALUES ($1,$2,$3,$4,$5,1,'approved',$6,$7) RETURNING *",
       [shop.id, name, category || 'Rings', karat || null, startBid, (desc ?? description) || null, image_url || null]
     );
     const { rows: auc } = await client.query(
@@ -146,7 +148,23 @@ export const createAuction = async (req, res) => {
       console.warn('[audit log] failed:', logErr.message);
     }
 
-    res.status(201).json(auc[0]);
+    // Include product display fields so the shop-owner UI can immediately show
+// the new lot (name + stored image_url) after publish without hardcoding assets.
+    const product = prod[0] || {};
+    res.status(201).json({
+      ...auc[0],
+      productId: product.id,
+      name: product.name,
+      category: product.category,
+      karat_weight: product.karat_weight,
+      image_url: product.image_url || null,
+      img: product.image_url || null,
+      startPrice: auc[0].start_price,
+      currentBid: auc[0].current_bid,
+      startTime: auc[0].start_time,
+      endTime: auc[0].end_time,
+      bids: 0,
+    });
   } catch (e) {
     await client.query('ROLLBACK');
     console.error('[shop-owner/createAuction]', e.message);

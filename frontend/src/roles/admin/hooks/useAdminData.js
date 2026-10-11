@@ -20,7 +20,7 @@ export function useAdminData() {
       apiFetch('/admin/users').catch(() => []),
       apiFetch('/admin/transactions').catch(() => []),
       apiFetch('/admin/security-alerts').catch(() => []),
-      apiFetch('/branches').catch(() => []), // public endpoint, single source of truth spec 4.5
+      apiFetch('/branches', { public: true }).catch(() => []), // public endpoint, single source of truth spec 4.5
     ]);
     setProducts(p); setAuctions(a); setUsers(u); setTxns(t); setAlerts(s); setBranches(b);
   }, []);

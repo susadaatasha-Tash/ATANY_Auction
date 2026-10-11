@@ -206,7 +206,7 @@ export default function SelectBranch() {
 
   if (loading || authLoading) {
     return (
-      <div style={styles.page}>
+      <div className="public-page" style={styles.page}>
         <div style={styles.logo}>ATANY</div>
         <div style={styles.loadingWrap}>
           <div style={styles.spinner} />
@@ -219,7 +219,7 @@ export default function SelectBranch() {
 
   if (error) {
     return (
-      <div style={styles.page}>
+      <div className="public-page" style={styles.page}>
         <div style={styles.logo}>ATANY</div>
         <div style={styles.errorWrap}>
           <p>{error}</p>
@@ -230,7 +230,7 @@ export default function SelectBranch() {
   }
 
   return (
-    <div style={styles.page}>
+    <div className="public-page" style={styles.page}>
       <div style={styles.logo}>ATANY</div>
 
       <div style={styles.header}>

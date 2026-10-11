@@ -30,16 +30,46 @@ function getRuleReply(text, mode = 'customer') {
   return null;
 }
 
-// System prompts — warm, conversational, strictly scoped to ATANY, role-aware, with factual ground truth.
-// Real branch data sourced from branches table (migration 001). Update here if branches are added/removed.
-const BRANCH_DATA = `
-REAL ATANY BRANCHES (quote these exactly — never invent branch names, addresses, or hours):
-1. Davao City Branch — Victoria Plaza Area, Davao City — Mon–Sat 9AM–6PM — (082) 123-4567
-2. Cebu Branch — Ayala Center, Cebu City — Mon–Sat 10AM–7PM — (032) 234-5678
-3. Manila Branch — Greenbelt 5, Makati City — Daily 10AM–8PM — (02) 8888-1234
-4. Iloilo Branch — Festive Walk, Iloilo City — Mon–Sat 10AM–6PM — (033) 321-9988
-5. Baguio Branch — Session Road, Baguio City — Wed–Mon 9AM–5PM — (074) 442-7711
-Do NOT mention any other branch names or locations. If a user asks about a city not listed, say we don't have a branch there yet and suggest the nearest one.`;
+// Branch context is built per request from the SAME branches table read by the
+// Branch Locator (GET /branches → SELECT * FROM branches) — never hardcoded, so the
+// chatbot and the locator always agree. Placeholder is replaced at request time.
+const BRANCH_CONTEXT_PLACEHOLDER = '__BRANCH_CONTEXT__';
+
+// Shown to the model when the branch records cannot be loaded. Deliberately
+// contains no branch names/addresses/hours — the model must not invent them.
+const BRANCH_UNAVAILABLE = `
+BRANCH INFORMATION TEMPORARILY UNAVAILABLE:
+The current branch records could not be loaded. If the user asks about branches, locations, or pickup, reply with exactly this message (plus a link to the Branch Locator page): "I'm unable to retrieve the current branch information right now. Please check the Branch Locator for the latest ATANY branch details." Do not invent branch names, addresses, hours, or phone numbers.`;
+
+// Fetch open branches and format them exactly like the Branch Locator cards:
+// name — address — hours — phone. Returns null when the query fails or yields
+// no usable rows, so the caller can fall back to BRANCH_UNAVAILABLE. Never throws.
+async function getBranchContext() {
+  try {
+    const { rows } = await pool.query(
+      "SELECT name, address, hours, phone FROM branches WHERE status = 'Open' ORDER BY name"
+    );
+    const lines = (rows || [])
+      .filter((b) => b && b.name)
+      .map((b, i) => {
+        const parts = [b.name, b.address, b.hours, b.phone].filter((p) => p && String(p).trim());
+        return `${i + 1}. ${parts.join(' — ')}`;
+      });
+    if (!lines.length) return null;
+    return `REAL ATANY BRANCHES FROM DATABASE (quote these exactly — never invent branch names, addresses, or hours):\n${lines.join('\n')}`;
+  } catch {
+    return null;
+  }
+}
+
+// Strict geographic scope: ATANY is a Davao City portal. The rule names the scope
+// and tells the model how to handle non-Davao questions using real branch data
+// above — never by swapping in another city name.
+const LOCATION_SCOPE = `
+ATANY LOCATION SCOPE (STRICT):
+ATANY operates in Davao City, Philippines. When discussing ATANY branches, locations, store availability, branch services, auctions, purchases, or customer assistance, only provide information supported by ATANY's Davao City data. Do not recommend, invent, or refer users to Manila or other cities as ATANY locations.
+If a user asks whether ATANY has a branch in Manila or another city, politely explain that ATANY's supported branch locations are in Davao City, then share the actual available Davao City branch information.
+Do not mention Davao City unnecessarily when answering general questions unrelated to location.`;
 
 const UI_ELEMENTS = `
 REAL UI ELEMENTS (USE ONLY THESE — DO NOT GUESS OR INVENT ICONS/BUTTONS):
@@ -60,8 +90,9 @@ REAL APP ROUTES (use ONLY these exact paths in inline markdown links — never i
 Public:
   / (Landing page), /login (Log In), /signup (Create Account), /branches (Branch Locator / Find a Branch)
 Customer (logged in as customer):
-  /customer (Dashboard), /customer/live (Live Auctions / Browse Auctions), /customer/bids (My Bids),
+  /customer (Dashboard), /customer/auctions (Auctions — Live + Scheduled), /customer/bids (My Bids),
   /customer/watchlist (My Watchlist), /customer/purchases (My Purchases), /customer/account (Account Settings)
+  Compatibility: /customer/live redirects to /customer/auctions
 Seller (logged in as shop owner):
   /shop (Dashboard), /shop/listings (My Listings), /shop/auctions (My Auctions),
   /shop/sales (Sales & Payouts), /shop/profile (Shop Profile)`;
@@ -79,9 +110,10 @@ The link text should be the natural name of the page or feature — the part of 
 - IMPORTANT: Always use bold **around** the link for key UI references so the link stands out: **[My Listings](/shop/listings)**.
 
 REAL ROUTES to use (same as listed above):
-  /customer/live, /customer/bids, /customer/watchlist, /customer/purchases, /customer/account, /customer/notifications
+  /customer/auctions, /customer/bids, /customer/watchlist, /customer/purchases, /customer/account, /customer/notifications
   /shop/listings, /shop/auctions, /shop/sales, /shop/profile
   /branches, /login, /signup
+  Compatibility alias: /customer/live → /customer/auctions
 
 Example — "How do I know if I won?":
 You'll get an outbid or win notification in your **[Notifications](/customer/notifications)**. You can also check your **[My Purchases](/customer/purchases)** page to see all orders and their status.
@@ -91,7 +123,8 @@ Go to **[My Listings](/shop/listings)** from your dashboard, then tap **Submit N
 
 const SYSTEM_PROMPT_CUSTOMER = `You are ATANY's helpful support assistant — warm, natural, conversational. Use contractions, friendly phrasing, not stiff corporate.
 Scope strictly to ATANY's gold jewelry auction platform: bidding, listings/auctions, payments & pickup, branches, account. If asked outside scope (general knowledge, unrelated topics), politely decline and redirect to ATANY topics.
-${BRANCH_DATA}
+${BRANCH_CONTEXT_PLACEHOLDER}
+${LOCATION_SCOPE}
 Key facts to get right (don't hallucinate):
 - Review: "usually within 1 business day" (from Submit New Item copy).
 - Payout/refund: payout 90% (10% commission), Processing → Paid Out via admin Mark Paid, sent in 1–2 business days; refunds 3–5 business days.
@@ -134,6 +167,8 @@ Most branches are open Mon–Sat, 9am–6pm.
 
 const SYSTEM_PROMPT_SELLER = `You are ATANY's helpful support assistant for sellers — warm, natural, conversational.
 Scope strictly to ATANY seller flows: submitting listings, admin review, auction scheduling, payouts, editing rejected items, sales history, branches, account/shop. If asked outside scope, politely redirect to seller topics.
+${BRANCH_CONTEXT_PLACEHOLDER}
+${LOCATION_SCOPE}
 Key facts:
 - Submit: My Listings → Submit New Item (Item Name, Category, Karat/Weight, Starting Price, Auction Start/End, Photo, Description) → pending.
 - Review: usually within 1 business day.
@@ -207,7 +242,12 @@ export async function chatbotReply(query, { userId, mode = 'customer', history =
   const groqKey = process.env.GROQ_API_KEY;
   if (!groqKey) return { source: 'fallback', reply: "I'm not fully sure about that one yet — I've noted your question for our team. In the meantime, try asking about bidding, branches, payments, or your account.", mode: effectiveMode };
 
-  const systemPrompt = effectiveMode === 'seller' ? SYSTEM_PROMPT_SELLER : SYSTEM_PROMPT_CUSTOMER;
+  // Branch context comes from the live branches table (same source as Branch
+  // Locator). On failure the model gets the unavailable notice instead of stale
+  // hardcoded branches — it must never invent locations.
+  const branchContext = (await getBranchContext()) || BRANCH_UNAVAILABLE;
+  const systemPrompt = (effectiveMode === 'seller' ? SYSTEM_PROMPT_SELLER : SYSTEM_PROMPT_CUSTOMER)
+    .replace(BRANCH_CONTEXT_PLACEHOLDER, branchContext);
 
   // Build messages with history (last 4-6 turns) for context
   const historyMessages = (Array.isArray(history) ? history.slice(-6) : []).map(m => ({

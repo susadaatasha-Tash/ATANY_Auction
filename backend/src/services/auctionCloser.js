@@ -1,74 +1,38 @@
 // backend/src/services/auctionCloser.js
 // Spec 5.2: winner decided server-side by cron/pg_cron, never by client timer.
 // Run every minute via node-cron or pg_cron job. Closes auctions where end_time <= NOW() and status != ended
-import { pool } from '../db/pool.js';
+import { pool, isDirectPg } from '../db/pool.js';
+import { requireDirectPg } from '../db/dbGuard.js';
 import { sendNotificationEmail } from './emailService.js';
+import { closeSingleAuction } from './auctionClosingService.js';
 
 export async function closeExpiredAuctions() {
-  const { rows } = await pool.query("SELECT id FROM auctions WHERE status != 'ended' AND end_time <= NOW()");
+  // H2: closing auctions creates winner orders (money path). REST fallback cannot
+  // guarantee multi-statement atomicity → fail closed rather than risk duplicate orders.
+  // Atomic claim: UPDATE auctions SET status='ended' WHERE id=$1 AND status != 'ended' RETURNING id — via closeSingleAuction
+  let direct = true;
+  try { direct = typeof isDirectPg === 'function' ? !!isDirectPg() : true; } catch { direct = false; }
+  if (!direct) {
+    console.warn('[auctionCloser] skipping — direct Postgres unavailable (fail closed)');
+    return { skipped: true, reason: 'DB_UNAVAILABLE' };
+  }
+  const { rows } = await pool.query("SELECT id FROM auctions WHERE status != 'ended' AND end_time <= NOW() AND status != 'paused'");
   for (const a of rows) {
-    const client = await pool.connect();
+    let closeResult;
     try {
-      await client.query('BEGIN');
-      await client.query("UPDATE auctions SET status = 'ended' WHERE id = $1", [a.id]);
-      // Winner = highest ELIGIBLE bid — same rules as winnerExpiration.js:
-      // exclude flagged bids, dedup per user (keep highest), amount DESC, created_at ASC for ties
-      const { rows: rankedBids } = await client.query(
-        `SELECT user_id, amount, created_at FROM bids WHERE auction_id = $1 AND (flagged = false OR flagged IS NULL) ORDER BY amount DESC, created_at ASC`,
-        [a.id]
-      );
-      const seenBidder = new Map();
-      for (const bid of rankedBids) {
-        if (!seenBidder.has(bid.user_id)) seenBidder.set(bid.user_id, bid);
+      closeResult = await closeSingleAuction(a.id);
+    } catch (e) {
+      if (e.code === 'DB_UNAVAILABLE') {
+        console.warn('[auctionCloser] skipping auction', a.id, '—', e.message);
+        continue;
       }
-      const top = Array.from(seenBidder.values()).slice(0, 1);
-      let winnerId = null;
-      let winningAmount = null;
-      let orderId = null;
-      if (top.length) {
-        // Idempotency: skip if order already exists for this auction (cron may run twice)
-        const { rows: existingOrder } = await client.query('SELECT id FROM orders WHERE auction_id=$1', [a.id]);
-        if (existingOrder.length) {
-          orderId = existingOrder[0].id;
-          winnerId = top[0].user_id;
-          winningAmount = top[0].amount;
-        } else {
-          // spec 4.1: auto-create order status pending — REST-compatible: fetch branch via simple queries
-          let branchId = null;
-          try {
-            const { rows: aucProd } = await client.query('SELECT product_id FROM auctions WHERE id=$1', [a.id]);
-            const productId = aucProd[0]?.product_id;
-            if (productId) {
-              const { rows: prodShop } = await client.query('SELECT shop_id FROM products WHERE id=$1', [productId]);
-              const shopId = prodShop[0]?.shop_id;
-              if (shopId) {
-                const { rows: shopBranch } = await client.query('SELECT home_branch_id FROM shops WHERE id=$1', [shopId]);
-                branchId = shopBranch[0]?.home_branch_id || null;
-              }
-            }
-          } catch {}
-          let orderRows;
-          try {
-            const res = await client.query(
-              `INSERT INTO orders (auction_id, buyer_id, amount, branch_id, status) VALUES ($1,$2,$3,$4,'pending') RETURNING id`,
-              [a.id, top[0].user_id, top[0].amount, branchId]
-            );
-            orderRows = res.rows;
-          } catch (insErr) {
-            if (insErr.code === '23505') {
-              const { rows: existing } = await client.query('SELECT id FROM orders WHERE auction_id=$1', [a.id]);
-              orderRows = existing;
-            } else throw insErr;
-          }
-          if (orderRows.length) orderId = orderRows[0]?.id;
-          winnerId = top[0].user_id;
-          winningAmount = top[0].amount;
-          orderId = orderRows[0]?.id;
-        }
-      }
-      await client.query('COMMIT');
-
-      // After commit: notify winner via in-app + email (REST-compatible simple queries)
+      console.error('closeExpiredAuctions error', a.id, e);
+      continue;
+    }
+    if (closeResult.alreadyEnded) continue;
+    const winnerId = closeResult.winnerId;
+    const orderId = closeResult.orderId;
+    // After authoritative commit: notify winner via in-app + email (REST-compatible simple queries)
       if (winnerId) {
         try {
           const { rows: orderRows } = await pool.query('SELECT * FROM orders WHERE id=$1', [orderId]);
@@ -203,12 +167,6 @@ export async function closeExpiredAuctions() {
           console.error('Win notification failed for auction', a.id, notifyErr.message);
         }
       }
-    } catch (e) {
-      await client.query('ROLLBACK');
-      console.error('closeExpiredAuctions error', a.id, e);
-    } finally {
-      client.release();
-    }
   }
 }
 

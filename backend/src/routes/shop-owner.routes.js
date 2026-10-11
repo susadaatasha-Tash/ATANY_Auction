@@ -7,8 +7,26 @@ import { getShop, updateShop, branchImageUploadUrl, updateBranchImage } from '..
 import { listNotifications as listShopNotifications, markAllRead as markShopRead, markOneRead as markShopOneRead } from '../controllers/shop-owner/notification.controller.js';
 import { listActivity } from '../controllers/shop-owner/activity.controller.js';
 import { createUploadUrl } from '../services/storageService.js';
+import {
+  manageAuctions,
+  getTopBidders,
+  startAuction,
+  extendAuction,
+  pauseAuction,
+  resumeAuction,
+  endAuction,
+  relistAuction,
+} from '../controllers/shop-owner/auctionManage.controller.js';
 
 const router = Router();
+router.get('/auctions/manage', manageAuctions);
+router.get('/auctions/top-bidders', getTopBidders);
+router.post('/auctions/:id/start', startAuction);
+router.post('/auctions/:id/extend', extendAuction);
+router.post('/auctions/:id/pause', pauseAuction);
+router.post('/auctions/:id/resume', resumeAuction);
+router.post('/auctions/:id/end', endAuction);
+router.post('/auctions/:id/relist', relistAuction);
 router.get('/listings', listListings);
 router.post('/listings', createListing); // products.status = pending (spec 4.3)
 router.put('/listings/:id', updateListing); // edit rejected -> pending (Edit & Resubmit with changes)

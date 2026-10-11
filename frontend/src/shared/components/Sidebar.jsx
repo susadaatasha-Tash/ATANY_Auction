@@ -12,7 +12,7 @@ const GemIcon = () => (
   </svg>
 );
 
-export function Sidebar({ brand, tag, sections, open, onClose, onSignOut }) {
+export function Sidebar({ brand, tag, sections, open, onClose, onSignOut, extra }) {
   return (
     <aside className={`sidebar ${open ? 'open' : ''}`} aria-label="Primary navigation">
       <div className="sidebar-brand">
@@ -43,10 +43,11 @@ export function Sidebar({ brand, tag, sections, open, onClose, onSignOut }) {
           </div>
         ))}
       </nav>
+      {extra && <div className="sdash-sidebar-foot">{extra}</div>}
       {onSignOut && (
-        <div className="sidebar-foot">
+        <div className="sidebar-foot" style={{ padding: '8px 12px 14px' }}>
           <button type="button" onClick={onSignOut} className="nav-item" style={{ width: '100%', justifyContent: 'flex-start' }}>
-            <LogOut size={16} />
+            <LogOut size={15} />
             <span className="nav-label">Sign Out</span>
           </button>
         </div>

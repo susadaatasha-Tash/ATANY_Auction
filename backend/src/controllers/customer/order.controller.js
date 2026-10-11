@@ -27,27 +27,40 @@ export const getOrders = async (req, res) => {
       const b = branchMap[o.branch_id] || {};
       const winnerConfirmedAt = o.winner_confirmed_at || o.created_at;
       const paymentDeadline = o.payment_deadline || (winnerConfirmedAt ? new Date(new Date(winnerConfirmedAt).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString() : null);
+      const isExpired = paymentDeadline && new Date() > new Date(paymentDeadline) && o.status === 'pending';
       return {
         id: o.id,
         transaction_code: o.transaction_code,
         item: p.name,
         img: p.image_url,
         category: p.category,
-        karat_weight: p.karat_weight,
+        karat_weight: o.karat_weight || p.karat_weight,
         amount: o.amount,
         branch: b.name || null,
+        branch_id: o.branch_id || null,
+        branch_address: b.address || null,
+        branch_lat: b.lat ?? null,
+        branch_lng: b.lng ?? null,
         status: o.status,
         date: o.created_at,
         winner_confirmed_at: winnerConfirmedAt,
         payment_deadline: paymentDeadline,
         winner_rank: o.winner_rank || 1,
+        is_expired: isExpired || false,
+        // Display fields already stored on the order/auction — no invented codes.
+        auction_code: a.auction_code || null,
+        auction_end: a.end_time || null,
+        payment_method: o.payment_method || null,
       };
     });
     // attach latest payment status per order (REST-compatible: separate simple queries)
     for (const r of rows) {
       try {
-        const { rows: pay } = await pool.query(`SELECT status FROM payments WHERE order_id=$1 ORDER BY created_at DESC LIMIT 1`, [r.id]);
-        r.payment_status = pay[0]?.status || null;
+        const { rows: pay } = await pool.query(`SELECT * FROM payments WHERE order_id=$1 ORDER BY created_at DESC LIMIT 1`, [r.id]);
+        const payment = pay[0] || null;
+        r.payment_status = payment?.status || null;
+        r.payment_method = payment?.payment_method || r.payment_method || null;
+        r.paid_at = payment?.paid_at || null;
       } catch { r.payment_status = null; }
     }
     res.json(rows);

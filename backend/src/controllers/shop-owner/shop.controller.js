@@ -2,14 +2,15 @@ import { pool } from '../../db/pool.js';
 import { createBranchUploadUrl, deleteBranchImageByUrl } from '../../services/storageService.js';
 
 // Helpers for Supabase REST fallback when direct pg IPv6 is unreachable (e.g. local network without IPv6)
+// Bounded (10s): a stalled REST call must fail fast instead of parking the request.
 async function fetchShopViaRest(userId) {
   const base = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const shopRes = await fetch(`${base}/rest/v1/shops?user_id=eq.${userId}&select=*`, { headers: { apikey: key, Authorization: `Bearer ${key}` } });
+  const shopRes = await fetch(`${base}/rest/v1/shops?user_id=eq.${userId}&select=*`, { headers: { apikey: key, Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(10000) });
   const shops = await shopRes.json();
   const shop = shops[0] || null;
   if (!shop?.home_branch_id) return shop;
-  const brRes = await fetch(`${base}/rest/v1/branches?id=eq.${shop.home_branch_id}&select=name,address,branch_image_url`, { headers: { apikey: key, Authorization: `Bearer ${key}` } });
+  const brRes = await fetch(`${base}/rest/v1/branches?id=eq.${shop.home_branch_id}&select=name,address,branch_image_url`, { headers: { apikey: key, Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(10000) });
   const br = (await brRes.json())[0];
   return br ? { ...shop, branch_name: br.name, branch_address: br.address, branch_image_url: br.branch_image_url || null } : shop;
 }

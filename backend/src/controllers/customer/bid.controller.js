@@ -13,7 +13,10 @@ export async function placeBidController(req, res) {
     req.io?.emit('bid:update', { auctionId, currentBid: amount }); // fallback global for dashboards
     res.json(result);
   } catch (e) {
-    res.status(400).json({ message: e.message });
+    const code = e.code || null;
+    // H4 business errors → 409; validation/unavailable → 400
+    const status = code === 'AUCTION_NOT_LIVE' || code === 'AUCTION_NOT_FOUND' ? 409 : 400;
+    res.status(status).json({ message: e.message, code });
   }
 }
 

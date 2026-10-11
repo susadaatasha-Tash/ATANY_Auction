@@ -9,9 +9,6 @@ import Transactions from './pages/Transactions';
 import Analytics from './pages/Analytics';
 import SecurityAlerts from './pages/SecurityAlerts';
 import AdminBranches from './pages/Branches';
-import SellerApplications from './pages/SellerApplications';
-import AuditLogs from './pages/AuditLogs';
-import ChatbotLogs from './pages/ChatbotLogs';
 import AdminBilling from './pages/Billing';
 import Notifications from './pages/Notifications';
 
@@ -22,13 +19,10 @@ export const adminRoutes = [
   { path: 'auctions', element: <Auctions /> },
   { path: 'auctions/:id', element: <AuctionDetails /> },
   { path: 'users', element: <Users /> },
-  { path: 'seller-applications', element: <SellerApplications /> },
   { path: 'transactions', element: <Transactions /> },
   { path: 'billing', element: <AdminBilling /> },
   { path: 'analytics', element: <Analytics /> },
   { path: 'security', element: <SecurityAlerts /> },
   { path: 'branches', element: <AdminBranches /> },
-  { path: 'audit-logs', element: <AuditLogs /> },
-  { path: 'chatbot', element: <ChatbotLogs /> },
   { path: 'notifications', element: <Notifications /> },
 ];

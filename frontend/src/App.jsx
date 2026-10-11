@@ -11,8 +11,8 @@ import AdminLayout from './layouts/AdminLayout';
 import LandingPage from './pages/LandingPage';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
+import AuthCallback from './pages/AuthCallback';
 import SelectBranch from './pages/SelectBranch';
-import SellerApplication from './pages/SellerApplication';
 import BranchLocator from './roles/customer/pages/BranchLocator';
 import { customerRoutes } from './roles/customer/routes';
 import { shopOwnerRoutes } from './roles/shop-owner/routes';
@@ -23,13 +23,14 @@ export default function App() {
     <AuthProvider>
       <ToastProvider>
         <ErrorBoundary>
-          <BrowserRouter>
+          <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/branches" element={<BranchLocator />} />
-            <Route path="/seller-application" element={<SellerApplication />} />
+            <Route path="/seller-application" element={<Navigate to="/" replace />} />
             <Route path="/select-branch" element={<RequireRole role="customer"><SelectBranch /></RequireRole>} />
             {/* Customer */}
             <Route path="/customer" element={<RequireRole role="customer"><CustomerLayout /></RequireRole>}>

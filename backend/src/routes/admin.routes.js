@@ -9,7 +9,6 @@ import { getAnalytics, exportCsv } from '../controllers/admin/analytics.controll
 import { listAlerts, updateAlert } from '../controllers/admin/security.controller.js';
 import { listBranches, createBranch, updateBranch, deleteBranch } from '../controllers/admin/branch.controller.js';
 import { listHistory, markAllRead, markOneRead, deleteNotification } from '../controllers/admin/notification.controller.js';
-import { listChatbotLogs, getChatbotSession, resolveChatbotSession } from '../controllers/admin/chatbot.controller.js';
 
 const router = Router();
 // Products — approve/reject is part of update (status pending->approved/rejected, spec 4.3)
@@ -33,8 +32,6 @@ router.get('/notifications/history', listHistory);
 router.put('/notifications/read', markAllRead);
 router.put('/notifications/:id/read', markOneRead);
 router.delete('/notifications/:id', deleteNotification);
-// Chatbot logs — spec 4.8 (server-persisted sessions; see chatbotLogService)
-router.get('/chatbot-logs', listChatbotLogs);
-router.get('/chatbot-logs/:id', getChatbotSession);
-router.patch('/chatbot-logs/:id', resolveChatbotSession);
+// Admin Chatbot Logs viewer API removed from product scope.
+// Chatbot functionality itself (chatbotService + chatbotLogService persistence) remains.
 export default router;

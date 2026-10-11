@@ -11,3 +11,6 @@ backend/.env
 supabase/.temp/
 test-results/
 *.bak
+
+.sisyphus/
+backend/qa-e2e.tmp.mjs

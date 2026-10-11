@@ -73,7 +73,7 @@ export default function AuctionStartPopup() {
 
   const handleView = useCallback((p) => {
     dismiss(p.id);
-    navigate('/customer/live');
+    navigate('/customer/auctions');
   }, [navigate, dismiss]);
 
   const addPopup = useCallback(async (auctionId, productIdHint) => {
@@ -291,12 +291,19 @@ export default function AuctionStartPopup() {
     <>
       <style>{`
         @keyframes auctionStartIn {
-          from { opacity: 0; transform: translateY(-8px) translateX(12px); }
-          to { opacity: 1; transform: translateY(0) translateX(0); }
+          from { opacity: 0; transform: translateY(-10px) scale(0.97); }
+          to { opacity: 1; transform: translateY(0) scale(1); }
         }
         @keyframes auctionStartOut {
-          from { opacity: 1; transform: translateY(0) translateX(0); }
-          to { opacity: 0; transform: translateY(-6px) translateX(12px); }
+          from { opacity: 1; transform: translateY(0) scale(1); }
+          to { opacity: 0; transform: translateY(-8px) scale(0.97); }
+        }
+        @keyframes auctionBellRing {
+          0%, 100% { transform: rotate(0); }
+          15% { transform: rotate(14deg); }
+          30% { transform: rotate(-12deg); }
+          45% { transform: rotate(8deg); }
+          60% { transform: rotate(-4deg); }
         }
       `}</style>
       <div
@@ -308,7 +315,7 @@ export default function AuctionStartPopup() {
           zIndex: 1100,
           display: 'flex',
           flexDirection: 'column',
-          gap: 10,
+          gap: 12,
           pointerEvents: 'none',
           maxWidth: 'calc(100vw - 24px)',
         }}
@@ -321,51 +328,60 @@ export default function AuctionStartPopup() {
               role="alert"
               style={{
                 pointerEvents: 'auto',
-                width: 360,
+                width: 380,
                 maxWidth: 'calc(100vw - 24px)',
                 background: '#FFFFFF',
-                border: '1px solid #E6E2DA',
-                borderRadius: 10,
-                boxShadow: '0 8px 24px rgba(20,42,74,0.12), 0 2px 8px rgba(20,42,74,0.06)',
+                border: '1px solid rgba(200,155,60,0.35)',
+                borderRadius: 14,
+                boxShadow: '0 12px 40px rgba(20,42,74,0.18), 0 4px 12px rgba(200,155,60,0.10), inset 0 1px 0 rgba(255,255,255,0.6)',
                 overflow: 'hidden',
                 display: 'flex',
                 flexDirection: 'column',
-                animation: isExiting ? 'auctionStartOut 260ms ease-in forwards' : 'auctionStartIn 360ms ease-out forwards',
+                animation: isExiting ? 'auctionStartOut 260ms ease-in forwards' : 'auctionStartIn 400ms cubic-bezier(0.16,1,0.3,1) forwards',
               }}
             >
-              <div style={{ padding: '8px 10px 6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, borderBottom: '1px solid #F3F1EC', background: '#FAF9F6' }}>
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <span style={{ width: 20, height: 20, borderRadius: '50%', background: '#142A4A', display: 'grid', placeItems: 'center', fontSize: 11, flexShrink: 0 }}>🔔</span>
-                  <div style={{ fontSize: 11, fontWeight: 800, color: '#142A4A', letterSpacing: '.03em' }}>AUCTION STARTING SOON</div>
+              {/* Gold accent line */}
+              <div style={{ height: 3, background: 'linear-gradient(90deg, #C89B3C, #E8C86A, #C89B3C)', flexShrink: 0 }} />
+
+              {/* Navy header */}
+              <div style={{ padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, background: 'linear-gradient(135deg, #142A4A 0%, #1B3A5C 100%)' }}>
+                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                  <span style={{ width: 30, height: 30, borderRadius: 8, background: 'rgba(200,155,60,0.2)', border: '1px solid rgba(200,155,60,0.3)', display: 'grid', placeItems: 'center', fontSize: 15, flexShrink: 0, animation: 'auctionBellRing 1.2s ease-in-out infinite' }}>🔔</span>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#FFFFFF', letterSpacing: '.06em', textTransform: 'uppercase' }}>AUCTION STARTING SOON</div>
                 </div>
                 <button
                   aria-label="Close"
                   onClick={() => dismiss(p.id)}
-                  style={{ background: 'none', border: 'none', fontSize: 16, lineHeight: 1, color: '#7B8493', cursor: 'pointer', padding: '0 2px' }}
+                  style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 6, width: 26, height: 26, display: 'grid', placeItems: 'center', fontSize: 14, lineHeight: 1, color: 'rgba(255,255,255,0.8)', cursor: 'pointer', transition: 'all .15s ease', flexShrink: 0 }}
+                  onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.22)'; e.currentTarget.style.color = '#fff'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.12)'; e.currentTarget.style.color = 'rgba(255,255,255,0.8)'; }}
                 >
-                  ×
+                  ✕
                 </button>
               </div>
 
-              <div style={{ padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                  <div style={{ width: 48, height: 48, borderRadius: 8, overflow: 'hidden', background: '#FAF9F6', border: '1px solid #EFEDE8', flexShrink: 0, display: 'grid', placeItems: 'center' }}>
+              {/* Content */}
+              <div style={{ padding: '16px 18px 18px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+                <div style={{ display: 'flex', gap: 14, alignItems: 'center' }}>
+                  <div style={{ width: 64, height: 64, borderRadius: 10, overflow: 'hidden', background: '#F8F6F1', border: '1px solid rgba(200,155,60,0.18)', flexShrink: 0, display: 'grid', placeItems: 'center', boxShadow: '0 2px 8px rgba(200,155,60,0.08)' }}>
                     {p.image ? (
                       <img src={p.image} alt={p.productName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     ) : (
-                      <span style={{ fontSize: 18 }}>💍</span>
+                      <span style={{ fontSize: 24 }}>💍</span>
                     )}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: '#142A4A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.3 }}>{p.productName}</div>
-                    <div style={{ fontSize: 11, color: '#7B8493', marginTop: 2 }}>This auction starts in 1 minute. Get ready to place your bid.</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#142A4A', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.3 }}>{p.productName}</div>
+                    <div style={{ fontSize: 12, color: '#7B8493', marginTop: 4, lineHeight: 1.4 }}>This auction starts in <b style={{ color: '#142A4A' }}>1 minute</b>. Get ready to place your bid.</div>
                   </div>
                 </div>
                 <button
                   onClick={() => handleView(p)}
-                  style={{ height: 32, padding: '0 12px', borderRadius: 8, border: 'none', background: '#142A4A', color: '#FFFFFF', fontSize: 11, fontWeight: 700, cursor: 'pointer', alignSelf: 'stretch' }}
+                  style={{ height: 38, padding: '0 16px', borderRadius: 10, border: 'none', background: 'linear-gradient(135deg, #142A4A 0%, #1B3A5C 100%)', color: '#FFFFFF', fontSize: 12, fontWeight: 700, cursor: 'pointer', alignSelf: 'stretch', letterSpacing: '.02em', boxShadow: '0 2px 8px rgba(20,42,74,0.18)', transition: 'all .15s ease' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 4px 14px rgba(20,42,74,0.26)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 2px 8px rgba(20,42,74,0.18)'; e.currentTarget.style.transform = 'translateY(0)'; }}
                 >
-                  View Auction
+                  VIEW AUCTION
                 </button>
               </div>
             </div>

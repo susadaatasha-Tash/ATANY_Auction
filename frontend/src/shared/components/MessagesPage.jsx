@@ -160,11 +160,12 @@ export default function MessagesPage({ role = 'customer' }) {
     }
   }, [input, selectedId, sending, showToast, fetchMessages, fetchConversations]);
 
-  /* ─── Socket.io: join user room + listen for incoming messages ─── */
+  /* ─── Socket.io: authenticated private room + listen for incoming messages ─── */
   useEffect(() => {
     if (!myId) return;
+    // H1: handshake auth supplies JWT; server joins user:<authenticated-id>.
+    // join:user is a no-op on the server — do not send arbitrary room ids.
     socket.connect();
-    socket.emit('join:user', myId);
 
     const handler = (msg) => {
       fetchConversations();
@@ -174,12 +175,8 @@ export default function MessagesPage({ role = 'customer' }) {
     };
     socket.on('message:new', handler);
 
-    const onConnect = () => { socket.emit('join:user', myId); };
-    socket.on('connect', onConnect);
-
     return () => {
       socket.off('message:new', handler);
-      socket.off('connect', onConnect);
       socket.disconnect();
     };
   }, [myId, selectedId, fetchConversations, fetchMessages]);

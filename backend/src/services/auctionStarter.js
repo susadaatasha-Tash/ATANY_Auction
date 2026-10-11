@@ -1,9 +1,12 @@
 // backend/src/services/auctionStarter.js
 // Checks for scheduled auctions that should go live (start_time <= NOW()) and notifies watchers
-import { pool } from '../db/pool.js';
+import { pool, isDirectPg } from '../db/pool.js';
 import { sendNotificationEmail } from './emailService.js';
 
 export async function startScheduledAuctions() {
+  // Status transition is an atomic conditional UPDATE (safe once pool preserves
+  // AND status='scheduled'). Multi-instance safety: only the instance that wins
+  // the conditional UPDATE proceeds. REST fallback still applies that predicate.
   const nowIso = new Date().toISOString();
   const nowLocal = new Date().toString();
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -29,11 +32,19 @@ export async function startScheduledAuctions() {
   for (const auction of toStart) {
     const productName = productMap[auction.product_id] || 'Unknown';
     console.log(`[auctionStarter] processing ${auction.id.slice(0,8)} start=${new Date(auction.start_time).toISOString()} end=${new Date(auction.end_time).toISOString()} status before=${auction.status} now=${new Date().toISOString()}`);
+    // Email jobs collected inside the tx but SENT after COMMIT+release:
+    // Resend is a network service (15s bound each) and must never hold a pool
+    // client / transaction open across N watchers (pool exhaustion → seller
+    // mutations waiting on acquisition). Notification-row INSERTs stay in-tx
+    // so a rollback still discards them; emails are best-effort anyway.
+    const pendingEmails = [];
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      const up = await client.query("UPDATE auctions SET status = 'live' WHERE id = $1 AND status = 'scheduled'", [auction.id]);
-      if ((up.rowCount ?? 0) === 0) {
+      // Atomic claim: only transition scheduled→live; multi-instance safe.
+      // Requires pool REST UPDATE to preserve AND status='scheduled' (see parseSimpleWhere).
+      const up = await client.query("UPDATE auctions SET status = 'live' WHERE id = $1 AND status = 'scheduled' RETURNING id", [auction.id]);
+      if ((up.rowCount ?? up.rows?.length ?? 0) === 0) {
         await client.query('ROLLBACK');
         console.log(`[auctionStarter] ${auction.id.slice(0,8)} skip — already live (rowCount 0)`);
         continue;
@@ -47,18 +58,18 @@ export async function startScheduledAuctions() {
         if (await shouldDeliverNotification(w.user_id, 'auction', message)) {
           await client.query("INSERT INTO notifications (user_id, type, message, auction_id) VALUES ($1, 'auction', $2, $3)", [w.user_id, message, auction.id]);
         }
-        // Fire email via Resend (non-blocking, best effort)
+        // Queue email for after COMMIT — do not await network inside the tx.
         try {
           const { rows: userRows } = await client.query('SELECT email FROM users WHERE id = $1', [w.user_id]);
           if (userRows[0]?.email) {
-            await sendNotificationEmail({
+            pendingEmails.push({
               to: userRows[0].email,
               subject: `ATANY: ${productName} is now live`,
               html: `<p>${message}</p><p><a href="${process.env.FRONTEND_URL || 'http://localhost:5174'}/customer/live">View auction</a></p>`,
             });
           }
         } catch (emailErr) {
-          console.warn('Failed to send live notification email', emailErr.message);
+          console.warn('Failed to queue live notification email', emailErr.message);
         }
       }
       // Keep reminders until auction ends or user removes — do NOT delete immediately after start
@@ -69,8 +80,18 @@ export async function startScheduledAuctions() {
     } catch (e) {
       await client.query('ROLLBACK');
       console.error('startScheduledAuctions error', auction.id, e);
+      pendingEmails.length = 0;
     } finally {
       client.release();
+    }
+    // Outside the transaction/client: fire queued emails (best effort, same
+    // per-email error handling as before — a failed email never rolls back).
+    for (const mail of pendingEmails) {
+      try {
+        await sendNotificationEmail(mail);
+      } catch (emailErr) {
+        console.warn('Failed to send live notification email', emailErr.message);
+      }
     }
     // Other-branch live auction notification (outside transaction, after status is live)
     try {

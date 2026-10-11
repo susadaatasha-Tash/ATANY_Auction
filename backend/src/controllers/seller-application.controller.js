@@ -1,4 +1,5 @@
 import { pool } from '../db/pool.js';
+import { getPlanByCode } from '../config/subscriptionPlans.js';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -151,13 +152,14 @@ export const approveApplication = async (req, res) => {
     // Update user role to shop_owner
     await pool.query('UPDATE users SET role = $1 WHERE id = $2 AND role = $3', ['shop_owner', app.applicant_id, 'customer']);
 
-    // Create initial seller subscription (pending) if none exists
+    // Create initial seller subscription (pending bronze) if none exists
     try {
       const { rows: existingBill } = await pool.query(
         `SELECT id FROM billing_records WHERE seller_id=$1 AND status IN ('pending','paid') ORDER BY created_at DESC LIMIT 1`,
         [app.applicant_id]
       );
       if (!existingBill.length) {
+        const bronze = getPlanByCode('bronze');
         const now = new Date();
         const next = new Date(now);
         next.setMonth(next.getMonth() + 1);
@@ -166,8 +168,9 @@ export const approveApplication = async (req, res) => {
         const startStr = now.toISOString().split('T')[0];
         const endStr = due;
         await pool.query(
-          `INSERT INTO billing_records (seller_id, amount, billing_period, status, due_date, current_period_start, current_period_end) VALUES ($1,$2,$3,'pending',$4,$5,$6)`,
-          [app.applicant_id, 1000, period, due, startStr, endStr]
+          `INSERT INTO billing_records (seller_id, amount, billing_period, status, due_date, current_period_start, current_period_end, plan_code)
+           VALUES ($1,$2,$3,'pending',$4,$5,$6,$7)`,
+          [app.applicant_id, Number(bronze?.monthly_price) || 1000, period, due, startStr, endStr, bronze?.code || 'bronze']
         );
       }
     } catch {}

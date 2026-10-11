@@ -3,7 +3,8 @@
 // This service is the backend/database source of truth for the 7-day rule.
 // It does NOT rely on frontend timers, localStorage, or browser state.
 
-import { pool } from '../db/pool.js';
+import { pool, isDirectPg } from '../db/pool.js';
+import { requireDirectPg } from '../db/dbGuard.js';
 
 // Helper: Check if an order's payment is paid (via payments table)
 async function isOrderPaid(orderId, client = pool) {
@@ -43,6 +44,14 @@ function deadlineFor(order) {
 }
 
 export async function checkAndExpireWinners() {
+  // H2: winner reassignment is a money path (buyer_id/amount/payment_deadline).
+  // Requires FOR UPDATE + multi-statement transaction → fail closed on REST fallback.
+  let direct = true;
+  try { direct = typeof isDirectPg === 'function' ? !!isDirectPg() : true; } catch { direct = false; }
+  if (!direct) {
+    console.warn('[winnerExpiration] skipping — direct Postgres unavailable (fail closed)');
+    return { skipped: true, reason: 'DB_UNAVAILABLE' };
+  }
   // Find all pending orders where the 7-day deadline has passed and payment not paid
   // SELECT * so payment_deadline/winner_confirmed_at/winner_rank are used when migration 021 is applied,
   // and safely ignored (undefined) when it is not.
@@ -69,7 +78,7 @@ export async function checkAndExpireWinners() {
     // Find next eligible bidder (outside transaction, as it's read-only and not critical to lock)
     const rankedBidders = await getRankedBidders(order.auction_id);
     const currentWinnerIndex = rankedBidders.findIndex(b => String(b.user_id) === String(order.buyer_id));
-    
+
     let nextBidder = null;
     if (currentWinnerIndex !== -1 && currentWinnerIndex + 1 < rankedBidders.length) {
       nextBidder = rankedBidders[currentWinnerIndex + 1];
@@ -79,6 +88,10 @@ export async function checkAndExpireWinners() {
 
     const client = await pool.connect();
     try {
+      if (client?.__restFallback) {
+        console.warn('[winnerExpiration] skipping order', order.id, '— REST fallback (fail closed)');
+        continue;
+      }
       await client.query('BEGIN');
       // Lock the order row for update to prevent concurrent expiration
       const { rows: lockedOrders } = await client.query(`SELECT * FROM orders WHERE id = $1 FOR UPDATE`, [order.id]);
@@ -116,17 +129,23 @@ export async function checkAndExpireWinners() {
         const nextRank = Number(lockedOrder.winner_rank ?? order.winner_rank ?? 1) + 1;
         const confirmedAt = new Date();
         const nextDeadline = new Date(confirmedAt.getTime() + 7 * 24 * 60 * 60 * 1000);
+        // NOTE: created_at is set from a JS timestamp param (not NOW()) because the
+        // Supabase REST fallback only translates col=$N / col='literal' assignments
+        // and silently drops NOW()/expression assignments — the fresh 7-day deadline
+        // depends on created_at being reset at rotation time.
         try {
           await client.query(
-            `UPDATE orders SET buyer_id = $1, amount = $2, created_at = NOW(), winner_confirmed_at = $3, payment_deadline = $4, winner_rank = $5 WHERE id = $6 AND status = 'pending' AND buyer_id = $7`,
-            [nextBidder.user_id, nextBidder.amount, confirmedAt.toISOString(), nextDeadline.toISOString(), nextRank, order.id, order.buyer_id]
+            `UPDATE orders SET buyer_id = $1, amount = $2, created_at = $3, winner_confirmed_at = $4, payment_deadline = $5, winner_rank = $6 WHERE id = $7 AND status = 'pending' AND buyer_id = $8`,
+            [nextBidder.user_id, nextBidder.amount, confirmedAt.toISOString(), confirmedAt.toISOString(), nextDeadline.toISOString(), nextRank, order.id, order.buyer_id]
           );
         } catch (e) {
           // Fallback when migration 021 columns are absent (undefined column) — legacy behavior
-          if (e.code !== '42703') throw e;
+          const missingColumn = e.code === '42703'
+            || /Could not find the '(payment_deadline|winner_confirmed_at|winner_rank)' column/i.test(e.message || '');
+          if (!missingColumn) throw e;
           await client.query(
-            `UPDATE orders SET buyer_id = $1, amount = $2, created_at = NOW() WHERE id = $3 AND status = 'pending' AND buyer_id = $4`,
-            [nextBidder.user_id, nextBidder.amount, order.id, order.buyer_id]
+            `UPDATE orders SET buyer_id = $1, amount = $2, created_at = $3 WHERE id = $4 AND status = 'pending' AND buyer_id = $5`,
+            [nextBidder.user_id, nextBidder.amount, confirmedAt.toISOString(), order.id, order.buyer_id]
           );
         }
         // Verify the update actually affected a row (prevents duplicate reassignment)
@@ -312,12 +331,14 @@ export async function expireSpecificOrder(orderId) {
       const nextDeadline = new Date(confirmedAt.getTime() + 7 * 24 * 60 * 60 * 1000);
       try {
         await client.query(
-          `UPDATE orders SET buyer_id = $1, amount = $2, created_at = NOW(), winner_confirmed_at = $3, payment_deadline = $4, winner_rank = $5 WHERE id = $6`,
-          [nextBidder.user_id, nextBidder.amount, confirmedAt.toISOString(), nextDeadline.toISOString(), Number(order.winner_rank ?? 1) + 1, order.id]
+          `UPDATE orders SET buyer_id = $1, amount = $2, created_at = $3, winner_confirmed_at = $4, payment_deadline = $5, winner_rank = $6 WHERE id = $7`,
+          [nextBidder.user_id, nextBidder.amount, confirmedAt.toISOString(), confirmedAt.toISOString(), nextDeadline.toISOString(), Number(order.winner_rank ?? 1) + 1, order.id]
         );
       } catch (e) {
-        if (e.code !== '42703') throw e;
-        await client.query(`UPDATE orders SET buyer_id = $1, amount = $2, created_at = NOW() WHERE id = $3`, [nextBidder.user_id, nextBidder.amount, order.id]);
+        const missingColumn = e.code === '42703'
+          || /Could not find the '(payment_deadline|winner_confirmed_at|winner_rank)' column/i.test(e.message || '');
+        if (!missingColumn) throw e;
+        await client.query(`UPDATE orders SET buyer_id = $1, amount = $2, created_at = $3 WHERE id = $4`, [nextBidder.user_id, nextBidder.amount, confirmedAt.toISOString(), order.id]);
       }
       try {
         await client.query(`INSERT INTO notifications (user_id, type, message, auction_id) VALUES ($1, 'auction', $2, $3)`, [nextBidder.user_id, `You are now the eligible winner.`, order.auction_id]);

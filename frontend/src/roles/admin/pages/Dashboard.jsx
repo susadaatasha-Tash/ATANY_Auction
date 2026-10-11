@@ -1,10 +1,9 @@
 // frontend/src/roles/admin/pages/Dashboard.jsx
 // Admin dashboard — multi-branch focused (simplified scope)
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { KpiCard } from '../../../shared/ui/Card';
 import { ActivityText } from '../../../shared/components/SafeHtml';
 import { useAdminData } from '../hooks/useAdminData';
-import { apiFetch } from '../../../shared/lib/apiClient';
 
 function peso(n) { return '₱' + Number(n || 0).toLocaleString(); }
 
@@ -42,15 +41,10 @@ const RevenueIcon = () => (
 
 export default function AdminDashboard() {
   const { users, txns, branches, refresh, loadAnalytics } = useAdminData();
-  const [sellerApps, setSellerApps] = useState([]);
 
   useEffect(() => {
     refresh(); loadAnalytics();
-    apiFetch('/admin/seller-applications').then(d => setSellerApps(Array.isArray(d) ? d : [])).catch(() => {});
-    const interval = setInterval(() => {
-      refresh();
-      apiFetch('/admin/seller-applications').then(d => setSellerApps(Array.isArray(d) ? d : [])).catch(() => {});
-    }, 15000);
+    const interval = setInterval(() => { refresh(); }, 15000);
     return () => clearInterval(interval);
   }, [refresh, loadAnalytics]);
 
@@ -58,13 +52,11 @@ export default function AdminDashboard() {
   const activeBranches = (branches || []).filter(b => (b.status || 'Open') === 'Open').length;
   const shopOwners = (users || []).filter(u => u.role === 'shop_owner').length;
   const customers = (users || []).filter(u => u.role === 'customer').length;
-  const pendingApps = sellerApps.filter(s => s.status === 'pending').length;
   const revenue = (txns || []).filter(t => t.status === 'paid').reduce((s, t) => s + Number(t.amount || 0), 0);
 
   const activity = [
     ...(users || []).slice(0, 5).map(u => ({ type: 'user', text: `<b>${u.name}</b> signed up as ${u.role}`, time: u.created_at })),
     ...(txns || []).slice(0, 5).map(t => ({ type: 'sale', text: `<b>${t.customer}</b> purchased ${t.item} — ${peso(t.amount)}`, time: t.date })),
-    ...(sellerApps || []).slice(0, 5).map(s => ({ type: 'app', text: `Seller application: <b>${s.shop_name}</b> — ${s.status}`, time: s.created_at })),
   ].filter(a => a.time).sort((a, b) => new Date(b.time) - new Date(a.time)).slice(0, 8);
 
   const branchImages = {
@@ -79,7 +71,7 @@ export default function AdminDashboard() {
     <>
       <div className="kpi-grid">
         <KpiCard icon={<BranchIcon />} value={totalBranches} label="Total Branches" delta={`${activeBranches} active`} deltaDir="up" />
-        <KpiCard icon={<ShopIcon />} value={shopOwners} label="Shop Owners / Sellers" delta={pendingApps ? `${pendingApps} pending` : 'active'} />
+        <KpiCard icon={<ShopIcon />} value={shopOwners} label="Shop Owners / Sellers" delta="active" />
         <KpiCard icon={<UsersIcon />} value={customers} label="Total Customers" delta={`${(users || []).length} users`} />
         <KpiCard icon={<RevenueIcon />} value={(txns || []).length} label="Orders / Transactions" delta={peso(revenue)} deltaDir="up" />
       </div>

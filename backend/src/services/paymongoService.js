@@ -96,10 +96,31 @@ export function checkoutStatus(checkoutBody) {
 
 export function verifyWebhookSignature(rawBody, signature) {
   const secret = process.env.PAYMONGO_WEBHOOK_SECRET;
-  if (!secret) return true; // no secret configured — accept (test mode)
+  const insecureAllowed = process.env.ALLOW_INSECURE_PAYMONGO_WEBHOOKS === 'true';
+  if (!secret) {
+    // Priority 1 / C4: fail closed. Only explicit opt-in bypass (tests/dev) accepts missing secret.
+    // Production (NODE_ENV=production) never bypasses.
+    const isProduction = process.env.NODE_ENV === 'production';
+    return !isProduction && insecureAllowed;
+  }
   if (!signature) return false;
   try {
     const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
-    return signature.includes(expected) || signature === expected;
-  } catch { return false; }
+    const expectedBuf = Buffer.from(expected, 'utf8');
+    // PayMongo may send "t=...,v1=<hex>" or bare hex — accept exact v1 candidates only.
+    const candidates = String(signature)
+      .split(',')
+      .map((part) => part.trim())
+      .map((part) => (part.startsWith('v1=') ? part.slice(3) : part))
+      .filter(Boolean);
+    for (const candidate of candidates) {
+      const candidateBuf = Buffer.from(candidate, 'utf8');
+      if (candidateBuf.length === expectedBuf.length && crypto.timingSafeEqual(candidateBuf, expectedBuf)) {
+        return true;
+      }
+    }
+    return false;
+  } catch {
+    return false;
+  }
 }

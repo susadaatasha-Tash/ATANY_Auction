@@ -14,34 +14,45 @@ export function BranchProvider({ children }) {
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
   const showToast = useToast();
-  const { setPreferredBranchId } = useAuth();
+  const { setPreferredBranchId, user, loading: authLoading } = useAuth();
+  const userId = user?.id || null;
 
-  // Load branches list + user's preferred branch on mount
+  // Load branches list (public) immediately; preferred branch only when authenticated
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const [branchList, pref] = await Promise.all([
-          apiFetch('/branches').catch(() => []),
-          apiFetch('/customer/preferred-branch').catch(() => null),
-        ]);
+        const branchList = await apiFetch('/branches', { public: true }).catch(() => []);
         if (cancelled) return;
         const openBranches = (Array.isArray(branchList) ? branchList : []).filter(b => b.status === 'Open');
         setBranches(openBranches);
-        if (pref?.preferred_branch_id) {
-          setBranchId(pref.preferred_branch_id);
-          setBranchName(pref.branch_name || '');
-        }
-        // No fallback — if no preferred branch, branchId stays null
-        // so CustomerLayout can redirect to /select-branch
       } catch {
-        // Silent — branch filtering is best-effort
+        // Silent — branch list is best-effort public
       } finally {
         if (!cancelled) setLoading(false);
       }
     })();
     return () => { cancelled = true; };
   }, []);
+
+  // Fetch preferred branch only after auth hydration and when authenticated
+  useEffect(() => {
+    if (authLoading) return;
+    if (!userId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const pref = await apiFetch('/customer/preferred-branch').catch(() => null);
+        if (cancelled) return;
+        if (pref?.preferred_branch_id) {
+          setBranchId(pref.preferred_branch_id);
+          setBranchName(pref.branch_name || '');
+          setPreferredBranchId(pref.preferred_branch_id);
+        }
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, [authLoading, userId, setPreferredBranchId]);
 
   // Switch branch — updates local state only after backend succeeds
   const switchBranch = useCallback(async (newBranchId) => {

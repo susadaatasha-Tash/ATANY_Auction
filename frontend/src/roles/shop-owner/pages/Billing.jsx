@@ -1,60 +1,119 @@
 // frontend/src/roles/shop-owner/pages/Billing.jsx
-// Seller billing page — platform maintenance fees
-// GET /billing/me
-import { useState, useEffect } from 'react';
+// Seller Subscription — premium portal (current plan, usage, next payment, compare, history)
+// Change plan / Manage billing open the Manage Billing modal (not page redesign).
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '../../../shared/lib/apiClient';
 import { useToast } from '../../../shared/components/Toast';
-
-function peso(n) { return '₱' + Number(n || 0).toLocaleString(); }
-function formatDate(d) {
-  if (!d) return '—';
-  const date = new Date(d);
-  return isNaN(date) ? d : date.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
-}
-
-const statusColors = {
-  pending: { bg: '#fef3c7', text: '#92400e' },
-  paid: { bg: '#d1fae5', text: '#065f46' },
-  overdue: { bg: '#fee2e2', text: '#991b1b' },
-  cancelled: { bg: '#e5e7eb', text: '#374151' },
-};
-
-const statusLabels = {
-  pending: 'Pending',
-  paid: 'Paid',
-  overdue: 'Overdue',
-  cancelled: 'Cancelled',
-};
+import { CurrentPlanHero } from '../subscription/CurrentPlanHero';
+import { SubscriptionUsage } from '../subscription/SubscriptionUsage';
+import { NextPaymentCard } from '../subscription/NextPaymentCard';
+import { ComparePlans } from '../subscription/ComparePlans';
+import { BillingHistory } from '../subscription/BillingHistory';
+import { ManageBillingModal } from '../subscription/ManageBillingModal';
+import { UpgradeConfirmModal } from '../subscription/UpgradeConfirmModal';
+import { DowngradeConfirmModal } from '../subscription/DowngradeConfirmModal';
+import { PaymentMethodModal } from '../subscription/PaymentMethodModal';
+import {
+  billingHistoryRows,
+  buildComparePlans,
+  buildSellerSubscriptionState,
+  buildUsageMetrics,
+  formatDate,
+} from '../subscription/sellerSubscriptionSelectors';
+import {
+  normalizeBillingInterval,
+  getPlanForPlanCode,
+  planPriceLabel,
+} from '../../../shared/lib/subscriptionPlans';
+import '../subscription/seller-subscription.css';
 
 export default function Billing() {
   const [records, setRecords] = useState([]);
+  const [listings, setListings] = useState([]);
+  const [auctions, setAuctions] = useState([]);
+  const [shop, setShop] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [payingId, setPayingId] = useState(null);
+  const [planNotice, setPlanNotice] = useState('');
+  const compareRef = useRef(null);
+  const historyRef = useRef(null);
   const showToast = useToast();
 
-  useEffect(() => {
-    (async () => {
-      setLoading(true);
-      await refresh();
+  // Modals
+  const [manageOpen, setManageOpen] = useState(false);
+  const [payMethodOpen, setPayMethodOpen] = useState(false);
+  const [upgradePreview, setUpgradePreview] = useState(null);
+  const [downgradePreview, setDowngradePreview] = useState(null);
+  const [confirming, setConfirming] = useState(false);
+  const [modalError, setModalError] = useState('');
+  const [busyPlanCode, setBusyPlanCode] = useState(null);
+  const [scheduledChange, setScheduledChange] = useState(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [billingRows, listingRows, auctionRows, shopRow, subRes] = await Promise.all([
+        apiFetch('/billing/me'),
+        apiFetch('/shop-owner/listings').catch(() => []),
+        apiFetch('/shop-owner/auctions').catch(() => []),
+        apiFetch('/shop-owner/shop').catch(() => null),
+        apiFetch('/billing/me/subscription').catch(() => null),
+      ]);
+      setRecords(Array.isArray(billingRows) ? billingRows : []);
+      setListings(Array.isArray(listingRows) ? listingRows : []);
+      setAuctions(Array.isArray(auctionRows) ? auctionRows : []);
+      setShop(shopRow || null);
+      setScheduledChange(subRes?.scheduled_change || subRes?.active_change || null);
+      setError(null);
+    } catch (e) {
+      setError(e.message || 'Failed to load subscription data');
+      setRecords([]);
+    } finally {
       setLoading(false);
-    })();
+    }
   }, []);
 
-  const refresh = async () => {
-    try {
-      const rows = await apiFetch('/billing/me');
-      setRecords(Array.isArray(rows) ? rows : []);
-    } catch (e) {
-      showToast(e.message || 'Failed to load billing records');
-    }
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  const state = useMemo(() => buildSellerSubscriptionState(records), [records]);
+  const usageMetrics = useMemo(
+    () => buildUsageMetrics({ listings, auctions, shop, plan: state.plan }),
+    [listings, auctions, shop, state.plan]
+  );
+  const comparePlans = useMemo(() => buildComparePlans(state.plan), [state.plan]);
+  const historyRows = useMemo(() => billingHistoryRows(records), [records]);
+
+  const activeListings = usageMetrics?.activeListings ?? usageMetrics?.active_listings ?? listings.length;
+  const billingInterval = normalizeBillingInterval(state.record?.billing_interval || 'monthly');
+
+  const scrollTo = (ref) => {
+    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
-  const handlePay = async (id) => {
-    setPayingId(id);
+  const handleChangePlan = () => {
+    setPlanNotice('');
+    setModalError('');
+    setManageOpen(true);
+  };
+
+  const handleManageBilling = () => {
+    setModalError('');
+    setManageOpen(true);
+  };
+
+  const handleRetryOrPay = async (record) => {
+    if (!record?.id) return;
+    setPayingId(record.id);
     try {
-      const res = await apiFetch(`/billing/${id}/checkout`, { method: 'POST' });
-      if (res?.checkout_url) window.location.href = res.checkout_url;
-      else showToast('Checkout created');
+      const res = await apiFetch(`/billing/${record.id}/checkout`, { method: 'POST' });
+      if (res?.checkout_url) {
+        window.location.href = res.checkout_url;
+      } else {
+        showToast('Checkout created');
+      }
     } catch (e) {
       showToast(e.message || 'Failed to create checkout');
     } finally {
@@ -62,124 +121,288 @@ export default function Billing() {
     }
   };
 
-  const totalDue = records
-    .filter(r => r.status === 'pending' || r.status === 'overdue')
-    .reduce((sum, r) => sum + (r.amount || 0), 0);
-  const totalPaid = records
-    .filter(r => r.status === 'paid')
-    .reduce((sum, r) => sum + (r.amount || 0), 0);
+  const loadPreview = async ({ planCode, interval }) => {
+    const res = await apiFetch('/billing/subscription/change/preview', {
+      method: 'POST',
+      body: JSON.stringify({ plan_code: planCode, billing_interval: interval }),
+    });
+    return res;
+  };
+
+  const handlePlanAction = async ({ plan, kind, interval }) => {
+    const planCode = plan.code || plan.id;
+    setModalError('');
+    setBusyPlanCode(planCode);
+
+    try {
+      // No active subscription → first-time checkout
+      if (state.kind === 'none' || state.kind === 'canceled' || !state.record) {
+        setPayingId(`plan-${planCode}`);
+        const res = await apiFetch('/billing/subscription/checkout', {
+          method: 'POST',
+          body: JSON.stringify({ plan_code: planCode, billing_interval: interval }),
+        });
+        if (res?.checkout_url) {
+          window.location.href = res.checkout_url;
+        } else {
+          showToast('Checkout created');
+        }
+        setManageOpen(false);
+        return;
+      }
+
+      // Active subscription → plan-change preview → confirm modal
+      const preview = await loadPreview({ planCode, interval });
+      if (preview?.type === 'upgrade') {
+        setUpgradePreview(preview);
+        setDowngradePreview(null);
+        setManageOpen(false);
+      } else if (preview?.type === 'downgrade') {
+        setDowngradePreview(preview);
+        setUpgradePreview(null);
+        setManageOpen(false);
+      } else if (preview?.type === 'noop') {
+        showToast('Already on this plan and interval');
+        setManageOpen(false);
+      } else {
+        setModalError(preview?.message || 'Unable to preview plan change');
+      }
+    } catch (e) {
+      const msg = e.message || 'Failed to preview plan change';
+      setModalError(msg);
+      showToast(msg);
+    } finally {
+      setBusyPlanCode(null);
+      setPayingId(null);
+    }
+  };
+
+  const handleComparePlanSelect = (plan) => {
+    const kind = plan.actionKind || 'select';
+    if (kind === 'current' && state.nextPayment?.record) {
+      return handleRetryOrPay(state.nextPayment.record);
+    }
+    if (state.kind === 'active' || state.kind === 'active_with_upcoming' || state.kind === 'pending' || state.kind === 'past_due') {
+      // Open manage modal with current interval (or plan's implied interval)
+      setPlanNotice('');
+      setManageOpen(true);
+      return;
+    }
+    // First-time select via existing checkout
+    handlePlanAction({
+      plan: { code: plan.code || plan.id, name: plan.name },
+      kind,
+      interval: billingInterval,
+    });
+  };
+
+  const confirmUpgrade = async () => {
+    if (!upgradePreview?.target_plan) return;
+    setConfirming(true);
+    setModalError('');
+    try {
+      const res = await apiFetch('/billing/subscription/change/confirm', {
+        method: 'POST',
+        body: JSON.stringify({
+          plan_code: upgradePreview.target_plan.code,
+          billing_interval: upgradePreview.billing_interval || billingInterval,
+        }),
+      });
+      if (res?.checkout_url) {
+        window.location.href = res.checkout_url;
+        return;
+      }
+      if (res?.mode === 'applied_immediately') {
+        showToast('Your subscription has been upgraded.');
+        setUpgradePreview(null);
+        await refresh();
+        return;
+      }
+      if (res?.mode === 'pending_payment' && res?.checkout_url) {
+        window.location.href = res.checkout_url;
+        return;
+      }
+      showToast('Upgrade confirmed');
+      setUpgradePreview(null);
+      await refresh();
+    } catch (e) {
+      setModalError(e.message || 'Failed to confirm upgrade');
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  const confirmDowngrade = async () => {
+    if (!downgradePreview?.target_plan) return;
+    setConfirming(true);
+    setModalError('');
+    try {
+      const res = await apiFetch('/billing/subscription/change/confirm', {
+        method: 'POST',
+        body: JSON.stringify({
+          plan_code: downgradePreview.target_plan.code,
+          billing_interval: downgradePreview.billing_interval || billingInterval,
+        }),
+      });
+      if (res?.mode === 'scheduled') {
+        showToast('Downgrade scheduled for next billing cycle.');
+        setDowngradePreview(null);
+        setManageOpen(false);
+        await refresh();
+      } else {
+        setModalError(res?.message || 'Unexpected response');
+      }
+    } catch (e) {
+      const msg = e.message || 'Failed to schedule downgrade';
+      setModalError(msg);
+      showToast(msg);
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  const cancelScheduled = async () => {
+    setConfirming(true);
+    try {
+      await apiFetch('/billing/subscription/change/cancel', { method: 'POST' });
+      showToast('Scheduled downgrade canceled');
+      setScheduledChange(null);
+      await refresh();
+    } catch (e) {
+      showToast(e.message || 'Failed to cancel scheduled change');
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  const resetLabel =
+    state.periodLabel && state.periodLabel.includes('–')
+      ? state.periodLabel.split('–').pop().trim()
+      : state.renewalLabel && state.renewalLabel !== '—'
+        ? state.renewalLabel
+        : formatDate(state.record?.current_period_end || state.record?.due_date);
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 240 }}>
-        <div style={{ fontSize: 14, color: 'var(--muted, #6b7280)' }}>Loading billing records...</div>
+      <div className="ssub-page">
+        <div className="ssub-loading" data-testid="subscription-loading">Loading subscription…</div>
       </div>
     );
   }
 
-  const latest = records[0] || null;
-  const isActive = latest?.status === 'paid';
-  const isPending = latest?.status === 'pending';
-  const isOverdue = latest?.status === 'overdue';
-  const subscriptionStatus = !latest ? 'none' : isActive ? 'Active' : isOverdue ? 'Expired' : isPending ? 'Pending' : latest.status;
-  const statusColor = isActive ? '#065f46' : isOverdue ? '#991b1b' : '#92400e';
-  const statusBg = isActive ? '#d1fae5' : isOverdue ? '#fee2e2' : '#fef3c7';
-
   return (
-    <>
-      {/* Subscription header */}
-      <div className="panel" style={{ padding: '20px 22px', marginBottom: 16 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 12 }}>
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--gold)' }}>ATANY Seller Subscription</div>
-            <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--navy)', marginTop: 4 }}>Monthly Seller Subscription</div>
-            <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 4 }}>₱1,000 / month — pay monthly to keep your shop active</div>
-          </div>
-          <span style={{ padding: '6px 14px', borderRadius: 999, fontSize: 12, fontWeight: 700, background: statusBg, color: statusColor, border: '1px solid rgba(0,0,0,.06)' }}>{subscriptionStatus}</span>
+    <div className="ssub-page" data-testid="seller-subscription-page">
+      {error && (
+        <div className="ssub-error" data-testid="subscription-error">
+          {error}
         </div>
-        {latest ? (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginTop: 16 }}>
-            <div><div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>Current Billing Period</div><div style={{ fontWeight: 700, color: 'var(--navy)', marginTop: 2 }}>{latest.current_period_start && latest.current_period_end ? `${formatDate(latest.current_period_start)} – ${formatDate(latest.current_period_end)}` : latest.billing_period}</div></div>
-            <div><div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>Next Renewal</div><div style={{ fontWeight: 700, color: 'var(--navy)', marginTop: 2 }}>{formatDate(latest.current_period_end || latest.due_date)}</div></div>
-            <div><div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>Last Payment</div><div style={{ fontWeight: 700, color: 'var(--navy)', marginTop: 2 }}>{latest.paid_at ? formatDate(latest.paid_at) : '—'}</div></div>
-            <div><div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>Payment Reference</div><div style={{ fontWeight: 600, color: 'var(--navy)', marginTop: 2, fontSize: 12 }}>{latest.payment_reference || latest.paymongo_checkout_session_id || '—'}</div></div>
-          </div>
-        ) : (
-          <div style={{ marginTop: 12, fontSize: 13, color: 'var(--muted)' }}>Your seller subscription has not been created yet. It will be created when your seller application is approved.</div>
-        )}
+      )}
+
+      <CurrentPlanHero
+        state={state}
+        onChangePlan={handleChangePlan}
+        onManageBilling={handleManageBilling}
+        onRetryPayment={
+          state.nextPayment?.mode === 'open_invoice' && state.nextPayment?.record
+            ? () => handleRetryOrPay(state.nextPayment.record)
+            : null
+        }
+      />
+
+      <div className="ssub-midrow">
+        <SubscriptionUsage metrics={usageMetrics} resetLabel={resetLabel} />
+        <div ref={historyRef} style={{ display: 'contents' }}>
+          <NextPaymentCard
+            nextPayment={state.nextPayment}
+            currentPlanName={state.planName}
+            billingInterval={billingInterval}
+            paying={!!payingId && state.nextPayment?.record?.id === payingId}
+            onPayNow={
+              state.nextPayment?.mode === 'open_invoice' && state.nextPayment?.record
+                ? () => handleRetryOrPay(state.nextPayment.record)
+                : null
+            }
+            onUpdatePaymentMethod={() => setPayMethodOpen(true)}
+          />
+        </div>
       </div>
 
-      {/* Summary cards */}
-      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)' }}>
-        <div className="kpi-card">
-          <div className="kpi-value" style={{ color: 'var(--warn)' }}>{peso(totalDue)}</div>
-          <div className="kpi-label">Total Due</div>
-        </div>
-        <div className="kpi-card">
-          <div className="kpi-value" style={{ color: 'var(--success)' }}>{peso(totalPaid)}</div>
-          <div className="kpi-label">Total Paid</div>
-        </div>
+      <div ref={compareRef}>
+        <ComparePlans
+          plans={comparePlans}
+          onSelectPlan={handleComparePlanSelect}
+          notice={planNotice}
+        />
       </div>
 
-      {/* Billing table */}
-      <div className="panel">
-        <div className="panel-head">
-          <div><h2>Billing Records</h2><p>Platform maintenance fees and your payment history.</p></div>
+      <BillingHistory
+        rows={historyRows}
+        onPay={handleRetryOrPay}
+        payingId={payingId}
+        loading={loading}
+        error={null}
+      />
+
+      <ManageBillingModal
+        open={manageOpen}
+        onClose={() => setManageOpen(false)}
+        currentState={{
+          plan: state.plan,
+          billingInterval,
+          record: state.record,
+        }}
+        onPlanAction={handlePlanAction}
+        busyPlanCode={busyPlanCode}
+        scheduledChange={scheduledChange}
+        activeListings={activeListings}
+        error={modalError}
+      />
+
+      <UpgradeConfirmModal
+        open={!!upgradePreview}
+        onClose={() => setUpgradePreview(null)}
+        preview={upgradePreview}
+        onConfirm={confirmUpgrade}
+        confirming={confirming}
+        error={modalError}
+      />
+
+      <DowngradeConfirmModal
+        open={!!downgradePreview}
+        onClose={() => setDowngradePreview(null)}
+        preview={downgradePreview}
+        onConfirm={confirmDowngrade}
+        confirming={confirming}
+        error={modalError}
+        lostFeatures={
+          downgradePreview?.current_plan?.features?.filter(
+            (f) => !(downgradePreview?.target_plan?.features || []).includes(f)
+          ) || []
+        }
+      />
+
+      <PaymentMethodModal
+        open={payMethodOpen}
+        onClose={() => setPayMethodOpen(false)}
+        showToast={showToast}
+      />
+
+      {scheduledChange && (
+        <div className="ssub-hero__notice" data-testid="scheduled-downgrade-banner" style={{ marginTop: 16 }}>
+          Scheduled change to <strong>{scheduledChange.target_plan_code}</strong> on{' '}
+          <strong>{scheduledChange.effective_at}</strong>
+          <button
+            type="button"
+            className="ssub-btn ssub-btn--outline ssub-btn--sm"
+            style={{ marginLeft: 12 }}
+            data-testid="cancel-scheduled-downgrade"
+            disabled={confirming}
+            onClick={cancelScheduled}
+          >
+            Cancel scheduled downgrade
+          </button>
         </div>
-        <div className="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Billing Period</th>
-                <th>Amount</th>
-                <th>Due Date</th>
-                <th>Status</th>
-                <th>Paid At</th>
-                <th>Payment Reference</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {records.length ? records.map((r) => {
-                const label = statusLabels[r.status] || r.status;
-                const isPayable = r.status === 'pending' || r.status === 'overdue';
-                return (
-                  <tr key={r.id}>
-                    <td className="cell-main">{r.billing_period || r.period || '—'}</td>
-                    <td>{peso(r.amount)}</td>
-                    <td>{formatDate(r.due_date)}</td>
-                    <td>
-                      <span className={`badge ${r.status}`}>{label}</span>
-                    </td>
-                    <td>{formatDate(r.paid_at)}</td>
-                    <td>{r.payment_reference || '—'}</td>
-                    <td>
-                      {isPayable ? (
-                        <button className="btn btn-primary" style={{ height: 30, padding: '0 12px', fontSize: 11 }} disabled={payingId === r.id} onClick={() => handlePay(r.id)}>
-                          {payingId === r.id ? 'Redirecting…' : 'Pay Now'}
-                        </button>
-                      ) : r.status === 'paid' ? (
-                        <span className="badge paid">Paid</span>
-                      ) : null}
-                    </td>
-                  </tr>
-                );
-              }) : (
-                <tr>
-                  <td colSpan={7}>
-                    <div className="empty-state">
-                      <p>No billing records yet.</p>
-                    </div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-        <div className="pager">
-          <span>{records.length} record{records.length === 1 ? '' : 's'}</span>
-        </div>
-      </div>
-    </>
+      )}
+    </div>
   );
 }

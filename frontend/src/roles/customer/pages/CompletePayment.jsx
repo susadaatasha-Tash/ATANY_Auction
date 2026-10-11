@@ -7,6 +7,12 @@ import { useToast } from '../../../shared/components/Toast';
 
 function peso(n) { return '₱' + Number(n || 0).toLocaleString(); }
 function fmtDate(d) { if (!d) return '—'; const dt = new Date(d); return isNaN(dt) ? d : dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }); }
+function fmtDateTime(d) { if (!d) return '—'; const dt = new Date(d); return isNaN(dt) ? d : dt.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }); }
+function hoursRemaining(deadline) {
+  if (!deadline) return null;
+  const ms = new Date(deadline).getTime() - Date.now();
+  return ms > 0 ? Math.ceil(ms / (1000 * 60 * 60)) : 0;
+}
 
 const METHODS = [
   { id: 'gcash', label: 'GCash', desc: 'Pay instantly and securely via GCash.', icon: 'GCash' },
@@ -41,7 +47,13 @@ export default function CompletePayment() {
         window.location.href = res.checkout_url || `/customer/orders/${id}/success`;
       }
     } catch (e) {
-      showToast(e.message || 'Payment could not be started. Please try again.');
+      const msg = e.message || 'Payment could not be started. Please try again.';
+      showToast(msg);
+      // Refresh order state to reflect any backend changes (e.g., expired, reassigned)
+      try {
+        const refreshed = await apiFetch(`/customer/orders/${id}`);
+        setData(refreshed);
+      } catch {}
       setCreating(false);
     }
   };
@@ -51,6 +63,22 @@ export default function CompletePayment() {
   const { order, payment, product, branch } = data;
   if (payment?.status === 'paid') {
     return <div className="panel"><div className="empty-state"><p>This order is already paid.</p><Link to={`/customer/orders/${id}`} className="btn btn-primary" style={{marginTop:12}}>View Order</Link></div></div>;
+  }
+  const isExpired = !!order.is_expired;
+  if (isExpired) {
+    return (
+      <div className="order-details-page">
+        <Link to={`/customer/orders/${id}`} className="order-back">← Back to Order Details</Link>
+        <div className="panel">
+          <div className="empty-state" style={{ padding: '36px 22px' }}>
+            <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#fef3c7', display: 'grid', placeItems: 'center', margin: '0 auto 14px', fontSize: 26 }}>⚠</div>
+            <p style={{ fontSize: 18, fontWeight: 800, color: 'var(--navy)', marginBottom: 6 }}>Payment Eligibility Expired</p>
+            <p className="form-hint" style={{ maxWidth: 360, lineHeight: 1.6 }}>Your 7-day payment period has ended. The item may have been offered to the next eligible bidder.</p>
+            <Link to={`/customer/orders/${id}`} className="btn btn-outline" style={{ marginTop: 16 }}>View Order Details</Link>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -88,6 +116,15 @@ export default function CompletePayment() {
                 <span className="purchase-status-badge pending"><span className="purchase-status-dot" />Payment Pending</span>
                 <span className="form-hint">Please complete your payment to confirm your order.</span>
               </div>
+              {order.payment_deadline && (
+                <div className="order-deadline-block active" style={{ marginTop: 14 }}>
+                  <div className="order-deadline-label">PAYMENT DEADLINE</div>
+                  <div className="order-deadline-date">{fmtDateTime(order.payment_deadline)}</div>
+                  <div className="order-deadline-desc">
+                    Complete your payment within 7 days to keep your winning eligibility. If payment is not completed by the deadline, your payment eligibility will expire and the item may be offered to the next eligible bidder.
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

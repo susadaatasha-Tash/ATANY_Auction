@@ -1,7 +1,10 @@
 // frontend/src/roles/customer/routes.jsx
 // Role-isolated routing — only customer pages. Protected by RequireRole('customer') in App.jsx.
-// Maps to customer-dashboard.html sections: dashboard/live/bids/watchlist/purchases/account
+// Maps to customer-dashboard.html sections: dashboard/auctions/bids/watchlist/purchases/account
+// Canonical customer browsing is Auctions (Live+Scheduled, branch-scoped); /live is compatibility alias.
+import { Navigate } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
+import Auctions from './pages/Auctions';
 import LiveAuctions from './pages/LiveAuctions';
 import MyBids from './pages/MyBids';
 import Favorites from './pages/Favorites';
@@ -18,7 +21,8 @@ import MessagesPage from '../../shared/components/MessagesPage';
 
 export const customerRoutes = [
   { path: '', element: <Dashboard /> },
-  { path: 'live', element: <LiveAuctions /> },
+  { path: 'auctions', element: <Auctions /> },
+  { path: 'live', element: <Navigate to="/customer/auctions" replace /> },
   { path: 'bids', element: <MyBids /> },
   { path: 'favorites', element: <Favorites /> },
   { path: 'watchlist', element: <Watchlist /> },

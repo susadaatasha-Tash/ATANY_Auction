@@ -6,7 +6,9 @@
     "dev": "node --watch src/index.js",
     "start": "node src/index.js",
     "migrate": "psql $DATABASE_URL -f src/db/schema.sql",
-    "test": "node --experimental-vm-modules node_modules/.bin/vitest run 2>&1 || node --test src/**/*.test.js"
+    "test": "vitest run",
+    "check:syntax": "find src -name '*.js' -print0 | xargs -0 -n1 node --check && node --check scripts/production-smoke.mjs",
+    "smoke": "node scripts/production-smoke.mjs"
   },
   "dependencies": {
     "express": "^4.19.0",

@@ -29,9 +29,17 @@ EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 DO $$ BEGIN
-  CREATE TYPE auction_status AS ENUM ('scheduled','live','ended');
+  CREATE TYPE auction_status AS ENUM ('scheduled','live','paused','ended');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
+-- Migration 030 parity: 'paused' enum value idempotent (fresh installs already
+-- include it in CREATE TYPE above; existing DBs get it via 030 migration file).
+DO $$ BEGIN
+  ALTER TYPE auction_status ADD VALUE IF NOT EXISTS 'paused';
+EXCEPTION WHEN duplicate_object THEN NULL; WHEN others THEN NULL; END $$;
+-- NOTE: auctions.paused_at is added AFTER CREATE TABLE auctions below
+-- (migration 030 equivalent) — it cannot run here because the table may not
+-- exist yet on fresh installs.
 
 DO $$ BEGIN
   CREATE TYPE order_status AS ENUM ('pending','ready_pickup','completed');
@@ -104,6 +112,9 @@ CREATE TABLE IF NOT EXISTS products (
   status product_status NOT NULL DEFAULT 'pending',
   description TEXT,
   image_url TEXT,
+  proposed_start_time TIMESTAMPTZ,
+  proposed_end_time TIMESTAMPTZ,
+  proposed_duration_days INTEGER,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
@@ -117,6 +128,8 @@ CREATE TABLE IF NOT EXISTS auctions (
   end_time TIMESTAMPTZ NOT NULL,
   auction_code TEXT
 );
+-- Migration 030 parity for fresh installs (see backend/src/db/migrations/030_auction_pause_support.sql)
+ALTER TABLE auctions ADD COLUMN IF NOT EXISTS paused_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS bids (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -233,9 +246,85 @@ CREATE TABLE IF NOT EXISTS billing_records (
   due_date DATE,
   paid_at TIMESTAMPTZ,
   payment_reference TEXT,
+  plan_code TEXT,
+  paymongo_checkout_session_id TEXT,
+  current_period_start DATE,
+  current_period_end DATE,
+  billing_interval TEXT NOT NULL DEFAULT 'monthly',
+  billing_type TEXT NOT NULL DEFAULT 'subscription',
+  subscription_change_id UUID,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Subscription plan-change domain (migration 026/027 parity)
+DO $$ BEGIN
+  CREATE TYPE public.subscription_change_type AS ENUM ('upgrade', 'downgrade', 'interval_change');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  CREATE TYPE public.subscription_change_status AS ENUM ('pending_payment', 'scheduled', 'applied', 'canceled', 'failed');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE TABLE IF NOT EXISTS public.subscription_changes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  seller_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  current_plan_code TEXT,
+  target_plan_code TEXT NOT NULL,
+  current_billing_interval TEXT,
+  target_billing_interval TEXT NOT NULL,
+  change_type public.subscription_change_type NOT NULL,
+  status public.subscription_change_status NOT NULL,
+  effective_at DATE,
+  proration_amount INTEGER NOT NULL DEFAULT 0,
+  paymongo_checkout_session_id TEXT,
+  billing_record_id UUID REFERENCES public.billing_records(id),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  applied_at TIMESTAMPTZ,
+  canceled_at TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_subscription_changes_one_pending
+  ON public.subscription_changes(seller_id) WHERE status = 'pending_payment';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_subscription_changes_one_scheduled
+  ON public.subscription_changes(seller_id) WHERE status = 'scheduled';
+
+CREATE TABLE IF NOT EXISTS public.seller_payment_methods (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  seller_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  provider TEXT NOT NULL DEFAULT 'paymongo',
+  provider_payment_method_id TEXT NOT NULL,
+  type TEXT,
+  brand TEXT,
+  last4 TEXT,
+  exp_month INTEGER,
+  exp_year INTEGER,
+  is_default BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (seller_id, provider_payment_method_id)
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_seller_payment_methods_one_default
+  ON public.seller_payment_methods(seller_id) WHERE is_default;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'fk_billing_records_subscription_change'
+  ) THEN
+    ALTER TABLE public.billing_records
+      ADD CONSTRAINT fk_billing_records_subscription_change
+      FOREIGN KEY (subscription_change_id)
+      REFERENCES public.subscription_changes(id)
+      ON DELETE SET NULL;
+  END IF;
+END $$;
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'chk_billing_records_interval'
+  ) THEN
+    ALTER TABLE public.billing_records
+      ADD CONSTRAINT chk_billing_records_interval
+      CHECK (billing_interval IN ('monthly', 'annual'));
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS support_requests (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -348,6 +437,7 @@ ALTER TABLE auctions ENABLE ROW LEVEL SECURITY;
 -- Drop existing policies (idempotent)
 DO $$ BEGIN DROP POLICY IF EXISTS "users: self or admin can read" ON users; EXCEPTION WHEN undefined_object THEN NULL; END $$;
 DO $$ BEGIN DROP POLICY IF EXISTS "users: self can update own name" ON users; EXCEPTION WHEN undefined_object THEN NULL; END $$;
+DO $$ BEGIN DROP POLICY IF EXISTS "users: self can update own profile" ON users; EXCEPTION WHEN undefined_object THEN NULL; END $$;
 DO $$ BEGIN DROP POLICY IF EXISTS "shops: owner or admin" ON shops; EXCEPTION WHEN undefined_object THEN NULL; END $$;
 DO $$ BEGIN DROP POLICY IF EXISTS "products: shop owner can manage own, public can read approved" ON products; EXCEPTION WHEN undefined_object THEN NULL; END $$;
 DO $$ BEGIN DROP POLICY IF EXISTS "products: shop owner insert pending" ON products; EXCEPTION WHEN undefined_object THEN NULL; END $$;
@@ -380,7 +470,55 @@ DO $$ BEGIN DROP POLICY IF EXISTS "Admin can read support_requests" ON support_r
 CREATE POLICY "users: self or admin can read" ON users FOR SELECT USING (
   auth.uid() = id OR public.is_admin()
 );
-CREATE POLICY "users: self can update own name" ON users FOR UPDATE USING (auth.uid() = id);
+CREATE POLICY "users: self can update own profile" ON users FOR UPDATE USING (auth.uid() = id) WITH CHECK (auth.uid() = id);
+
+-- Privileged-column guard (Priority 1 / C1): clients cannot self-escalate role/status/password/2FA.
+CREATE OR REPLACE FUNCTION public.users_guard_privileged_columns()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  jwt_role text := '';
+  trusted boolean := false;
+BEGIN
+  BEGIN
+    jwt_role := COALESCE(auth.role(), '');
+  EXCEPTION WHEN OTHERS THEN
+    jwt_role := '';
+  END;
+  trusted := jwt_role = 'service_role'
+    OR current_user IN ('postgres', 'service_role', 'supabase_admin', 'supabase_auth_admin');
+  IF trusted THEN
+    RETURN NEW;
+  END IF;
+  IF NEW.id IS DISTINCT FROM OLD.id THEN
+    RAISE EXCEPTION 'users.id cannot be changed by client update';
+  END IF;
+  IF NEW.email IS DISTINCT FROM OLD.email THEN
+    RAISE EXCEPTION 'users.email cannot be changed by client update';
+  END IF;
+  IF NEW.role IS DISTINCT FROM OLD.role THEN
+    RAISE EXCEPTION 'users.role cannot be changed by client update';
+  END IF;
+  IF NEW.status IS DISTINCT FROM OLD.status THEN
+    RAISE EXCEPTION 'users.status cannot be changed by client update';
+  END IF;
+  IF NEW.password_hash IS DISTINCT FROM OLD.password_hash THEN
+    RAISE EXCEPTION 'users.password_hash cannot be changed by client update';
+  END IF;
+  IF NEW.totp_secret IS DISTINCT FROM OLD.totp_secret
+     OR NEW.totp_enabled IS DISTINCT FROM OLD.totp_enabled THEN
+    RAISE EXCEPTION 'users 2FA fields cannot be changed by client update';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_users_guard_privileged ON public.users;
+CREATE TRIGGER trg_users_guard_privileged
+  BEFORE UPDATE ON public.users
+  FOR EACH ROW
+  EXECUTE FUNCTION public.users_guard_privileged_columns();
 
 CREATE POLICY "shops: owner or admin" ON shops FOR ALL USING (
   auth.uid() = user_id OR public.is_admin()

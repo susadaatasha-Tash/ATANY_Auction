@@ -24,11 +24,11 @@ export default function Watchlist() {
               {w.branch_name && <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>📍 Pickup at {w.branch_name}</div>}
               <div className="price">Current bid: <b>{peso(w.currentBid ?? w.current_bid ?? w.price)}</b></div>
               <div className="watch-card-actions">
-                <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={() => window.location.href = '/customer/live'}>View Auction</button>
+                <button type="button" className="btn btn-primary" style={{ flex: 1 }} onClick={() => window.location.href = '/customer/auctions'}>View Auction</button>
               </div>
             </div>
           </div>
-        )) : <div className="empty-state" style={{ gridColumn: '1/-1' }}><p>Your watchlist is empty — place a bid on Live Auctions to see it here.</p></div>}
+        )) : <div className="empty-state" style={{ gridColumn: '1/-1' }}><p>Your watchlist is empty — place a bid on Auctions to see it here.</p></div>}
       </div>
     </div>
   );

@@ -68,7 +68,6 @@ export default function BranchLocator({ branches: propBranches }) {
             Back
           </button>
           <h1>Branch Locator</h1>
-          <p className="subtitle">Find an ATANY branch near you.</p>
         </div>
 
         <div className="locator-toolbar">

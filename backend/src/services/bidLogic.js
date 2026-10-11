@@ -1,19 +1,67 @@
 // backend/src/services/bidLogic.js
 // Shared business logic — NOT inside route handlers (per requested structure).
 // Spec 5.1: SERIALIZABLE transaction + row locking. Spec 4.1: min increment server-side.
+// Priority 1 / H4: enforce live auction time window inside the same locked transaction.
 import { pool } from '../db/pool.js';
 import { checkFraud } from './fraudCheck.js';
 
 const MIN_INCREMENT = 1000;
 
-export async function placeBid({ auctionId, userId, amount }) {
+function bidError(message, code) {
+  const err = new Error(message);
+  err.code = code;
+  return err;
+}
+
+/**
+ * Validate auction can accept bids using DB timestamps (source of truth).
+ * Does NOT rely on cron-updated status alone.
+ * @returns {{ok:true}|{ok:false, code:string, message:string}}
+ */
+export function validateAuctionBidWindow(auction, now = new Date()) {
+  if (!auction) return { ok: false, code: 'AUCTION_NOT_FOUND', message: 'Auction not found' };
+  const status = String(auction.status || '').toLowerCase();
+  if (status === 'ended' || status === 'cancelled' || status === 'canceled' || status === 'paused') {
+    return { ok: false, code: status === 'paused' ? 'AUCTION_PAUSED' : 'AUCTION_NOT_LIVE', message: status === 'paused' ? 'Auction is paused' : 'Auction is not live' };
+  }
+  const start = auction.start_time ? new Date(auction.start_time) : null;
+  const end = auction.end_time ? new Date(auction.end_time) : null;
+  if (!start || !end || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return { ok: false, code: 'AUCTION_NOT_LIVE', message: 'Auction is not live' };
+  }
+  if (now.getTime() < start.getTime()) {
+    return { ok: false, code: 'AUCTION_NOT_LIVE', message: 'Auction has not started' };
+  }
+  if (now.getTime() >= end.getTime()) {
+    return { ok: false, code: 'AUCTION_NOT_LIVE', message: 'Auction has ended' };
+  }
+  // Window open: allow even if status lags 'scheduled' (cron lag). Time is authoritative.
+  return { ok: true };
+}
+
+export async function placeBid({ auctionId, userId, amount, now = new Date() }) {
   const client = await pool.connect();
   try {
+    // Priority 1 / H2 fail-closed: SERIALIZABLE + FOR UPDATE require direct pg.
+    // REST fallback cannot guarantee bid atomicity — reject rather than weaken.
+    if (client?.__restFallback) {
+      throw bidError('Bidding is temporarily unavailable', 'BIDDING_UNAVAILABLE');
+    }
     await client.query('BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE');
-    const { rows } = await client.query('SELECT current_bid FROM auctions WHERE id = $1 FOR UPDATE', [auctionId]);
-    if (!rows.length) throw new Error('Auction not found');
+    const { rows } = await client.query(
+      'SELECT current_bid, status, start_time, end_time FROM auctions WHERE id = $1 FOR UPDATE',
+      [auctionId]
+    );
+    if (!rows.length) throw bidError('Auction not found', 'AUCTION_NOT_FOUND');
+
+    // H4: live window check inside the locked transaction
+    const windowCheck = validateAuctionBidWindow(rows[0], now);
+    if (!windowCheck.ok) throw bidError(windowCheck.message, windowCheck.code);
+
     const currentBid = Number(rows[0].current_bid);
-    if (amount < currentBid + MIN_INCREMENT) throw new Error(`Bid must be at least ₱${currentBid + MIN_INCREMENT}`);
+    if (amount < currentBid + MIN_INCREMENT) {
+      throw bidError(`Bid must be at least ₱${(currentBid + MIN_INCREMENT).toLocaleString()}`, 'BID_TOO_LOW');
+    }
 
     await client.query('UPDATE auctions SET current_bid = $1 WHERE id = $2', [amount, auctionId]);
     const bidRes = await client.query(
@@ -31,8 +79,6 @@ export async function placeBid({ auctionId, userId, amount }) {
       );
     }
     // Notify previous highest bidder they were outbid (spec 4.6) — respect preference.
-    // Duplicate guard is keyed to this exact outbid event (auction + new bid amount)
-    // so legitimate later outbids at higher amounts still notify. Message wording unchanged.
     const prev = await client.query('SELECT user_id FROM bids WHERE auction_id=$1 AND user_id != $2 ORDER BY amount DESC LIMIT 1', [auctionId, userId]);
     if (prev.rows.length) {
       const { shouldDeliverNotification } = await import('./notificationPreference.js');
@@ -46,7 +92,6 @@ export async function placeBid({ auctionId, userId, amount }) {
           );
           outbidDup = rows;
         } catch (gErr) {
-          // notifications.auction_id column absent: fall back to legacy unguarded insert
           if (gErr.code !== '42703') throw gErr;
         }
         if (!outbidDup.length) {
@@ -63,7 +108,7 @@ export async function placeBid({ auctionId, userId, amount }) {
     await client.query('COMMIT');
     return { bid: bidRes.rows[0], flagged: fraud.flagged, reason: fraud.reason };
   } catch (e) {
-    await client.query('ROLLBACK');
+    try { await client.query('ROLLBACK'); } catch { /* already rolled back or mock */ }
     throw e;
   } finally {
     client.release();

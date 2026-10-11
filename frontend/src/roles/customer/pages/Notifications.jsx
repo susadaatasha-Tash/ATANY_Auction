@@ -43,7 +43,7 @@ export default function Notifications() {
       const destination = await resolveCustomerDestination(n);
       if (destination) navigate(destination);
     } catch {
-      navigate('/customer/live');
+      navigate('/customer/auctions');
     }
   };
 
