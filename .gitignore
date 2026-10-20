@@ -1,0 +1,17 @@
+node_modules/
+dist/
+.env
+.env.local
+.env.*.local
+frontend/.env
+backend/.env
+*.log
+.DS_Store
+
+supabase/.temp/
+test-results/
+*.bak
+
+.sisyphus/
+backend/qa-e2e.tmp.mjs
+_legacy_html_backup/

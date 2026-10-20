@@ -1,0 +1,26 @@
+{
+  "name": "atany-backend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch src/index.js",
+    "start": "node src/index.js",
+    "migrate": "psql $DATABASE_URL -f src/db/schema.sql",
+    "test": "vitest run",
+    "check:syntax": "find src -name '*.js' -print0 | xargs -0 -n1 node --check && node --check scripts/production-smoke.mjs",
+    "smoke": "node scripts/production-smoke.mjs"
+  },
+  "dependencies": {
+    "express": "^4.19.0",
+    "cors": "^2.8.5",
+    "pg": "^8.12.0",
+    "@supabase/supabase-js": "^2.45.0",
+    "socket.io": "^4.7.5",
+    "node-cron": "^3.0.3",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "supertest": "^6.3.4",
+    "vitest": "^1.6.0"
+  }
+}
