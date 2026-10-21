@@ -31,6 +31,17 @@ import './users.css';
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
+// Convenience starting points for a suspension reason. The admin can always
+// edit the final text — a preset is never stored without being selected.
+const SUSPENSION_REASON_PRESETS = [
+  'Suspicious bidding activity',
+  'Terms or policy violation',
+  'Payment-related concern',
+  'Account security concern',
+  'Fraud investigation',
+  'Other',
+];
+
 function KpiMenu({ label, items }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -121,6 +132,8 @@ export default function Users() {
 
   const [busyId, setBusyId] = useState(null);
   const [suspendTarget, setSuspendTarget] = useState(null);
+  const [suspendReason, setSuspendReason] = useState('');
+  const [suspendError, setSuspendError] = useState('');
   const [reactivateTarget, setReactivateTarget] = useState(null);
   const [cancelTarget, setCancelTarget] = useState(null);
   const [editing, setEditing] = useState(null);
@@ -180,19 +193,42 @@ export default function Users() {
     setRoleFilter('');
   };
 
-  const setStatus = async (user, nextStatus) => {
+  const setStatus = async (user, nextStatus, reason = null) => {
     setBusyId(user.id);
     try {
       await apiFetch(`/admin/users/${user.id}/suspend`, {
         method: 'PATCH',
-        body: JSON.stringify({ status: nextStatus }),
+        body: JSON.stringify({ status: nextStatus, ...(reason ? { reason } : {}) }),
       });
       showToast(nextStatus === 'suspended' ? 'Account suspended.' : 'Account reactivated.');
       await load({ silent: true });
     } catch (e) {
       showToast(e?.message || 'Unable to update the account.');
+      throw e;
     } finally {
       setBusyId(null);
+    }
+  };
+
+  /** A suspension ALWAYS needs a real, admin-provided reason. */
+  const confirmSuspend = async () => {
+    if (!suspendTarget) return;
+    const reason = suspendReason.trim();
+    if (reason.length < 5) {
+      setSuspendError('Please provide a reason for suspension (at least 5 characters).');
+      return;
+    }
+    if (reason.length > 500) {
+      setSuspendError('The reason must be at most 500 characters.');
+      return;
+    }
+    try {
+      await setStatus(suspendTarget, 'suspended', reason);
+      setSuspendTarget(null);
+      setSuspendReason('');
+      setSuspendError('');
+    } catch {
+      /* the toast already explains the failure — the dialog stays open */
     }
   };
 
@@ -621,31 +657,71 @@ export default function Users() {
         </footer>
       </section>
 
-      {/* Suspend confirmation */}
+      {/* Suspend confirmation — a REAL reason is required before an account
+          can be suspended (the backend validates it too). */}
       <Modal
         open={!!suspendTarget}
-        onClose={() => setSuspendTarget(null)}
+        onClose={() => { setSuspendTarget(null); setSuspendReason(''); setSuspendError(''); }}
         title="Suspend account?"
         eyebrow="Users & Roles"
         footer={(
           <>
-            <button type="button" className="btn btn-outline" onClick={() => setSuspendTarget(null)}>Cancel</button>
+            <button
+              type="button"
+              className="btn btn-outline"
+              onClick={() => { setSuspendTarget(null); setSuspendReason(''); setSuspendError(''); }}
+            >
+              Cancel
+            </button>
             <button
               type="button"
               className="btn btn-primary"
               style={{ background: 'var(--danger)' }}
-              onClick={() => { setStatus(suspendTarget, 'suspended'); setSuspendTarget(null); }}
+              disabled={busyId === suspendTarget?.id}
+              onClick={() => confirmSuspend()}
             >
-              Suspend
+              {busyId === suspendTarget?.id ? 'Suspending…' : 'Suspend Account'}
             </button>
           </>
         )}
       >
         {suspendTarget && (
           <div className="usr-confirm">
-            <p className="usr-confirm__name">{suspendTarget.name}</p>
+            <p className="usr-confirm__name">Suspend {suspendTarget.name}?</p>
             <p className="usr-confirm__text">
-              This user will lose access until reactivated. Their auction history and saved items are preserved.
+              {suspendTarget.role === 'shop_owner'
+                ? 'This shop owner will temporarily lose access to protected seller features. Existing listings, auctions, orders, payments and historical records must remain intact.'
+                : 'This customer will temporarily lose access to ATANY features. Their existing bids, orders, payments and account history will not be deleted.'}
+            </p>
+
+            <label className="usr-reason-label" htmlFor="usr-suspend-reason">
+              Reason for suspension <span aria-hidden="true">*</span>
+            </label>
+            <textarea
+              id="usr-suspend-reason"
+              className="usr-reason-input"
+              rows={4}
+              maxLength={500}
+              value={suspendReason}
+              onChange={(e) => { setSuspendReason(e.target.value); setSuspendError(''); }}
+              placeholder="Enter the reason for suspending this account..."
+              aria-describedby={suspendError ? 'usr-suspend-reason-error' : undefined}
+            />
+            <div className="usr-reason-presets" role="group" aria-label="Quick reason presets">
+              {SUSPENSION_REASON_PRESETS.map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  className="usr-reason-preset"
+                  onClick={() => { setSuspendReason(preset); setSuspendError(''); }}
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
+            {suspendError && <p className="usr-field-error" id="usr-suspend-reason-error" role="alert">{suspendError}</p>}
+            <p className="usr-reason-hint">
+              The reason is shown to the account owner and stored in the admin audit trail.
             </p>
           </div>
         )}

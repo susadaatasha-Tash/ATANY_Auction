@@ -73,7 +73,7 @@ export function ConfirmModal({ open, onClose, title, body, onConfirm, confirmLab
       <div className="modal-box" style={{ width: 'min(380px,100%)' }} role="dialog" aria-modal="true" aria-labelledby="confirm-title">
         <div className="modal-box-body confirm-box">
           <h3 id="confirm-title" style={{ color: 'var(--navy)', fontSize: 15 }}>{title}</h3>
-          <p>{body}</p>
+          {typeof body === 'string' ? <p>{body}</p> : <div className="confirm-box__body">{body}</div>}
         </div>
         <div className="modal-box-foot">
           <button type="button" className="btn btn-outline" onClick={onClose}>Cancel</button>

@@ -3,8 +3,13 @@
 // login.html:263 / signup.html:262  — now real auth via supabaseClient.
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
+import { socket } from '../lib/socketClient';
 
 const AuthContext = createContext(null);
+
+// Event used by the API client when a protected call answers 403
+// ACCOUNT_SUSPENDED — the authoritative reason travels with the response.
+export const ACCOUNT_SUSPENDED_EVENT = 'atany:account-suspended';
 
 async function fetchUserMeta(token) {
   const apiBase = import.meta.env.VITE_API_URL || 'http://localhost:4000';
@@ -24,6 +29,8 @@ async function fetchUserMeta(token) {
       email: data.email || null,
       role: data.role || null,
       status: data.status || null,
+      // The admin-provided reason for the CURRENT suspension (null when active).
+      suspensionReason: data.suspension_reason || null,
       preferredBranchId: data.preferred_branch_id || null,
     };
   } catch (e) {
@@ -36,9 +43,26 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
   const [status, setStatus] = useState(null);
+  const [suspensionReason, setSuspensionReason] = useState(null);
   const [preferredBranchId, setPreferredBranchId] = useState(null);
   const [profileName, setProfileName] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const applyMeta = useCallback((meta) => {
+    setRole(meta.role);
+    setStatus(meta.status);
+    setSuspensionReason(meta.suspensionReason || null);
+    setPreferredBranchId(meta.preferredBranchId);
+    setProfileName(meta.name);
+  }, []);
+
+  const clearMeta = useCallback(() => {
+    setRole(null);
+    setStatus(null);
+    setSuspensionReason(null);
+    setPreferredBranchId(null);
+    setProfileName(null);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,22 +77,13 @@ export function AuthProvider({ children }) {
           const meta = await fetchUserMeta(data.session.access_token);
           if (cancelled) return;
           if (meta) {
-            setRole(meta.role);
-            setStatus(meta.status);
-            setPreferredBranchId(meta.preferredBranchId);
-            setProfileName(meta.name);
+            applyMeta(meta);
           } else {
             console.error('[useAuth] /auth/me returned no metadata for authenticated user');
-            setRole(null);
-            setStatus(null);
-            setPreferredBranchId(null);
-            setProfileName(null);
+            clearMeta();
           }
         } else {
-          setRole(null);
-          setStatus(null);
-          setPreferredBranchId(null);
-          setProfileName(null);
+          clearMeta();
         }
       } catch (e) {
         console.error('[useAuth] Session init failed', e?.message || e);
@@ -87,22 +102,13 @@ export function AuthProvider({ children }) {
           const meta = await fetchUserMeta(session.access_token);
           if (cancelled) return;
           if (meta) {
-            setRole(meta.role);
-            setStatus(meta.status);
-            setPreferredBranchId(meta.preferredBranchId);
-            setProfileName(meta.name);
+            applyMeta(meta);
           } else {
             console.error('[useAuth] /auth/me returned no metadata on auth change');
-            setRole(null);
-            setStatus(null);
-            setPreferredBranchId(null);
-            setProfileName(null);
+            clearMeta();
           }
         } else {
-          setRole(null);
-          setStatus(null);
-          setPreferredBranchId(null);
-          setProfileName(null);
+          clearMeta();
         }
       } catch (e) {
         console.error('[useAuth] Auth state change failed', e?.message || e);
@@ -114,7 +120,33 @@ export function AuthProvider({ children }) {
       cancelled = true;
       sub.subscription?.unsubscribe();
     };
-  }, []);
+  }, [applyMeta, clearMeta]);
+
+  // ── realtime account status (suspension / reactivation) ──────────
+  // The backend emits `account:status` to the account's own room right after
+  // a successful status change. The database stays authoritative — this only
+  // makes an ALREADY OPEN session react immediately.
+  useEffect(() => {
+    if (!user) return undefined;
+    const onAccountStatus = (payload) => {
+      const next = String(payload?.status || '').toLowerCase();
+      if (!next) return;
+      setStatus(next);
+      setSuspensionReason(next === 'suspended' ? (payload?.reason || null) : null);
+    };
+    const onApiFallback = (event) => {
+      const reason = event?.detail?.reason || null;
+      setStatus('suspended');
+      setSuspensionReason(reason);
+    };
+    try { socket.connect(); } catch { /* the socket is optional */ }
+    socket.on('account:status', onAccountStatus);
+    window.addEventListener(ACCOUNT_SUSPENDED_EVENT, onApiFallback);
+    return () => {
+      socket.off('account:status', onAccountStatus);
+      window.removeEventListener(ACCOUNT_SUSPENDED_EVENT, onApiFallback);
+    };
+  }, [user]);
 
   // Re-read the server profile (name / branch / status) after a profile save
   // so the header and sidebar reflect the new values without a page reload.
@@ -125,16 +157,13 @@ export function AuthProvider({ children }) {
       if (!token) return null;
       const meta = await fetchUserMeta(token);
       if (!meta) return null;
-      setRole(meta.role);
-      setStatus(meta.status);
-      setPreferredBranchId(meta.preferredBranchId);
-      setProfileName(meta.name);
+      applyMeta(meta);
       return meta;
     } catch (e) {
       console.error('[useAuth] refreshProfile failed', e?.message || e);
       return null;
     }
-  }, []);
+  }, [applyMeta]);
 
   const signOut = async () => {
     await supabase.auth.signOut();
@@ -147,6 +176,7 @@ export function AuthProvider({ children }) {
         user,
         role,
         status,
+        suspensionReason,
         preferredBranchId,
         setPreferredBranchId,
         profileName,
@@ -169,13 +199,20 @@ export const useAuth = () => {
 // Role guard for App.jsx — mirrors backend requireRole middleware.
 // Uses the DB-verified role from the auth context (fetched via GET /auth/me),
 // NOT the client-editable JWT user_metadata.
+//
+// A SUSPENDED account never reaches a protected portal: it is routed to the
+// single canonical /account-suspended screen (which shows the admin's reason).
 import { Navigate } from 'react-router-dom';
+import { ACCOUNT_SUSPENDED_ROUTE } from '../lib/roleRoutes';
 export function RequireRole({ role, children }) {
-  const { user, role: userRole, loading } = useAuth();
+  const { user, role: userRole, status, loading } = useAuth();
   if (loading) return null;
   const allowed = Array.isArray(role) ? role : [role];
   if (!user || (role && !allowed.includes(userRole))) {
     return <Navigate to="/login" replace />;
+  }
+  if (String(status || '').toLowerCase() === 'suspended') {
+    return <Navigate to={ACCOUNT_SUSPENDED_ROUTE} replace />;
   }
   return children;
 }

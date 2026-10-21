@@ -363,6 +363,37 @@
 .adm-ad__btn:disabled { opacity: .55; cursor: not-allowed; }
 .adm-ad__btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
 
+/* ── Confirmation dialogs ───────────────────────────────────── */
+.adm-ad__confirm { display: flex; flex-direction: column; gap: 4px; }
+.adm-ad__confirm-text { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--muted); }
+.adm-ad__reason-label {
+  display: block;
+  margin: 14px 0 6px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--navy);
+}
+.adm-ad__reason-label span { color: #b45252; }
+.adm-ad__reason-input {
+  width: 100%;
+  min-height: 86px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: #fff;
+  font-size: 12.5px;
+  line-height: 1.55;
+  font-family: inherit;
+  color: var(--text);
+  resize: vertical;
+  outline: none;
+}
+.adm-ad__reason-input:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(196, 162, 101, .1); }
+.adm-ad__reason-error { margin: 6px 0 0; font-size: 11.5px; font-weight: 600; color: #b45252; }
+.adm-ad__reason-hint { margin: 8px 0 0; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
+
 /* Responsive */
 @media (max-width: 640px) {
   .adm-ad__grid { grid-template-columns: minmax(0, 1fr); padding: 16px 16px 0; }

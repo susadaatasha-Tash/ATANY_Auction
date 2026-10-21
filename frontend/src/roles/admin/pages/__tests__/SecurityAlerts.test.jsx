@@ -360,11 +360,48 @@ describe('Admin Security Alerts — Alert Details dialog', () => {
     await openReview();
     fireEvent.click(screen.getByRole('button', { name: 'Suspend Customer' }));
     await waitFor(() => expect(screen.getByText('Suspend customer?')).toBeInTheDocument());
-    // The confirmation dialog is the last open dialog.
     const confirmDialog = screen.getAllByRole('dialog').pop();
     fireEvent.click(within(confirmDialog).getByRole('button', { name: 'Suspend Customer' }));
     await waitFor(() => expect(toastSpy).toHaveBeenCalledWith('Customer suspended.'));
     await waitFor(() => expect(screen.getByText('Suspended')).toBeInTheDocument());
+  });
+
+  it('the Security Alerts suspension also requires a reason', async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText('646ff462')).toBeInTheDocument());
+    await openReview();
+    fireEvent.click(screen.getByRole('button', { name: 'Suspend Customer' }));
+    await waitFor(() => expect(screen.getByText('Suspend customer?')).toBeInTheDocument());
+    const confirmDialog = screen.getAllByRole('dialog').pop();
+    // The reason field is prefilled with a suggestion the admin can edit.
+    const textarea = within(confirmDialog).getByLabelText(/Reason for suspension/i);
+    expect(textarea.value).toContain('Rapid High-Value Bidding');
+    // Clearing it must block the confirmation.
+    fireEvent.change(textarea, { target: { value: '   ' } });
+    fireEvent.click(within(confirmDialog).getByRole('button', { name: 'Suspend Customer' }));
+    await waitFor(() => expect(within(confirmDialog).getByRole('alert')).toBeInTheDocument());
+    const patch = apiFetch.mock.calls.find(([u, o]) => String(u).includes('/admin/security-alerts/') && o?.method === 'PATCH');
+    expect(patch).toBeUndefined();
+  });
+
+  it('sends the admin reason with the Security Alerts suspension', async () => {
+    renderPage();
+    await waitFor(() => expect(screen.getByText('646ff462')).toBeInTheDocument());
+    await openReview();
+    fireEvent.click(screen.getByRole('button', { name: 'Suspend Customer' }));
+    await waitFor(() => expect(screen.getByText('Suspend customer?')).toBeInTheDocument());
+    const confirmDialog = screen.getAllByRole('dialog').pop();
+    fireEvent.change(within(confirmDialog).getByLabelText(/Reason for suspension/i), {
+      target: { value: 'Suspicious Rapid High-Value Bidding activity.' },
+    });
+    fireEvent.click(within(confirmDialog).getByRole('button', { name: 'Suspend Customer' }));
+    await waitFor(() => expect(toastSpy).toHaveBeenCalledWith('Customer suspended.'));
+    const patch = apiFetch.mock.calls.find(([u, o]) => String(u).includes('/admin/security-alerts/') && o?.method === 'PATCH');
+    expect(JSON.parse(patch[1].body)).toMatchObject({
+      status: 'new',
+      suspendUserId: 'u1',
+      reason: 'Suspicious Rapid High-Value Bidding activity.',
+    });
   });
 
   it('hides invalid actions for a closed alert', async () => {

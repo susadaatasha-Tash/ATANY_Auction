@@ -52,7 +52,7 @@ beforeEach(() => {
 /** Wire the pool mock for the standard updateAccount flow. */
 function setupAccountMocks({ status = 'active', updated = {}, branches = [] } = {}) {
   poolQuery.mockImplementation(async (sql) => {
-    if (/SELECT status FROM users/.test(sql)) return { rows: [{ status }] };
+    if (/SELECT status(, suspension_reason)? FROM users/.test(sql)) return { rows: [{ status, suspension_reason: null }] };
     if (/^UPDATE users SET/.test(sql)) {
       return {
         rows: [
@@ -284,7 +284,7 @@ describe('customer profile — cross-account isolation', () => {
     setupAccountMocks();
     const res = mockRes();
     await updateAccount(req({ name: 'Maria Santos' }), res);
-    const statusQuery = poolQuery.mock.calls.find(([sql]) => /SELECT status FROM users/.test(sql));
+    const statusQuery = poolQuery.mock.calls.find(([sql]) => /SELECT status(, suspension_reason)? FROM users/.test(sql));
     expect(statusQuery[1]).toEqual([ME]);
   });
 });

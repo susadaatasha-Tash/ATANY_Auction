@@ -70,6 +70,11 @@ function defaultPool({ users = [], summary = {}, branchExists = true } = {}) {
     if (/SELECT id, name, email, role, status FROM users/.test(sql)) {
       return { rows: users.filter((u) => u.id === params[0]) };
     }
+    // The shared account-status service: target lookup (+ the current reason).
+    if (/SELECT id, name, role, status, suspension_reason FROM users WHERE id = \$1/.test(sql)) {
+      const u = users.find((x) => x.id === params[0]);
+      return { rows: u ? [{ ...u, suspension_reason: u.suspension_reason || null }] : [] };
+    }
     if (/FROM users WHERE lower\(email\)/.test(sql)) {
       return { rows: users.filter((u) => u.email === params[0]) };
     }
@@ -83,6 +88,10 @@ function defaultPool({ users = [], summary = {}, branchExists = true } = {}) {
     }
     if (/count\(\*\)::int AS c FROM users WHERE role = 'admin'/.test(sql)) {
       return { rows: [{ c: 1 }] };
+    }
+    if (/UPDATE users\s+SET status = \$1,\s+suspension_reason = \$2/.test(sql)) {
+      const u = users.find((x) => x.id === params[2]);
+      return { rows: u ? [{ ...u, status: params[0], suspension_reason: params[1] }] : [] };
     }
     if (/UPDATE users SET status/.test(sql)) {
       const u = users.find((x) => x.id === params[1]);
@@ -270,35 +279,45 @@ describe('admin users — update validation', () => {
 // suspend / reactivate + protections
 // ─────────────────────────────────────────────────────────────
 describe('admin users — suspend and reactivate', () => {
-  it('suspends an active account', async () => {
+  it('suspends an active account (a reason is required and persisted)', async () => {
+    defaultPool({ users: [{ id: OTHER, role: 'customer', status: 'active' }] });
+    const res = mockRes();
+    await suspendUser(req({ status: 'suspended', reason: 'Suspicious bidding activity.' }, { id: OTHER }), res);
+    expect(res.status).not.toHaveBeenCalledWith(400);
+    const update = poolQuery.mock.calls.find(([sql]) => /UPDATE users\s+SET status/.test(sql));
+    expect(update[1][0]).toBe('suspended');
+    expect(update[1][1]).toBe('Suspicious bidding activity.');
+  });
+
+  it('refuses to suspend without a reason', async () => {
     defaultPool({ users: [{ id: OTHER, role: 'customer', status: 'active' }] });
     const res = mockRes();
     await suspendUser(req({ status: 'suspended' }, { id: OTHER }), res);
-    expect(res.status).not.toHaveBeenCalledWith(400);
-    const update = poolQuery.mock.calls.find(([sql]) => /UPDATE users SET status/.test(sql));
-    expect(update[1][0]).toBe('suspended');
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(payload(res).message).toMatch(/reason/i);
   });
 
-  it('reactivates a suspended account', async () => {
+  it('reactivates a suspended account (no reason needed, the current one is cleared)', async () => {
     defaultPool({ users: [{ id: OTHER, role: 'customer', status: 'suspended' }] });
     const res = mockRes();
     await suspendUser(req({ status: 'active' }, { id: OTHER }), res);
-    const update = poolQuery.mock.calls.find(([sql]) => /UPDATE users SET status/.test(sql));
+    const update = poolQuery.mock.calls.find(([sql]) => /UPDATE users\s+SET status/.test(sql));
     expect(update[1][0]).toBe('active');
+    expect(update[1][1]).toBeNull();
   });
 
   it('toggles the status when no explicit target is given', async () => {
-    defaultPool({ users: [{ id: OTHER, role: 'customer', status: 'active' }] });
+    defaultPool({ users: [{ id: OTHER, role: 'customer', status: 'suspended' }] });
     const res = mockRes();
     await suspendUser(req({}, { id: OTHER }), res);
-    const update = poolQuery.mock.calls.find(([sql]) => /UPDATE users SET status/.test(sql));
-    expect(update[1][0]).toBe('suspended');
+    const update = poolQuery.mock.calls.find(([sql]) => /UPDATE users\s+SET status/.test(sql));
+    expect(update[1][0]).toBe('active');
   });
 
   it('blocks an admin from suspending their own account', async () => {
     defaultPool({ users: [{ id: ADMIN, role: 'admin', status: 'active' }] });
     const res = mockRes();
-    await suspendUser(req({ status: 'suspended' }, { id: ADMIN }, ADMIN), res);
+    await suspendUser(req({ status: 'suspended', reason: 'Because.' }, { id: ADMIN }, ADMIN), res);
     expect(res.status).toHaveBeenCalledWith(403);
     expect(payload(res).message).toMatch(/cannot suspend your own account/i);
   });
@@ -316,6 +335,9 @@ describe('admin users — suspend and reactivate', () => {
     poolQuery.mockImplementation(async (sql, params) => {
       if (/count\(\*\)::int AS c FROM users WHERE role = 'admin'/.test(sql)) return { rows: [{ c: 0 }] };
       if (/SELECT id, role, status FROM users/.test(sql)) return { rows: [{ id: OTHER, role: 'admin', status: 'active' }] };
+      if (/SELECT id, name, role, status, suspension_reason FROM users/.test(sql)) {
+        return { rows: [{ id: OTHER, name: 'Other', role: 'admin', status: 'active', suspension_reason: null }] };
+      }
       return { rows: [] };
     });
     const res = mockRes();

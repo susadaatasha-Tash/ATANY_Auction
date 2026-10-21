@@ -8,6 +8,7 @@ import shopOwnerRoutes from './routes/shop-owner.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import { requireAuth } from './middleware/requireAuth.js';
 import { requireRole } from './middleware/requireRole.js';
+import { requireActiveAccount } from './middleware/requireActiveAccount.js';
 import { pool, getPoolHealth } from './db/pool.js';
 import { createClient } from '@supabase/supabase-js';
 import { createServer } from 'http';
@@ -249,7 +250,10 @@ app.use('/seller-applications', (req, res) => {
   res.status(410).json({ message: 'Seller application is no longer available.' });
 });
 app.use('/customer', requireAuth, requireRole('customer'), customerRoutes);
-app.use('/shop-owner', requireAuth, requireRole('shop_owner'), shopOwnerRoutes);
+// Shop owners: a suspended seller loses every protected seller route
+// (dashboard, listings, auctions, won lots, sales/payouts, subscription, shop
+// profile) — the account state is read from public.users, never from the JWT.
+app.use('/shop-owner', requireAuth, requireRole('shop_owner'), requireActiveAccount(), shopOwnerRoutes);
 app.use('/messages', messageRoutes);
 app.use('/admin', requireAuth, requireRole(['admin']), adminRoutes);
 // Admin Audit Logs viewer API removed from product scope.

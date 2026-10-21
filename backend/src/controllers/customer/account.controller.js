@@ -53,12 +53,13 @@ export const updateAccount = async (req, res) => {
 
     // A suspended account cannot edit its profile (same rule as bidding).
     // Support stays reachable through the account-suspension page.
-    const { rows: statusRows } = await pool.query('SELECT status FROM users WHERE id=$1', [userId]);
+    const { rows: statusRows } = await pool.query('SELECT status, suspension_reason FROM users WHERE id=$1', [userId]);
     const accountStatus = String(statusRows[0]?.status || '').toLowerCase();
     if (accountStatus === 'suspended') {
       return res.status(403).json({
         code: 'ACCOUNT_SUSPENDED',
         message: 'Your account is suspended. Contact support to update your profile.',
+        reason: statusRows[0]?.suspension_reason || null,
       });
     }
 

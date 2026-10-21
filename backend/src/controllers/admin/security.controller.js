@@ -443,9 +443,16 @@ export const updateAlert = async (req, res) => {
         adminId: req.user.id,
         targetId: suspendUserId,
         nextStatus: 'suspended',
+        reason: req.body?.reason ?? null,
         source: 'security_alert',
+        io: req.io || null,
       });
-      if (!result.ok) return res.status(result.code || 400).json({ message: result.message });
+      if (!result.ok) {
+        return res.status(result.code || 400).json({
+          message: result.message,
+          ...(result.field ? { field: result.field, code: 'REASON_REQUIRED' } : {}),
+        });
+      }
       suspendedUser = result.user;
     }
 

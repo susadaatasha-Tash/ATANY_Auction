@@ -298,8 +298,61 @@ describe('Admin Users & Roles — account actions', () => {
     fireEvent.click(within(screen.getByTestId('user-row-u-1')).getByRole('button', { name: /Suspend/ }));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText('Suspend account?')).toBeInTheDocument();
-    expect(within(dialog).getByText('Adrian Villanueva')).toBeInTheDocument();
-    expect(within(dialog).getByText(/will lose access until reactivated/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/Suspend Adrian Villanueva\?/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/temporarily lose access to ATANY features/i)).toBeInTheDocument();
+  });
+
+  it('Suspend requires a reason before it can be confirmed', async () => {
+    renderUsers();
+    await waitFor(() => expect(screen.getByText('Adrian Villanueva')).toBeInTheDocument());
+    fireEvent.click(within(screen.getByTestId('user-row-u-1')).getByRole('button', { name: /Suspend/ }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByLabelText(/Reason for suspension/i)).toBeInTheDocument();
+    // Confirming without a reason must not call the backend.
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Suspend Account' }));
+    await waitFor(() => expect(within(dialog).getByRole('alert')).toBeInTheDocument());
+    expect(apiFetch.mock.calls.some(([u, o]) => o?.method === 'PATCH' && String(u).includes('/suspend'))).toBe(false);
+  });
+
+  it('Suspend rejects a whitespace-only reason', async () => {
+    renderUsers();
+    await waitFor(() => expect(screen.getByText('Adrian Villanueva')).toBeInTheDocument());
+    fireEvent.click(within(screen.getByTestId('user-row-u-1')).getByRole('button', { name: /Suspend/ }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText(/Reason for suspension/i), { target: { value: '     ' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Suspend Account' }));
+    await waitFor(() => expect(within(dialog).getByRole('alert')).toBeInTheDocument());
+    expect(apiFetch.mock.calls.some(([u, o]) => o?.method === 'PATCH' && String(u).includes('/suspend'))).toBe(false);
+  });
+
+  it('Suspend submits the selected account id and the typed reason', async () => {
+    renderUsers();
+    await waitFor(() => expect(screen.getByText('Adrian Villanueva')).toBeInTheDocument());
+    fireEvent.click(within(screen.getByTestId('user-row-u-1')).getByRole('button', { name: /Suspend/ }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText(/Reason for suspension/i), {
+      target: { value: 'Repeated suspicious rapid high-value bidding activity.' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Suspend Account' }));
+    await waitFor(() => expect(toastSpy).toHaveBeenCalledWith('Account suspended.'));
+    const call = apiFetch.mock.calls.find(([u, o]) => u === '/admin/users/u-1/suspend' && o?.method === 'PATCH');
+    expect(call).toBeTruthy();
+    expect(JSON.parse(call[1].body)).toEqual({
+      status: 'suspended',
+      reason: 'Repeated suspicious rapid high-value bidding activity.',
+    });
+  });
+
+  it('a quick reason preset fills the field and stays editable', async () => {
+    renderUsers();
+    await waitFor(() => expect(screen.getByText('Adrian Villanueva')).toBeInTheDocument());
+    fireEvent.click(within(screen.getByTestId('user-row-u-1')).getByRole('button', { name: /Suspend/ }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Fraud investigation' }));
+    const textarea = within(dialog).getByLabelText(/Reason for suspension/i);
+    expect(textarea.value).toBe('Fraud investigation');
+    fireEvent.change(textarea, { target: { value: 'Fraud investigation - confirmed by the risk team.' } });
+    expect(textarea.value).toBe('Fraud investigation - confirmed by the risk team.');
   });
 
   it('Suspend mutates the clicked account and toasts', async () => {
@@ -307,11 +360,17 @@ describe('Admin Users & Roles — account actions', () => {
     await waitFor(() => expect(screen.getByText('Adrian Villanueva')).toBeInTheDocument());
     fireEvent.click(within(screen.getByTestId('user-row-u-1')).getByRole('button', { name: /Suspend/ }));
     const dialog = await screen.findByRole('dialog');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Suspend' }));
+    fireEvent.change(within(dialog).getByLabelText(/Reason for suspension/i), {
+      target: { value: 'Policy violation confirmed by the admin team.' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Suspend Account' }));
     await waitFor(() => expect(toastSpy).toHaveBeenCalledWith('Account suspended.'));
     const call = apiFetch.mock.calls.find(([u, o]) => u === '/admin/users/u-1/suspend' && o?.method === 'PATCH');
     expect(call).toBeTruthy();
-    expect(JSON.parse(call[1].body)).toEqual({ status: 'suspended' });
+    expect(JSON.parse(call[1].body)).toEqual({
+      status: 'suspended',
+      reason: 'Policy violation confirmed by the admin team.',
+    });
   });
 
   it('Reactivate is offered for a suspended account and mutates it', async () => {

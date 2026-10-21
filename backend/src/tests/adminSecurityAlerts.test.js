@@ -94,11 +94,14 @@ function defaultPool({ rows = ALERTS, summary = SUMMARY_ROW, count = 27, alertSt
       return { rows: [{ id: 'u1', name: 'britz Susada', email: 'b@e.com', role: 'customer', status: 'active' }] };
     }
     // ── shared account-status service (suspension) ──
+    if (/SELECT id, name, role, status, suspension_reason FROM users WHERE id = \$1/.test(sql)) {
+      return { rows: [{ id: 'u1', name: 'Maria Santos', role: 'customer', status: 'active', suspension_reason: null }] };
+    }
     if (/SELECT id, role, status FROM users WHERE id = \$1/.test(sql)) {
       return { rows: [{ id: 'u1', role: 'customer', status: 'active' }] };
     }
     if (/SELECT count\(\*\)::int AS c FROM users WHERE role = 'admin'/.test(sql)) return { rows: [{ c: 1 }] };
-    if (/UPDATE users SET status = \$1 WHERE id = \$2/.test(sql)) {
+    if (/UPDATE users\s+SET status = \$1,\s+suspension_reason = \$2/.test(sql)) {
       return { rows: [{ id: 'u1', name: 'Maria Santos', email: 'm@e.com', role: 'customer', status: 'suspended' }] };
     }
     if (/audit_logs/.test(sql)) return { rows: [] };
@@ -468,10 +471,10 @@ describe('admin security alerts — review', () => {
 
   it('suspends the customer through the shared account-status service', async () => {
     const res = mockRes();
-    await updateAlert(req({}, { id: ALERT_ID }, { status: 'new', suspendUserId: '11111111-1111-1111-1111-111111111111' }), res);
+    await updateAlert(req({}, { id: ALERT_ID }, { status: 'new', suspendUserId: '11111111-1111-1111-1111-111111111111', reason: 'Suspicious activity.' }), res);
     expect(res.status).not.toHaveBeenCalledWith(400);
     // The suspension runs through the shared users UPDATE (not a private one).
-    expect(poolQuery.mock.calls.some(([sql]) => /UPDATE users SET status = \$1 WHERE id = \$2/.test(sql))).toBe(true);
+    expect(poolQuery.mock.calls.some(([sql]) => /UPDATE users\s+SET status = \$1,\s+suspension_reason = \$2/.test(sql))).toBe(true);
     // …and it is audited.
     expect(poolQuery.mock.calls.some(([sql]) => /audit_logs/.test(sql))).toBe(true);
     expect(payload(res).suspended_user).toMatchObject({ status: 'suspended' });
@@ -479,7 +482,7 @@ describe('admin security alerts — review', () => {
 
   it('does not change the alert status when only a suspension is requested', async () => {
     const res = mockRes();
-    await updateAlert(req({}, { id: ALERT_ID }, { status: 'new', suspendUserId: '11111111-1111-1111-1111-111111111111' }), res);
+    await updateAlert(req({}, { id: ALERT_ID }, { status: 'new', suspendUserId: '11111111-1111-1111-1111-111111111111', reason: 'Suspicious activity.' }), res);
     expect(payload(res).status).toBe('new');
   });
 

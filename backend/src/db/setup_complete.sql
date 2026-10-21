@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT NOT NULL,
   role user_role NOT NULL DEFAULT 'customer',
   status user_status NOT NULL DEFAULT 'active',
+  suspension_reason TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   totp_secret TEXT,
   totp_enabled BOOLEAN DEFAULT false,

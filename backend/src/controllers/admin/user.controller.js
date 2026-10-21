@@ -332,9 +332,16 @@ export const suspendUser = async (req, res) => {
       adminId: req.user.id,
       targetId: req.params.id,
       nextStatus: req.body?.status ? String(req.body.status).toLowerCase() : null,
+      reason: req.body?.reason ?? null,
       source: 'admin_users',
+      io: req.io || null,
     });
-    if (!result.ok) return res.status(result.code || 400).json({ message: result.message });
+    if (!result.ok) {
+      return res.status(result.code || 400).json({
+        message: result.message,
+        ...(result.field ? { field: result.field, code: 'REASON_REQUIRED' } : {}),
+      });
+    }
     res.json(result.user);
   } catch (e) {
     console.error('[admin/users:suspend]', e.message);

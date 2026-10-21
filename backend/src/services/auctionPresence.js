@@ -131,6 +131,24 @@ export function handleDisconnect(socket) {
   }
 }
 
+/**
+ * Remove a user's presence from EVERY auction (used when an account is
+ * suspended — a suspended account must not keep a live watcher presence).
+ */
+export function removeUserFromAllAuctions(userId) {
+  if (!userId) return 0;
+  let removed = 0;
+  for (const [auctionId, room] of presence.entries()) {
+    const sockets = room.get(userId);
+    if (!sockets) continue;
+    sockets.clear();
+    room.delete(userId);
+    removed += 1;
+    if (room.size === 0) presence.delete(auctionId);
+  }
+  return removed;
+}
+
 /** Test helper — clear all presence state. */
 export function __resetPresence() {
   presence.clear();
@@ -141,6 +159,7 @@ export default {
   joinAuction,
   leaveAuction,
   handleDisconnect,
+  removeUserFromAllAuctions,
   getWatcherCount,
   getWatcherCounts,
   __resetPresence,

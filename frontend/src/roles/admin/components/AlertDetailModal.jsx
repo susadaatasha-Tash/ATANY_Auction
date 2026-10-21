@@ -78,6 +78,8 @@ export function AlertDetailModal({
   const [pending, setPending] = useState(null); // the running action (one at a time)
   const [mutationError, setMutationError] = useState(null);
   const [confirm, setConfirm] = useState(null); // 'dismiss' | 'suspend'
+  const [suspendReason, setSuspendReason] = useState('');
+  const [suspendError, setSuspendError] = useState('');
   const copyBtnRef = useRef(null);
   const busy = pending !== null;
 
@@ -116,6 +118,12 @@ export function AlertDetailModal({
     && isOpenAlert
   );
 
+  // A starting point for the reason, derived from the alert itself. The admin
+  // reviews / edits it before confirming — it is never stored silently.
+  const suggestedSuspendReason = detail?.type
+    ? `Suspicious ${detail.type} activity.`
+    : '';
+
   const copyId = async () => {
     if (!detail?.id) return;
     try {
@@ -150,6 +158,15 @@ export function AlertDetailModal({
 
   /** Suspend the alert's customer through the shared admin path. */
   const runSuspend = async () => {
+    const reason = suspendReason.trim();
+    if (reason.length < 5) {
+      setSuspendError('Please provide a reason for suspension (at least 5 characters).');
+      return;
+    }
+    if (reason.length > 500) {
+      setSuspendError('The reason must be at most 500 characters.');
+      return;
+    }
     setConfirm(null);
     if (!detail || busy) return;
     setPending('suspend');
@@ -157,7 +174,7 @@ export function AlertDetailModal({
     try {
       const updated = await apiFetch(`/admin/security-alerts/${detail.id}`, {
         method: 'PATCH',
-        body: JSON.stringify({ status: detail.status, suspendUserId: customer.id }),
+        body: JSON.stringify({ status: detail.status, suspendUserId: customer.id, reason }),
       });
       setDetail((prev) => (prev ? {
         ...prev,
@@ -219,7 +236,11 @@ export function AlertDetailModal({
             type="button"
             className="adm-ad__btn adm-ad__btn--danger adm-ad__btn--suspend"
             disabled={busy}
-            onClick={() => setConfirm('suspend')}
+            onClick={() => {
+              setSuspendReason(suggestedSuspendReason);
+              setSuspendError('');
+              setConfirm('suspend');
+            }}
           >
             {pending === 'suspend' ? 'Suspending...' : 'Suspend Customer'}
           </button>
@@ -407,9 +428,35 @@ export function AlertDetailModal({
 
       <ConfirmModal
         open={confirm === 'suspend'}
-        onClose={() => setConfirm(null)}
+        onClose={() => { setConfirm(null); setSuspendError(''); }}
         title="Suspend customer?"
-        body={`${customer?.name || 'This customer'} will lose access to protected ATANY functionality until reactivated by an administrator.`}
+        body={(
+          <div className="adm-ad__confirm">
+            <p className="adm-ad__confirm-text">
+              {customer?.name || 'This customer'} will lose access to protected ATANY functionality until
+              reactivated by an administrator.
+            </p>
+            <label className="adm-ad__reason-label" htmlFor="adm-ad-suspend-reason">
+              Reason for suspension <span aria-hidden="true">*</span>
+            </label>
+            <textarea
+              id="adm-ad-suspend-reason"
+              className="adm-ad__reason-input"
+              rows={4}
+              maxLength={500}
+              value={suspendReason}
+              onChange={(e) => { setSuspendReason(e.target.value); setSuspendError(''); }}
+              placeholder="Enter the reason for suspending this account..."
+              aria-describedby={suspendError ? 'adm-ad-suspend-reason-error' : undefined}
+            />
+            {suspendError && (
+              <p className="adm-ad__reason-error" id="adm-ad-suspend-reason-error" role="alert">{suspendError}</p>
+            )}
+            <p className="adm-ad__reason-hint">
+              The reason is shown to the account owner and stored in the admin audit trail.
+            </p>
+          </div>
+        )}
         confirmLabel="Suspend Customer"
         danger
         onConfirm={runSuspend}

@@ -7,13 +7,19 @@ import { supabase } from './supabaseClient';
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 export class ApiError extends Error {
-  constructor(message, status = 500, code = null) {
+  constructor(message, status = 500, code = null, reason = null) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
+    // The user-facing suspension reason (ACCOUNT_SUSPENDED responses only).
+    this.reason = reason;
   }
 }
+
+// A protected call answered 403 ACCOUNT_SUSPENDED — the app must react even
+// when the realtime event was missed (the backend stays authoritative).
+export const ACCOUNT_SUSPENDED_EVENT = 'atany:account-suspended';
 
 async function getValidToken() {
   try {
@@ -79,7 +85,13 @@ export async function apiFetch(path, opts = {}) {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
-    const error = new ApiError(err.message || 'Request failed', res.status, err.code || null);
+    const error = new ApiError(err.message || 'Request failed', res.status, err.code || null, err.reason || null);
+    // Realtime can fail — a 403 ACCOUNT_SUSPENDED is the authoritative fallback.
+    if (res.status === 403 && err.code === 'ACCOUNT_SUSPENDED' && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent(ACCOUNT_SUSPENDED_EVENT, {
+        detail: { reason: err.reason || null },
+      }));
+    }
     throw error;
   }
   if (res.status === 204 || res.status === 205) return null;

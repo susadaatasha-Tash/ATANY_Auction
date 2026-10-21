@@ -11,12 +11,13 @@ export async function placeBidController(req, res) {
     // Account status guard — a suspended account must not be able to bid.
     // (Admin can suspend users via Admin → Users; status lives in public.users.)
     try {
-      const { rows: statusRows } = await pool.query('SELECT status FROM public.users WHERE id = $1', [userId]);
+      const { rows: statusRows } = await pool.query('SELECT status, suspension_reason FROM public.users WHERE id = $1', [userId]);
       const accountStatus = String(statusRows[0]?.status || '').toLowerCase();
       if (accountStatus === 'suspended') {
         return res.status(403).json({
           code: 'ACCOUNT_SUSPENDED',
           message: 'Your account is suspended and cannot place bids. Contact support for help.',
+          reason: statusRows[0]?.suspension_reason || null,
         });
       }
     } catch (statusErr) {

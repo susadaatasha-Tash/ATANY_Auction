@@ -154,7 +154,7 @@ export const logout = async (_req, res) => { await supabase.auth.signOut(); res.
 // 'customer' — user_metadata.role must NEVER grant authorization.
 export const getMe = async (req, res) => {
   try {
-    let { rows } = await pool.query('SELECT id, name, email, role, status, preferred_branch_id FROM public.users WHERE id = $1', [req.user.id]);
+    let { rows } = await pool.query('SELECT id, name, email, role, status, preferred_branch_id, suspension_reason FROM public.users WHERE id = $1', [req.user.id]);
     if (!rows[0]) {
       // User exists in auth.users (requireAuth verified the token) but not in public.users.
       // Auto-sync creates a customer row only. Admin/shop_owner creation is server/admin-only.
@@ -170,13 +170,21 @@ export const getMe = async (req, res) => {
           'INSERT INTO public.users (id, name, email, password_hash, role, status) VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING',
           [authUser.id, name, email, 'supabase_auth', role, 'active']
         );
-        ({ rows } = await pool.query('SELECT id, name, email, role, status, preferred_branch_id FROM public.users WHERE id = $1', [authUser.id]));
+        ({ rows } = await pool.query('SELECT id, name, email, role, status, preferred_branch_id, suspension_reason FROM public.users WHERE id = $1', [authUser.id]));
       } catch (syncErr) {
         console.error('getMe auto-sync failed:', syncErr.message);
       }
     }
     if (!rows[0]) return res.status(404).json({ message: 'User not found in database' });
-    res.json(rows[0]);
+    const me = rows[0];
+    // The current suspension reason is the account OWNER's own information —
+    // it is exactly what the /account-suspended screen shows. No admin-only
+    // notes, no audit metadata, no credentials.
+    const isSuspended = String(me.status || '').toLowerCase() === 'suspended';
+    res.json({
+      ...me,
+      suspension_reason: isSuspended ? (me.suspension_reason || null) : null,
+    });
   } catch (e) {
     console.error('getMe failed:', e.message);
     res.status(500).json({ message: 'Failed to fetch user profile' });
