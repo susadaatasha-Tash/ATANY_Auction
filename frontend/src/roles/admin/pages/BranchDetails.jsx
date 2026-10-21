@@ -571,7 +571,9 @@ export default function BranchDetails() {
                       ) : (
                         <div className="adm-price-block">
                           <div>
-                            <div className="adm-price-block__label">{isEnded ? 'Final price' : 'Highest bid'}</div>
+                            <div className="adm-price-block__label">
+                              {isEnded ? (a.winner_rank > 1 ? 'Current payable amount' : 'Final price') : 'Highest bid'}
+                            </div>
                             <div className="adm-price-block__value">
                               {isEnded ? peso(a.order?.amount ?? highest) : peso(highest)}
                             </div>

@@ -75,15 +75,32 @@ export async function closeSingleAuction(auctionId, { client: externalClient } =
           }
         } catch {}
         try {
+          // The initial winner gets the SAME explicit deadline contract as a
+          // fallback winner: winner_confirmed_at = now, payment_deadline =
+          // winner_confirmed_at + 7 days, winner_rank = 1. The DB then carries
+          // one authoritative deadline for every rank (the legacy fallback
+          // (winner_confirmed_at || created_at) + 7 days still resolves the same
+          // instant for old rows).
+          const confirmedAt = new Date();
+          const deadline = new Date(confirmedAt.getTime() + 7 * 24 * 60 * 60 * 1000);
           const res = await client.query(
-            `INSERT INTO orders (auction_id, buyer_id, amount, branch_id, status) VALUES ($1,$2,$3,$4,'pending') RETURNING id`,
-            [auctionId, top.user_id, top.amount, branchId]
+            `INSERT INTO orders (auction_id, buyer_id, amount, branch_id, status, winner_confirmed_at, payment_deadline, winner_rank)
+             VALUES ($1,$2,$3,$4,'pending',$5,$6,1) RETURNING id`,
+            [auctionId, top.user_id, top.amount, branchId, confirmedAt.toISOString(), deadline.toISOString()]
           );
           orderId = res.rows[0]?.id || null;
         } catch (insErr) {
           if (insErr.code === '23505') {
             const { rows: existing } = await client.query('SELECT id FROM orders WHERE auction_id=$1', [auctionId]);
             orderId = existing[0]?.id || null;
+          } else if (insErr.code === '42703') {
+            // Legacy schema without the migration-021 columns — fall back to the
+            // original insert (the deadline is then derived from created_at).
+            const res = await client.query(
+              `INSERT INTO orders (auction_id, buyer_id, amount, branch_id, status) VALUES ($1,$2,$3,$4,'pending') RETURNING id`,
+              [auctionId, top.user_id, top.amount, branchId]
+            );
+            orderId = res.rows[0]?.id || null;
           } else throw insErr;
         }
       }

@@ -144,19 +144,23 @@ export const paymongoWebhook = async (req, res) => {
           payment.order_id,
         ]);
         const aucId = oAuc[0]?.auction_id || null;
-        const msg = `Payment confirmed for order ${payment.order_id} — we are preparing your jewelry.`;
-        try {
-          await pool.query(
-            `INSERT INTO notifications (user_id, type, message, auction_id) VALUES ($1,'payout',$2,$3)`,
-            [payment.customer_id, msg, aucId]
-          );
-        } catch (insErr) {
-          if (insErr.code !== '42703') throw insErr;
-          await pool.query(
-            `INSERT INTO notifications (user_id, type, message) VALUES ($1,'payout',$2)`,
-            [payment.customer_id, msg]
-          );
+        // One shared implementation (webhook + polling) so a repeated
+        // confirmation can never duplicate the notice.
+        const { rows: oRows } = await pool.query(
+          `SELECT id, transaction_code, amount, status FROM orders WHERE id=$1`, [payment.order_id]
+        );
+        const paidOrder = oRows[0] || null;
+        let productName = null;
+        if (aucId) {
+          try {
+            const { rows: pRows } = await pool.query(
+              `SELECT p.name FROM auctions a JOIN products p ON p.id = a.product_id WHERE a.id=$1`, [aucId]
+            );
+            productName = pRows[0]?.name || null;
+          } catch {}
         }
+        const { createPaymentConfirmedNotification } = await import('../services/winnerNotificationService.js');
+        await createPaymentConfirmedNotification(pool, { payment, order: paidOrder, productName, auctionId: aucId });
       } catch {}
       console.log(`[webhook] payment ${payment.id} marked paid for order ${payment.order_id}`);
     } else if (eventType.includes('failed') || attrs?.status === 'failed') {

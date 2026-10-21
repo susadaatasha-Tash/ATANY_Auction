@@ -160,8 +160,12 @@ export function AuctionResultModal({ auction, open, onClose, onRelist }) {
             </div>
             <div className="result-metrics">
               <div className="result-metric">
-                <span className="result-metric__label">Final bid</span>
+                <span className="result-metric__label">Current payable amount</span>
                 <span className="result-metric__value">{winner ? peso(finalBid) : '—'}</span>
+              </div>
+              <div className="result-metric">
+                <span className="result-metric__label">Winner rank</span>
+                <span className="result-metric__value">{winner && resultMeta?.winner_rank ? `#${resultMeta.winner_rank}` : '—'}</span>
               </div>
               <div className="result-metric">
                 <span className="result-metric__label">Total bids</span>
@@ -172,6 +176,11 @@ export function AuctionResultModal({ auction, open, onClose, onRelist }) {
                 <span className="result-metric__value">{Number(watcherCount || 0).toLocaleString()}</span>
               </div>
             </div>
+            {resultMeta?.highest_bid != null && winner && Number(resultMeta.highest_bid) !== Number(finalBid) && (
+              <p className="result-status__note">
+                Highest bid placed: {peso(resultMeta.highest_bid)} — the current assigned winner pays {peso(finalBid)}.
+              </p>
+            )}
             {resultMeta?.payment_deadline && tone === 'ok' && (
               <p className="result-status__note">
                 Payment due by {new Date(resultMeta.payment_deadline).toLocaleString()}

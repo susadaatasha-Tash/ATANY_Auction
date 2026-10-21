@@ -242,6 +242,11 @@ export const getBranchOverview = async (req, res) => {
         total_bids: bidCounts[a.id] || 0,
         leader: leader ? { user_id: leader.user_id, name: nameMap[leader.user_id] || null, amount: leader.amount } : null,
         watchers: watchers[a.id] || 0,
+        // The ORDER is the authority for the CURRENT payable winner (it can be
+        // reassigned when a previous winner's payment window expires). The
+        // auction's current_bid stays "highest bid ever placed".
+        payable_amount: order ? Number(order.amount) || 0 : null,
+        winner_rank: order ? (order.winner_rank ?? null) : null,
         order: order ? {
           id: order.id,
           transaction_code: order.transaction_code,

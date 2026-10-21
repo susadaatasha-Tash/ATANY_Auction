@@ -2,9 +2,26 @@
 // Problem 1: 7-day payment rule — winner eligibility, payment deadline, expiration, next-bidder
 // This service is the backend/database source of truth for the 7-day rule.
 // It does NOT rely on frontend timers, localStorage, or browser state.
+//
+// The verified fallback mechanics (preserved):
+//   • bids are ranked by amount DESC (created_at ASC breaks ties)
+//   • one entry per USER (their own highest bid) → the next DISTINCT bidder
+//   • the SAME order row is rotated (buyer_id, amount, fresh deadline, rank+1)
+//   • historical bids are never touched
+//   • a previous winner can never re-enter the ranking (the selection always
+//     moves forward in the ranked list)
 
 import { pool, isDirectPg } from '../db/pool.js';
 import { requireDirectPg } from '../db/dbGuard.js';
+import { sendNotificationEmail } from './emailService.js';
+import {
+  resolveDeadline, formatDeadline, buildExpiredWinnerMessage, buildFallbackWinnerMessage,
+  buildNoBiddersMessage, buildSellerNoBiddersMessage, buildSellerWinnerMessage,
+  buildAdminWinnerMessage, MARKERS, peso, DEADLINE_DAYS,
+} from './winnerNotificationService.js';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+const CANDIDATE_BATCH = 100;
 
 // Helper: Check if an order's payment is paid (via payments table)
 async function isOrderPaid(orderId, client = pool) {
@@ -16,6 +33,7 @@ async function isOrderPaid(orderId, client = pool) {
 }
 
 // Helper: Get ranked valid bidders for an auction (highest amount first, earliest first on tie)
+// Exclude flagged bids as invalid per fraud check
 async function getRankedBidders(auctionId, client = pool) {
   // Fetch all bids for the auction, ordered by amount DESC, created_at ASC (to break ties by earliest)
   // Exclude flagged bids as invalid per fraud check
@@ -38,9 +56,55 @@ async function getRankedBidders(auctionId, client = pool) {
 // stored payment_deadline wins, else (winner_confirmed_at || created_at) + 7 days.
 // When migration 021 columns are absent/null, this falls back to created_at + 7 days.
 function deadlineFor(order) {
-  if (order.payment_deadline) return new Date(order.payment_deadline);
-  const base = order.winner_confirmed_at || order.created_at;
-  return new Date(new Date(base).getTime() + 7 * 24 * 60 * 60 * 1000);
+  return resolveDeadline(order);
+}
+
+/** Load the item context (product name, auction code, shop owner) for one auction. */
+async function loadItemContext(auctionId, client = pool) {
+  const ctx = { productName: null, auctionCode: null, sellerId: null, shopName: null, branchName: null };
+  try {
+    const { rows: aucRows } = await client.query('SELECT auction_code, product_id FROM auctions WHERE id=$1', [auctionId]);
+    if (!aucRows[0]) return ctx;
+    ctx.auctionCode = aucRows[0].auction_code || null;
+    const { rows: prodRows } = await client.query('SELECT name, shop_id FROM products WHERE id=$1', [aucRows[0].product_id]);
+    ctx.productName = prodRows[0]?.name || null;
+    const shopId = prodRows[0]?.shop_id;
+    if (shopId) {
+      const { rows: shopRows } = await client.query('SELECT user_id, shop_name, home_branch_id FROM shops WHERE id=$1', [shopId]);
+      ctx.sellerId = shopRows[0]?.user_id || null;
+      ctx.shopName = shopRows[0]?.shop_name || null;
+      if (shopRows[0]?.home_branch_id) {
+        const { rows: brRows } = await client.query('SELECT name FROM branches WHERE id=$1', [shopRows[0].home_branch_id]);
+        ctx.branchName = brRows[0]?.name || null;
+      }
+    }
+  } catch { /* context is best-effort — never breaks the flow */ }
+  return ctx;
+}
+
+/** Insert a notification row, tolerating a missing auction_id column (42703). */
+async function insertNotification(client, { userId, message, auctionId }) {
+  try {
+    await client.query(
+      `INSERT INTO notifications (user_id, type, message, auction_id) VALUES ($1, 'auction', $2, $3)`,
+      [userId, message, auctionId || null]
+    );
+  } catch (insErr) {
+    if (insErr.code !== '42703') throw insErr;
+    await client.query(
+      `INSERT INTO notifications (user_id, type, message) VALUES ($1, 'auction', $2)`,
+      [userId, message]
+    );
+  }
+}
+
+/** Has this exact notice already been delivered? (deterministic dedup marker) */
+async function noticeExists(client, { userId, marker }) {
+  const { rows } = await client.query(
+    `SELECT id FROM notifications WHERE user_id = $1 AND message LIKE $2 LIMIT 1`,
+    [userId, `%${marker}%`]
+  );
+  return rows.length > 0;
 }
 
 export async function checkAndExpireWinners() {
@@ -52,18 +116,32 @@ export async function checkAndExpireWinners() {
     console.warn('[winnerExpiration] skipping — direct Postgres unavailable (fail closed)');
     return { skipped: true, reason: 'DB_UNAVAILABLE' };
   }
-  // Find all pending orders where the 7-day deadline has passed and payment not paid
-  // SELECT * so payment_deadline/winner_confirmed_at/winner_rank are used when migration 021 is applied,
-  // and safely ignored (undefined) when it is not.
+  // Find the pending orders whose 7-day deadline has already passed.
+  // The COALESCE keeps the legacy rows (no stored payment_deadline) working:
+  //   payment_deadline → winner_confirmed_at + 7d → created_at + 7d
+  // Batched (LIMIT) so a large backlog never floods the pool; the deterministic
+  // ORDER BY means the oldest deadline is always handled first.
   const { rows: pendingOrders } = await pool.query(
-    `SELECT * FROM orders WHERE status = 'pending'`
+    `SELECT * FROM orders
+      WHERE status = 'pending'
+        AND COALESCE(
+              payment_deadline,
+              (winner_confirmed_at + INTERVAL '${DEADLINE_DAYS} days'),
+              (created_at + INTERVAL '${DEADLINE_DAYS} days')
+            ) <= NOW()
+      ORDER BY COALESCE(
+              payment_deadline,
+              (winner_confirmed_at + INTERVAL '${DEADLINE_DAYS} days'),
+              (created_at + INTERVAL '${DEADLINE_DAYS} days')
+             ) ASC
+      LIMIT ${CANDIDATE_BATCH}`
   );
 
   for (const order of pendingOrders) {
     const paymentDeadline = deadlineFor(order);
 
     // Check if deadline has passed
-    if (new Date() < paymentDeadline) {
+    if (!paymentDeadline || new Date() < paymentDeadline) {
       continue; // Still within 7-day window
     }
 
@@ -87,6 +165,9 @@ export async function checkAndExpireWinners() {
     }
 
     const client = await pool.connect();
+    // Emails are sent AFTER the commit (never inside the transaction).
+    let postCommitEmails = [];
+    let committed = false;
     try {
       if (client?.__restFallback) {
         console.warn('[winnerExpiration] skipping order', order.id, '— REST fallback (fail closed)');
@@ -110,7 +191,7 @@ export async function checkAndExpireWinners() {
         continue; // Already reassigned by another process
       }
       const lockedDeadline = deadlineFor(lockedOrder);
-      if (new Date() < lockedDeadline) {
+      if (!lockedDeadline || new Date() < lockedDeadline) {
         await client.query('ROLLBACK');
         continue;
       }
@@ -120,6 +201,11 @@ export async function checkAndExpireWinners() {
         await client.query('ROLLBACK');
         continue;
       }
+
+      const item = await loadItemContext(order.auction_id, client);
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5174';
+      const paymentUrl = `${frontendUrl}/customer/purchases`;
+      const supportUrl = `${frontendUrl}/customer/messages`;
 
       if (nextBidder) {
         // CRITICAL: buyer_id = nextBidder.user_id (NOT amount), amount = nextBidder.amount
@@ -155,91 +241,102 @@ export async function checkAndExpireWinners() {
           continue;
         }
 
-        // Also need to handle the case where orders table doesn't have updated_at, fallback to just created_at
-        // If updated_at doesn't exist, the above will fail, so try without it
-        // We do a separate check: if the update failed due to missing column, try again without updated_at
-        // For now, we assume created_at is sufficient
-
-        // Create a notification for the new eligible winner (for future Problems 2/4).
-        // Stores auction_id when the column exists (42703 fallback); message wording unchanged.
-        const newDeadline = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+        // ── the new winner ──────────────────────────────────────
+        // The message carries the NEW winner's OWN amount (the rotated order
+        // amount = nextBidder.amount) and their OWN fresh deadline.
+        const newWinnerMarker = MARKERS.fallbackWinner(order, nextBidder.user_id, nextRank);
+        const fallbackMessage = `${buildFallbackWinnerMessage({
+          product: item.productName,
+          amount: nextBidder.amount,
+          order: { id: order.id, transaction_code: order.transaction_code },
+          deadline: nextDeadline,
+          paymentUrl,
+        })} [${newWinnerMarker}]`;
         try {
-          try {
-            await client.query(
-              `INSERT INTO notifications (user_id, type, message, auction_id) VALUES ($1, 'auction', $2, $3)`,
-              [nextBidder.user_id, `You are now the eligible winner for auction ${order.auction_id}. Please complete payment by ${newDeadline.toLocaleDateString()} (7 days).`, order.auction_id]
-            );
-          } catch (insErr) {
-            if (insErr.code !== '42703') throw insErr;
-            await client.query(
-              `INSERT INTO notifications (user_id, type, message) VALUES ($1, 'auction', $2)`,
-              [nextBidder.user_id, `You are now the eligible winner for auction ${order.auction_id}. Please complete payment by ${newDeadline.toLocaleDateString()} (7 days).`]
-            );
+          if (!(await noticeExists(client, { userId: nextBidder.user_id, marker: newWinnerMarker }))) {
+            await insertNotification(client, {
+              userId: nextBidder.user_id,
+              message: fallbackMessage,
+              auctionId: order.auction_id,
+            });
           }
         } catch (notifErr) {
           console.warn('[winnerExpiration] Failed to create notification for next bidder', notifErr.message);
         }
 
-        // Optionally, notify the expired winner that their eligibility has expired
+        // ── the expired winner ───────────────────────────────────
+        // Privacy: the previous winner is NEVER told who the next bidder is.
+        const expiredMarker = MARKERS.winnerExpired(order, order.buyer_id, nextRank - 1);
+        const expiredMessage = `${buildExpiredWinnerMessage({
+          product: item.productName,
+          amount: order.amount,
+          order: { id: order.id, transaction_code: order.transaction_code },
+          deadline: paymentDeadline,
+          supportUrl,
+        })} [${expiredMarker}]`;
         try {
-          try {
-            await client.query(
-              `INSERT INTO notifications (user_id, type, message, auction_id) VALUES ($1, 'auction', $2, $3)`,
-              [order.buyer_id, `Your payment eligibility for auction ${order.auction_id} has expired. The item has been offered to the next bidder.`, order.auction_id]
-            );
-          } catch (insErr) {
-            if (insErr.code !== '42703') throw insErr;
-            await client.query(
-              `INSERT INTO notifications (user_id, type, message) VALUES ($1, 'auction', $2)`,
-              [order.buyer_id, `Your payment eligibility for auction ${order.auction_id} has expired. The item has been offered to the next bidder.`]
-            );
+          if (!(await noticeExists(client, { userId: order.buyer_id, marker: expiredMarker }))) {
+            await insertNotification(client, {
+              userId: order.buyer_id,
+              message: expiredMessage,
+              auctionId: order.auction_id,
+            });
           }
         } catch {}
+
+        // Email for the expired winner (sent after the commit; a failure never
+        // rolls the reassignment back).
+        try {
+          const { rows: oldUserRows } = await client.query('SELECT email FROM users WHERE id=$1', [order.buyer_id]);
+          if (oldUserRows[0]?.email) {
+            postCommitEmails.push({
+              to: oldUserRows[0].email,
+              subject: `ATANY: Your payment period for "${item.productName || 'your lot'}" has expired`,
+              html: `
+                <div style="font-family:system-ui,Segoe UI,Helvetica,Arial,sans-serif; color:#1a1a1a; max-width:600px;">
+                  <h2 style="color:#7a2e2e;">Your ATANY payment period has expired</h2>
+                  <p><strong>Item:</strong> ${item.productName || 'your ATANY lot'}</p>
+                  <p><strong>Winning amount:</strong> ${peso(order.amount)}</p>
+                  <p><strong>Order:</strong> ${order.transaction_code || order.id.slice(0, 8).toUpperCase()}</p>
+                  <p><strong>Payment deadline:</strong> ${formatDeadline(paymentDeadline)}</p>
+                  <p>Your payment window has ended and the item has been offered to the next eligible bidder.</p>
+                  <p>If you have questions about this auction, please contact ATANY Support: <a href="${supportUrl}" style="color:#0f3d2e; font-weight:600;">${supportUrl}</a>.</p>
+                </div>
+              `,
+            });
+          }
+        } catch (e) {
+          console.warn('[winnerExpiration] expired-winner email lookup failed', order.id, e.message);
+        }
 
         // Problem 4B: seller + admin notifications for the NEW current winner.
         // Inside the TX so a rollback discards them — never notifies for a failed transition.
         // Guard is keyed to recipient + order ref + current winner name, so A→B and B→C
         // each produce exactly one notice and cron re-runs cannot duplicate them.
         try {
-          const txRef = order.transaction_code || String(order.id).slice(0, 8);
-          const { rows: wUserRows } = await client.query(`SELECT name FROM users WHERE id=$1`, [nextBidder.user_id]);
+          const { rows: wUserRows } = await client.query(`SELECT name, email FROM users WHERE id=$1`, [nextBidder.user_id]);
           const newWinnerName = wUserRows[0]?.name || 'A customer';
-          const { rows: aucProdRows } = await client.query(`SELECT product_id FROM auctions WHERE id=$1`, [order.auction_id]);
-          const reassignProductId = aucProdRows[0]?.product_id;
-          let reassignProdName = 'your jewelry';
-          let reassignShopId = null;
-          if (reassignProductId) {
-            const { rows: pr } = await client.query(`SELECT name, shop_id FROM products WHERE id=$1`, [reassignProductId]);
-            if (pr[0]?.name) reassignProdName = pr[0].name;
-            reassignShopId = pr[0]?.shop_id || null;
-          }
-          let reassignSellerId = null;
-          let reassignShopName = null;
-          if (reassignShopId) {
-            const { rows: sh } = await client.query(`SELECT user_id, shop_name FROM shops WHERE id=$1`, [reassignShopId]);
-            reassignSellerId = sh[0]?.user_id || null;
-            reassignShopName = sh[0]?.shop_name || null;
-          }
-          const { shouldDeliverNotification: shouldDeliver4B } = await import('./notificationPreference.js');
-          const insert4B = async (uid, msg) => {
-            try {
-              await client.query("INSERT INTO notifications (user_id, type, message, auction_id) VALUES ($1, 'auction', $2, $3)", [uid, msg, order.auction_id]);
-            } catch (e) {
-              if (e.code !== '42703') throw e;
-              await client.query("INSERT INTO notifications (user_id, type, message) VALUES ($1, 'auction', $2)", [uid, msg]);
-            }
-          };
-          const sellerMsg = `🏆 Your auction for "${reassignProdName}" has a new winner: ${newWinnerName} with a winning bid of ₱${Number(nextBidder.amount).toLocaleString()}. Order ${txRef}. Status: Awaiting Payment. The winner has 7 days to complete payment. [Seller Winner Notice ${txRef} — ${newWinnerName}]`;
-          const adminMsg = `🏆 Auction winner updated: "${reassignProdName}" — ${newWinnerName} is now the winner with ₱${Number(nextBidder.amount).toLocaleString()}. Order ${txRef}. Shop: ${reassignShopName || 'Unknown shop'}. Status: Awaiting Payment. [Admin Winner Notice ${txRef} — ${newWinnerName}]`;
+          const newWinnerEmail = wUserRows[0]?.email || null;
+          const txRef = order.transaction_code || String(order.id).slice(0, 8);
+          const sellerMsg = `${buildSellerWinnerMessage({
+            product: item.productName, winnerName: newWinnerName, amount: nextBidder.amount,
+            order: { id: order.id, transaction_code: order.transaction_code },
+            auctionCode: item.auctionCode, changed: true,
+          })} [${MARKERS.sellerWinner(order, newWinnerName)}]`;
+          const adminMsg = `${buildAdminWinnerMessage({
+            product: item.productName, winnerName: newWinnerName, amount: nextBidder.amount,
+            order: { id: order.id, transaction_code: order.transaction_code },
+            shopName: item.shopName || 'Unknown shop', changed: true,
+          })} [${MARKERS.adminWinner(order, newWinnerName)}]`;
           // Seller (skip when the shop has no owner; never throws)
-          if (reassignSellerId) {
+          if (item.sellerId) {
             try {
               const { rows: dupS } = await client.query(
                 `SELECT id FROM notifications WHERE user_id=$1 AND message LIKE $2 AND message LIKE $3 AND message LIKE $4 LIMIT 1`,
-                [reassignSellerId, `%${txRef}%`, `%Seller Winner Notice%`, `%${newWinnerName}%`]
+                [item.sellerId, `%${txRef}%`, `%Seller Winner Notice%`, `%${newWinnerName}%`]
               );
-              if (!dupS.length && await shouldDeliver4B(reassignSellerId, 'auction', sellerMsg)) {
-                await insert4B(reassignSellerId, sellerMsg);
+              if (!dupS.length) {
+                await insertNotification(client, { userId: item.sellerId, message: sellerMsg, auctionId: order.auction_id });
               }
             } catch (e) { console.warn('[4B] seller reassignment notification failed', order.id, e.message); }
           }
@@ -252,58 +349,110 @@ export async function checkAndExpireWinners() {
                   `SELECT id FROM notifications WHERE user_id=$1 AND message LIKE $2 AND message LIKE $3 AND message LIKE $4 LIMIT 1`,
                   [adm.id, `%${txRef}%`, `%Admin Winner Notice%`, `%${newWinnerName}%`]
                 );
-                if (!dupA.length && await shouldDeliver4B(adm.id, 'auction', adminMsg)) {
-                  await insert4B(adm.id, adminMsg);
+                if (!dupA.length) {
+                  await insertNotification(client, { userId: adm.id, message: adminMsg, auctionId: order.auction_id });
                 }
               } catch (e) { console.warn('[4B] admin reassignment notification failed', order.id, e.message); }
             }
           } catch (e) { console.warn('[4B] admin lookup failed', order.id, e.message); }
+
+          // Emails are collected here but SENT after the commit.
+          if (newWinnerEmail) {
+            postCommitEmails.push({
+              to: newWinnerEmail,
+              subject: `ATANY: You are now the winning bidder for "${item.productName || 'your lot'}"`,
+              html: `
+                <div style="font-family:system-ui,Segoe UI,Helvetica,Arial,sans-serif; color:#1a1a1a; max-width:600px;">
+                  <h2 style="color:#0f3d2e;">You are now the winning bidder 🎉</h2>
+                  <p>The previous winning claim for <strong>${item.productName || 'your ATANY lot'}</strong> expired and the item has been offered to you based on your highest eligible bid.</p>
+                  <p><strong>Your winning amount:</strong> ₱${Number(nextBidder.amount).toLocaleString()}</p>
+                  <p><strong>Order:</strong> ${order.transaction_code || order.id.slice(0, 8).toUpperCase()}</p>
+                  <p><strong>Payment deadline:</strong> ${formatDeadline(nextDeadline)}</p>
+                  <p>You have a fresh 7-day period to complete payment. Please complete payment before pickup via your purchases page: <a href="${paymentUrl}" style="color:#0f3d2e; font-weight:600;">${paymentUrl}</a>.</p>
+                  ${item.branchName ? `<p><strong>Pickup branch:</strong> ${item.branchName}</p>` : ''}
+                </div>
+              `,
+            });
+          }
         } catch (e) { console.warn('[4B] seller/admin reassignment notifications failed', order.id, e.message); }
 
         console.log(`[winnerExpiration] Reassigned auction ${order.auction_id} from ${order.buyer_id} to ${nextBidder.user_id} (rank ${currentWinnerIndex + 2})`);
       } else {
-        // No more eligible bidders: mark order as expired (or keep pending but with no buyer?)
-        // We will set status to 'expired' if that value exists, otherwise keep as pending but log
-        // Try to set to 'expired', fallback to keeping pending
+        // No more eligible bidders: the order expires permanently.
         try {
           await client.query(`UPDATE orders SET status = 'expired' WHERE id = $1`, [order.id]);
           console.log(`[winnerExpiration] No more bidders for auction ${order.auction_id}, marked order ${order.id} as expired`);
         } catch (e) {
           // If 'expired' enum value doesn't exist, just log and keep pending
           console.warn(`[winnerExpiration] Could not mark as expired (enum missing), keeping pending for ${order.id}:`, e.message);
-          // As fallback, we could delete the order or keep it pending - for now keep pending
         }
 
-        // Notify the expired buyer — idempotent: skip if already notified recently
-        // (when the 'expired' enum is absent the order stays pending and this branch re-runs each minute)
+        // Notify the expired buyer — idempotent via a deterministic marker.
+        const noBidderMarker = MARKERS.noBiddersLeft(order, order.buyer_id);
+        const noBidderMessage = `${buildNoBiddersMessage({
+          product: item.productName,
+          order: { id: order.id, transaction_code: order.transaction_code },
+          supportUrl,
+        })} [${noBidderMarker}]`;
         try {
-          const { rows: recent } = await client.query(
-            `SELECT id FROM notifications WHERE user_id = $1 AND message LIKE $2 AND created_at > NOW() - INTERVAL '1 day' LIMIT 1`,
-            [order.buyer_id, `%${order.auction_id}%no more eligible bidders%`]
-          );
-          if (!recent.length) {
-            try {
-              await client.query(
-                `INSERT INTO notifications (user_id, type, message, auction_id) VALUES ($1, 'auction', $2, $3)`,
-                [order.buyer_id, `Your payment eligibility for auction ${order.auction_id} has expired and there are no more eligible bidders.`, order.auction_id]
-              );
-            } catch (insErr) {
-              if (insErr.code !== '42703') throw insErr;
-              await client.query(
-                `INSERT INTO notifications (user_id, type, message) VALUES ($1, 'auction', $2)`,
-                [order.buyer_id, `Your payment eligibility for auction ${order.auction_id} has expired and there are no more eligible bidders.`]
-              );
-            }
+          if (!(await noticeExists(client, { userId: order.buyer_id, marker: noBidderMarker }))) {
+            await insertNotification(client, {
+              userId: order.buyer_id,
+              message: noBidderMessage,
+              auctionId: order.auction_id,
+            });
           }
         } catch {}
+
+        // The SELLER must know that the final eligible winner expired.
+        try {
+          const sellerMarker = MARKERS.sellerNoBidders(order);
+          if (item.sellerId && !(await noticeExists(client, { userId: item.sellerId, marker: sellerMarker }))) {
+            await insertNotification(client, {
+              userId: item.sellerId,
+              message: `${buildSellerNoBiddersMessage({
+                product: item.productName,
+                order: { id: order.id, transaction_code: order.transaction_code },
+                auctionCode: item.auctionCode,
+              })} [${sellerMarker}]`,
+              auctionId: order.auction_id,
+            });
+          }
+          // Admins may also see the terminal state (same notification system).
+          const { rows: admins } = await client.query(`SELECT id FROM users WHERE role='admin' LIMIT 5`);
+          for (const adm of admins) {
+            if (await noticeExists(client, { userId: adm.id, marker: sellerMarker })) continue;
+            await insertNotification(client, {
+              userId: adm.id,
+              message: `${buildSellerNoBiddersMessage({
+                product: item.productName,
+                order: { id: order.id, transaction_code: order.transaction_code },
+                auctionCode: item.auctionCode,
+              })} [${sellerMarker}]`,
+              auctionId: order.auction_id,
+            });
+          }
+        } catch (e) { console.warn('[winnerExpiration] seller no-bidder notice failed', order.id, e.message); }
       }
 
       await client.query('COMMIT');
+      committed = true;
     } catch (e) {
       await client.query('ROLLBACK');
       console.error(`[winnerExpiration] Failed to process expiration for order ${order.id}:`, e.message);
     } finally {
       client.release();
+    }
+
+    // ── post-commit emails (never inside the transaction) ──────
+    if (committed) {
+      for (const mail of postCommitEmails) {
+        try {
+          await sendNotificationEmail(mail);
+        } catch (e) {
+          console.warn('[winnerExpiration] winner email failed (reassignment stays valid):', e.message);
+        }
+      }
     }
   }
 }
@@ -315,7 +464,7 @@ export async function expireSpecificOrder(orderId) {
   const order = rows[0];
   const paid = await isOrderPaid(order.id);
   if (paid) throw new Error('Order already paid, cannot expire');
-  
+
   const rankedBidders = await getRankedBidders(order.auction_id);
   const currentWinnerIndex = rankedBidders.findIndex(b => String(b.user_id) === String(order.buyer_id));
   let nextBidder = null;
@@ -340,19 +489,30 @@ export async function expireSpecificOrder(orderId) {
         if (!missingColumn) throw e;
         await client.query(`UPDATE orders SET buyer_id = $1, amount = $2, created_at = $3 WHERE id = $4`, [nextBidder.user_id, nextBidder.amount, confirmedAt.toISOString(), order.id]);
       }
+      const item = await loadItemContext(order.auction_id, client);
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5174';
+      const paymentUrl = `${frontendUrl}/customer/purchases`;
+      const nextRank = Number(order.winner_rank ?? 1) + 1;
+      const marker = MARKERS.fallbackWinner(order, nextBidder.user_id, nextRank);
+      const message = `${buildFallbackWinnerMessage({
+        product: item.productName,
+        amount: nextBidder.amount,
+        order: { id: order.id, transaction_code: order.transaction_code },
+        deadline: nextDeadline,
+        paymentUrl,
+      })} [${marker}]`;
       try {
-        await client.query(`INSERT INTO notifications (user_id, type, message, auction_id) VALUES ($1, 'auction', $2, $3)`, [nextBidder.user_id, `You are now the eligible winner.`, order.auction_id]);
+        await insertNotification(client, { userId: nextBidder.user_id, message, auctionId: order.auction_id });
       } catch (insErr) {
         if (insErr.code !== '42703') throw insErr;
-        await client.query(`INSERT INTO notifications (user_id, type, message) VALUES ($1, 'auction', $2)`, [nextBidder.user_id, `You are now the eligible winner.`]);
+        await client.query(`INSERT INTO notifications (user_id, type, message) VALUES ($1, 'auction', $2)`, [nextBidder.user_id, message]);
       }
       await client.query('COMMIT');
-      return { reassignedTo: nextBidder.user_id, rank: currentWinnerIndex + 2 };
-    } else {
-      await client.query(`UPDATE orders SET status = 'expired' WHERE id = $1`, [order.id]);
-      await client.query('COMMIT');
-      return { expired: true };
+      return { reassignedTo: nextBidder.user_id, amount: nextBidder.amount, rank: nextRank, deadline: nextDeadline.toISOString() };
     }
+    await client.query(`UPDATE orders SET status = 'expired' WHERE id = $1`, [order.id]);
+    await client.query('COMMIT');
+    return { expired: true };
   } catch (e) {
     await client.query('ROLLBACK');
     throw e;

@@ -64,7 +64,9 @@ export default function CompletePayment() {
   if (payment?.status === 'paid') {
     return <div className="panel"><div className="empty-state"><p>This order is already paid.</p><Link to={`/customer/orders/${id}`} className="btn btn-primary" style={{marginTop:12}}>View Order</Link></div></div>;
   }
-  const isExpired = !!order.is_expired;
+  const isExpired = !!order.is_expired
+    || String(order.status || '').toLowerCase() === 'expired'
+    || (!!order.payment_deadline && new Date(order.payment_deadline).getTime() <= Date.now());
   if (isExpired) {
     return (
       <div className="order-details-page">
@@ -74,7 +76,11 @@ export default function CompletePayment() {
             <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#fef3c7', display: 'grid', placeItems: 'center', margin: '0 auto 14px', fontSize: 26 }}>⚠</div>
             <p style={{ fontSize: 18, fontWeight: 800, color: 'var(--navy)', marginBottom: 6 }}>Payment Eligibility Expired</p>
             <p className="form-hint" style={{ maxWidth: 360, lineHeight: 1.6 }}>Your 7-day payment period has ended. The item may have been offered to the next eligible bidder.</p>
-            <Link to={`/customer/orders/${id}`} className="btn btn-outline" style={{ marginTop: 16 }}>View Order Details</Link>
+            <p className="form-hint" style={{ maxWidth: 360, lineHeight: 1.6, marginTop: 8 }}>If you believe there is an issue or have questions about this auction, please contact ATANY Support.</p>
+            <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 16, flexWrap: 'wrap' }}>
+              <Link to={`/customer/orders/${id}`} className="btn btn-outline">View Order Details</Link>
+              <Link to={`/customer/messages?${new URLSearchParams({ order: order.transaction_code || order.id, item: product?.name || order.item || '', topic: 'expired-payment' }).toString()}`} className="btn btn-primary">Contact ATANY Support</Link>
+            </div>
           </div>
         </div>
       </div>

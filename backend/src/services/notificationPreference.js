@@ -39,8 +39,13 @@ function categoryForNotification(type, message) {
   return null; // no specific preference, allow
 }
 
-export async function shouldDeliverNotification(userId, type, message) {
+export async function shouldDeliverNotification(userId, type, message, { critical = false } = {}) {
   if (!userId) return false;
+  // A CRITICAL transactional notice (auction won, payment window expired,
+  // item reassigned, payment confirmed) materially affects money and order
+  // ownership → it is always delivered in-app. The user's preference only
+  // gates OPTIONAL notifications (e.g. the 3d/1d/6h reminders).
+  if (critical) return true;
   if (!supabaseAdmin) return true; // if no admin client, allow
   try {
     // Bounded: callers often hold a pg transaction client (bid/outbid paths,

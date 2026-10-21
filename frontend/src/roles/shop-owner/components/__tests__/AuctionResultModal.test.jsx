@@ -85,7 +85,7 @@ describe('AuctionResultModal', () => {
 
   it('31. renders the real metrics (final bid, total bids, watchers)', async () => {
     renderModal();
-    await waitFor(() => expect(screen.getByText('Final bid')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByText('Current payable amount')).toBeInTheDocument());
     // ₱55,000 appears as the final-bid metric and as the winning bid row.
     expect(screen.getAllByText('₱55,000').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText('14')).toBeInTheDocument();
@@ -139,6 +139,34 @@ describe('AuctionResultModal', () => {
     renderModal({ payload });
     await waitFor(() => expect(screen.getByText('Winner expired — payment deadline passed')).toBeInTheDocument());
     expect(screen.getByText('No confirmed winner')).toBeInTheDocument();
+  });
+
+  it('shows the CURRENT assigned winner (reassigned) with their own amount and rank, not the highest historical bid', async () => {
+    // The order was reassigned: Britz is now the payable winner at 65,000,
+    // while Maria's 71,000 stays the highest bid ever placed.
+    const payload = resultPayload({
+      result: {
+        state: 'payment_pending', label: 'Winner confirmed — payment pending',
+        winner_confirmed: true, final_bid: 65000, highest_bid: 71000,
+        total_bids: 14, watcher_count: 63, order_status: 'pending',
+        payment_deadline: '2026-10-29T20:30:00.000Z', winner_confirmed_at: '2026-10-22T20:30:00.000Z', winner_rank: 2,
+      },
+      winner: { id: 'u-britz', name: 'Britz Susada', amount: 65000 },
+      leaderboard: [
+        { rank: 1, bidder_id: 'u-maria', bidder_name: 'Maria Santos', amount: 71000, is_winner: false, is_leading: false, is_top_bidder: true },
+        { rank: 2, bidder_id: 'u-britz', bidder_name: 'Britz Susada', amount: 65000, is_winner: true, is_leading: false, is_top_bidder: false },
+      ],
+    });
+    renderModal({ payload });
+    await waitFor(() => expect(screen.getByText(/Won by Britz Susada/)).toBeInTheDocument());
+    // The payable amount is the reassigned winner's own bid.
+    expect(screen.getByText('Current payable amount')).toBeInTheDocument();
+    expect(screen.getAllByText('₱65,000').length).toBeGreaterThan(0);
+    expect(screen.getByText('Winner rank')).toBeInTheDocument();
+    expect(screen.getByText('#2')).toBeInTheDocument();
+    // The historical highest bid is still shown, clearly labelled.
+    expect(screen.getByText(/Highest bid placed: ₱71,000/)).toBeInTheDocument();
+    expect(screen.getByText(/Payment due by/)).toBeInTheDocument();
   });
 
   it('34. the Relist button hands the ended auction to the relist flow', async () => {

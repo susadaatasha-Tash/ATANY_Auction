@@ -1,6 +1,7 @@
 import { pool } from '../../db/pool.js';
 import { createPayMongoCheckout, getCheckoutSession, checkoutStatus } from '../../services/paymongoService.js';
 import { assertPaymentStillPayable, markStalePayment } from '../../services/paymentRaceGuard.js';
+import { resolveDeadline } from '../../services/winnerNotificationService.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -92,13 +93,22 @@ export const getOrderDetails = async (req, res) => {
               payment = already[0] || payment;
             } else {
               try {
-                const msg = `Payment confirmed for order ${payment.order_id} — we are preparing your jewelry.`;
+                // One shared implementation (webhook + polling) so a repeated
+                // confirmation can never duplicate the notice.
+                const { rows: paidOrderRows } = await pool.query(
+                  `SELECT id, transaction_code, amount, status FROM orders WHERE id=$1`, [payment.order_id]
+                );
+                let productName = null;
                 try {
-                  await pool.query(`INSERT INTO notifications (user_id, type, message, auction_id) VALUES ($1,'payout',$2,$3)`, [payment.customer_id, msg, order.auction_id || null]);
-                } catch (insErr) {
-                  if (insErr.code !== '42703') throw insErr;
-                  await pool.query(`INSERT INTO notifications (user_id, type, message) VALUES ($1,'payout',$2)`, [payment.customer_id, msg]);
-                }
+                  const { rows: pRows } = await pool.query(
+                    `SELECT p.name FROM auctions a JOIN products p ON p.id = a.product_id WHERE a.id=$1`, [order.auction_id]
+                  );
+                  productName = pRows[0]?.name || null;
+                } catch {}
+                const { createPaymentConfirmedNotification } = await import('../../services/winnerNotificationService.js');
+                await createPaymentConfirmedNotification(pool, {
+                  payment, order: paidOrderRows[0] || null, productName, auctionId: order.auction_id || null,
+                });
               } catch {}
               const { rows: upd } = await pool.query(`SELECT * FROM payments WHERE id=$1`, [payment.id]);
               payment = upd[0] || payment;
@@ -175,6 +185,17 @@ export const createCheckout = async (req, res) => {
       branch_name: coBranch.name,
     };
     if (order.status !== 'pending') return res.status(400).json({ message: 'Order is not payable' });
+
+    // The payment window is closed server-side the moment the authoritative
+    // deadline passes — the customer must not be able to open a NEW checkout
+    // while the expiration cron is still waiting for its next tick.
+    const paymentDeadline = resolveDeadline(order);
+    if (paymentDeadline && new Date() >= new Date(paymentDeadline)) {
+      return res.status(409).json({
+        code: 'PAYMENT_DEADLINE_EXPIRED',
+        message: 'The payment deadline for this order has expired.',
+      });
+    }
 
     // check existing paid payment
     const { rows: paid } = await pool.query(`SELECT id FROM payments WHERE order_id=$1 AND status='paid' LIMIT 1`, [orderId]);

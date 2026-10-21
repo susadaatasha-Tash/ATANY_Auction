@@ -5,6 +5,10 @@ import { pool, isDirectPg } from '../db/pool.js';
 import { requireDirectPg } from '../db/dbGuard.js';
 import { sendNotificationEmail } from './emailService.js';
 import { closeSingleAuction } from './auctionClosingService.js';
+import {
+  resolveDeadline, formatDeadline, buildInitialWinnerMessage, buildSellerWinnerMessage,
+  buildAdminWinnerMessage, MARKERS,
+} from './winnerNotificationService.js';
 
 export async function closeExpiredAuctions() {
   // H2: closing auctions creates winner orders (money path). REST fallback cannot
@@ -59,31 +63,39 @@ export async function closeExpiredAuctions() {
             const branchInfo = d.branch_name ? `${d.branch_name} — ${d.branch_address || ''} ${d.branch_hours ? `(${d.branch_hours})` : ''}`.trim() : 'Designated ATANY branch (see order details)';
             const paymentLink = `${frontendUrl}/customer/purchases`;
             const claimDeadlineNote = 'Please claim within 7 business days as per ATANY store policy (contact support if you need an extension).';
-            // In-app notification (bell) — idempotent: skip if already notified for this order
+            // The ONE authoritative deadline for this winner (stored column wins).
+            const paymentDeadlineIso = resolveDeadline(oRow)?.toISOString() || null;
+            const paymentDeadlineStr = formatDeadline(paymentDeadlineIso);
+            // In-app notification (bell) — idempotent: skip if already notified for this order.
             const { rows: existingNotif } = await pool.query(
               "SELECT id FROM notifications WHERE user_id=$1 AND message LIKE $2 AND created_at > NOW() - INTERVAL '1 day'",
-              [winnerId, `%${d.product_name}%`]
+              [winnerId, `%${MARKERS.initialWinner({ id: oRow?.id, transaction_code: oRow?.transaction_code })}%`]
             );
             if (!existingNotif.length) {
               const { shouldDeliverNotification } = await import('./notificationPreference.js');
-              // Payment deadline = stored payment_deadline, else (winner_confirmed_at || created_at) + 7 days
-              // (same fallback as winnerExpiration + order/payment display controllers)
-              const winnerConfirmedAt = oRow?.winner_confirmed_at || oRow?.created_at;
-              const paymentDeadlineIso = oRow?.payment_deadline || (winnerConfirmedAt ? new Date(new Date(winnerConfirmedAt).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString() : null);
-              const paymentDeadlineStr = paymentDeadlineIso ? new Date(paymentDeadlineIso).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' }) : null;
-              const winMsg = `🎉 You won "${d.product_name}" for ₱${Number(d.winning_bid).toLocaleString()}! Transaction ${d.transaction_code} was for auction ${d.auction_code} — Pickup at ${d.branch_name || 'branch'} — bring valid government-issued ID.${paymentDeadlineStr ? ` Your PAYMENT is due by ${paymentDeadlineStr}. You have 7 days to complete payment.` : ''} ${claimDeadlineNote}`;
-              if (await shouldDeliverNotification(winnerId, 'auction', winMsg)) {
+              const winMsg = buildInitialWinnerMessage({
+                product: d.product_name,
+                amount: d.winning_bid,
+                order: { id: oRow?.id, transaction_code: oRow?.transaction_code },
+                auctionCode: d.auction_code,
+                branchName: d.branch_name,
+                deadline: paymentDeadlineIso,
+                paymentUrl: paymentLink,
+              });
+              // The deterministic dedup marker rides along with the message.
+              const markedMsg = `${winMsg} [${MARKERS.initialWinner({ id: oRow?.id, transaction_code: oRow?.transaction_code })}]`;
+              if (await shouldDeliverNotification(winnerId, 'auction', markedMsg, { critical: true })) {
                 // Include auction_id when the column exists (migration 022); fall back without it
                 try {
                   await pool.query(
                     "INSERT INTO notifications (user_id, type, message, auction_id) VALUES ($1, 'auction', $2, $3)",
-                    [winnerId, winMsg, oRow?.auction_id || a.id]
+                    [winnerId, markedMsg, oRow?.auction_id || a.id]
                   );
                 } catch (insErr) {
                   if (insErr.code !== '42703') throw insErr;
                   await pool.query(
                     "INSERT INTO notifications (user_id, type, message) VALUES ($1, 'auction', $2)",
-                    [winnerId, winMsg]
+                    [winnerId, markedMsg]
                   );
                 }
               }
@@ -100,8 +112,16 @@ export async function closeExpiredAuctions() {
                 shopName = shopRows[0]?.shop_name || null;
               }
               const txRef = d.transaction_code || String(orderId).slice(0, 8);
-              const sellerMsg = `🏆 Your auction for "${d.product_name}" has a winner: ${d.user_name || 'A customer'} with a winning bid of ₱${Number(d.winning_bid).toLocaleString()}. Order ${txRef}. Status: Awaiting Payment. The winner has 7 days to complete payment. [Seller Winner Notice ${txRef}]`;
-              const adminMsg = `🏆 Auction winner confirmed: "${d.product_name}" — ${d.user_name || 'A customer'} won with ₱${Number(d.winning_bid).toLocaleString()}. Order ${txRef}. Shop: ${shopName || 'Unknown shop'}.${d.branch_name ? ` Branch: ${d.branch_name}.` : ''} Status: Awaiting Payment. [Admin Winner Notice ${txRef}]`;
+              const sellerMsg = `${buildSellerWinnerMessage({
+                product: d.product_name, winnerName: d.user_name || 'A customer',
+                amount: d.winning_bid, order: { id: oRow?.id, transaction_code: d.transaction_code },
+                auctionCode: d.auction_code, changed: false,
+              })} [${MARKERS.sellerWinner({ id: oRow?.id, transaction_code: d.transaction_code }, d.user_name || 'A customer')}]`;
+              const adminMsg = `${buildAdminWinnerMessage({
+                product: d.product_name, winnerName: d.user_name || 'A customer',
+                amount: d.winning_bid, order: { id: oRow?.id, transaction_code: d.transaction_code },
+                shopName: shopName || 'Unknown shop', changed: false,
+              })} [${MARKERS.adminWinner({ id: oRow?.id, transaction_code: d.transaction_code }, d.user_name || 'A customer')}]`;
               const { shouldDeliverNotification: shouldDeliver4B } = await import('./notificationPreference.js');
               const insert4B = async (uid, msg) => {
                 try {
@@ -145,6 +165,7 @@ export async function closeExpiredAuctions() {
                 <div style="font-family:system-ui,Segoe UI,Helvetica,Arial,sans-serif; color:#1a1a1a; max-width:600px;">
                   <h2 style="color:#0f3d2e;">Congratulations, ${d.user_name || 'ATANY winner'}! 🎉</h2>
                   <p>You won the auction for <strong>${d.product_name}</strong> with a winning bid of <strong>₱${Number(d.winning_bid).toLocaleString()}</strong>.</p>
+                  ${paymentDeadlineStr ? `<p style="font-size:15px;"><strong>Please complete payment by ${paymentDeadlineStr}.</strong><br>You have 7 days to complete payment.</p>` : ''}
                   ${d.image_url ? `<p><img src="${d.image_url}" alt="${d.product_name}" style="max-width:400px; border-radius:8px; border:1px solid #e5e7eb;" /></p>` : ''}
                   <h3 style="color:#0f3d2e;">Pickup Instructions</h3>
                   <p><strong>Pickup Branch:</strong> ${branchInfo}${d.branch_phone ? ` — ${d.branch_phone}` : ''}</p>
@@ -153,6 +174,7 @@ export async function closeExpiredAuctions() {
                   <p>Please complete payment before pickup via your purchases page: <a href="${paymentLink}" style="color:#0f3d2e; font-weight:600;">${paymentLink}</a> (GCash / card via PayMongo sandbox).</p>
                   <p style="font-size:13px; color:#6b7280;">${claimDeadlineNote}</p>
                   <p style="font-size:13px; color:#6b7280;">Transaction ${d.transaction_code} (Order #${orderId}) — Auction ${d.auction_code} (#${a.id}) — ATANY Timeless Beauty</p>
+                  <p style="font-size:13px; color:#6b7280;">If you have any questions about this auction, please contact ATANY Support.</p>
                 </div>
               `;
               await sendNotificationEmail({

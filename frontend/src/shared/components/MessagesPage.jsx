@@ -3,6 +3,7 @@
 // Two-panel layout: conversation list (left) + message thread (right).
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { socket } from '../lib/socketClient';
 import { useAuth } from '../hooks/useAuth.jsx';
@@ -181,8 +182,38 @@ export default function MessagesPage({ role = 'customer' }) {
     };
   }, [myId, selectedId, fetchConversations, fetchMessages]);
 
-  /* ─── auto-scroll ─── */
+  /* ─── optional context prefill (e.g. from an expired order) ───
+     The caller may pass ?order=…&item=…&topic=… — ONLY safe, customer-
+     visible context. The draft is prefilled once per conversation selection;
+     the customer always edits it before sending. */
+  const [searchParams] = useSearchParams();
+  const prefillRef = useRef(null);
+  const prefillText = useCallback(() => {
+    const order = searchParams.get('order');
+    const item = searchParams.get('item');
+    const topic = searchParams.get('topic');
+    if (!order && !item && !topic) return '';
+    const lines = ['Hi ATANY Support,', ''];
+    if (topic === 'expired-payment') {
+      lines.push('I have a question about the payment period that ended on one of my auction orders.');
+    }
+    if (item) lines.push(`Item: ${item}`);
+    if (order) lines.push(`Order: ${order}`);
+    lines.push('');
+    lines.push('Please let me know what happens next. Thank you.');
+    return lines.join('\n');
+  }, [searchParams]);
+
   useEffect(() => {
+    if (!selectedId) return;
+    const draft = prefillText();
+    if (!draft) return;
+    if (prefillRef.current === `${selectedId}|${draft}`) return;
+    prefillRef.current = `${selectedId}|${draft}`;
+    setInput((cur) => (cur && cur.trim() ? cur : draft));
+  }, [selectedId, prefillText]);
+
+  /* ─── auto-scroll ─── */  useEffect(() => {
     if (messages.length > prevConvoCountRef.current) {
       threadRef.current?.scrollTo({ top: threadRef.current.scrollHeight, behavior: 'smooth' });
     }

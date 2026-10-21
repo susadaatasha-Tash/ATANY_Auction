@@ -149,7 +149,8 @@ describe('customer payment notifications (7-day lifecycle)', () => {
     ];
     pool.query.mockImplementation(async (sql, params = []) => {
       if (/FROM notifications/i.test(sql)) return { rows: [], rowCount: 0 };
-      if (/FROM orders WHERE status/i.test(sql)) return { rows: orders };
+      if (/FROM orders/i.test(sql) && /COALESCE/i.test(sql)) return { rows: [order] };
+      if (/FROM orders/i.test(sql) && /status = 'pending'/i.test(sql) && /LIMIT/i.test(sql)) return { rows: orders };
       if (/FROM payments/i.test(sql)) return { rows: [], rowCount: 0 };
       if (/FROM auctions WHERE id/i.test(sql)) return { rows: [{ product_id: 'p1' }] };
       if (/FROM products WHERE id/i.test(sql)) return { rows: [{ name: 'Gold Ring' }] };
@@ -170,7 +171,8 @@ describe('customer payment notifications (7-day lifecycle)', () => {
     };
     pool.query.mockImplementation(async (sql, params = []) => {
       if (/FROM notifications/i.test(sql)) return { rows: [], rowCount: 0 };
-      if (/FROM orders WHERE status/i.test(sql)) return { rows: [order] };
+      if (/FROM orders/i.test(sql) && /COALESCE/i.test(sql)) return { rows: [order] };
+      if (/FROM orders/i.test(sql) && /status = 'pending'/i.test(sql) && /LIMIT/i.test(sql)) return { rows: [order] };
       if (/FROM payments/i.test(sql)) return { rows: [], rowCount: 0 };
       if (/FROM bids WHERE auction_id/i.test(sql)) {
         return {
@@ -198,13 +200,13 @@ describe('customer payment notifications (7-day lifecycle)', () => {
     });
     await checkAndExpireWinners();
     const inserts = captureInserts();
-    const expiredNotice = inserts.filter((n) => n.user_id === BUYER_A && /expired/.test(n.message));
+    const expiredNotice = inserts.filter((n) => n.user_id === BUYER_A && /Payment Period Expired/i.test(n.message));
     expect(expiredNotice.length).toBe(1);
-    const newWinnerNotice = inserts.filter((n) => n.user_id === BUYER_B && /eligible winner/.test(n.message));
+    const newWinnerNotice = inserts.filter((n) => n.user_id === BUYER_B && /winning bidder/i.test(n.message));
     expect(newWinnerNotice.length).toBe(1);
-    expect(newWinnerNotice[0].message).toMatch(/7 days/);
+    expect(newWinnerNotice[0].message).toMatch(/7-day period|7 days/);
     // Old winner must NOT receive the new-winner notification.
-    expect(inserts.filter((n) => n.user_id === BUYER_A && /eligible winner/.test(n.message)).length).toBe(0);
+    expect(inserts.filter((n) => n.user_id === BUYER_A && /winning bidder/i.test(n.message)).length).toBe(0);
   });
 
   test('8. reassignment gives a fresh 7-day deadline (rotation update issued)', async () => {
@@ -215,7 +217,8 @@ describe('customer payment notifications (7-day lifecycle)', () => {
     let rotationUpdate = null;
     pool.query.mockImplementation(async (sql, params = []) => {
       if (/FROM notifications/i.test(sql)) return { rows: [], rowCount: 0 };
-      if (/FROM orders WHERE status/i.test(sql)) return { rows: [order] };
+      if (/FROM orders/i.test(sql) && /COALESCE/i.test(sql)) return { rows: [order] };
+      if (/FROM orders/i.test(sql) && /status = 'pending'/i.test(sql) && /LIMIT/i.test(sql)) return { rows: [order] };
       if (/FROM payments/i.test(sql)) return { rows: [], rowCount: 0 };
       if (/FROM bids WHERE auction_id/i.test(sql)) {
         return { rows: [{ user_id: BUYER_B, amount: 19000, created_at: isoAgo(9 * DAY) }] };
@@ -249,7 +252,8 @@ describe('customer payment notifications (7-day lifecycle)', () => {
     };
     pool.query.mockImplementation(async (sql) => {
       if (/FROM notifications/i.test(sql)) return { rows: [], rowCount: 0 };
-      if (/FROM orders WHERE status/i.test(sql)) return { rows: [order] };
+      if (/FROM orders/i.test(sql) && /COALESCE/i.test(sql)) return { rows: [order] };
+      if (/FROM orders/i.test(sql) && /status = 'pending'/i.test(sql) && /LIMIT/i.test(sql)) return { rows: [order] };
       if (/FROM payments/i.test(sql)) return { rows: [{ id: 'pay-1' }], rowCount: 1 };
       return { rows: [], rowCount: 0 };
     });
@@ -266,7 +270,8 @@ describe('customer payment notifications (7-day lifecycle)', () => {
       if (/FROM notifications/i.test(sql)) {
         return { rows: notifStore, rowCount: notifStore.length };
       }
-      if (/FROM orders WHERE status/i.test(sql)) return { rows: [order] };
+      if (/FROM orders/i.test(sql) && /COALESCE/i.test(sql)) return { rows: [order] };
+      if (/FROM orders/i.test(sql) && /status = 'pending'/i.test(sql) && /LIMIT/i.test(sql)) return { rows: [order] };
       if (/FROM payments/i.test(sql)) return { rows: [], rowCount: 0 };
       if (/FROM auctions WHERE id/i.test(sql)) return { rows: [{ product_id: 'p1' }] };
       if (/FROM products WHERE id/i.test(sql)) return { rows: [{ name: 'Gold Ring' }] };
@@ -336,7 +341,8 @@ describe('customer payment notifications (7-day lifecycle)', () => {
     };
     pool.query.mockImplementation(async (sql) => {
       if (/FROM notifications/i.test(sql)) return { rows: [], rowCount: 0 };
-      if (/FROM orders WHERE status/i.test(sql)) return { rows: [order] };
+      if (/FROM orders/i.test(sql) && /COALESCE/i.test(sql)) return { rows: [order] };
+      if (/FROM orders/i.test(sql) && /status = 'pending'/i.test(sql) && /LIMIT/i.test(sql)) return { rows: [order] };
       if (/FROM payments/i.test(sql)) return { rows: [], rowCount: 0 };
       if (/FROM auctions WHERE id/i.test(sql)) return { rows: [{ product_id: 'p1' }] };
       if (/FROM products WHERE id/i.test(sql)) return { rows: [{ name: 'Gold Ring' }] };

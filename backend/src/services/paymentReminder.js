@@ -11,6 +11,7 @@
 // markers checked against existing rows (no schema change).
 
 import { pool } from '../db/pool.js';
+import { resolveDeadline, buildReminderMessage, MARKERS } from './winnerNotificationService.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HOUR_MS = 60 * 60 * 1000;
@@ -44,10 +45,7 @@ const STAGES = [
 ];
 
 function deadlineFor(order) {
-  if (order.payment_deadline) return new Date(order.payment_deadline);
-  const base = order.winner_confirmed_at || order.created_at;
-  if (!base) return null;
-  return new Date(new Date(base).getTime() + 7 * DAY_MS);
+  return resolveDeadline(order);
 }
 
 export async function sendPaymentReminders() {
@@ -99,8 +97,16 @@ export async function sendPaymentReminders() {
           if (prodRows[0]?.name) productName = prodRows[0].name;
         }
       } catch {}
-      const deadlineStr = deadline.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
-      const msg = `${stage.subject(productName, deadlineStr)} (Order ${orderRef}.)`;
+      // The reminder carries the CURRENT winner's own amount, the exact
+      // deadline and the order reference.
+      const msg = `${buildReminderMessage({
+        stage: stage.key,
+        product: productName,
+        amount: order.amount,
+        deadline,
+        order: { id: order.id, transaction_code: order.transaction_code },
+      })} [${MARKERS.reminder({ id: order.id, transaction_code: order.transaction_code }, stage.key)}]`;
+      void orderRef;
 
       const { shouldDeliverNotification } = await import('./notificationPreference.js');
       if (!(await shouldDeliverNotification(order.buyer_id, 'payout', msg))) continue;
