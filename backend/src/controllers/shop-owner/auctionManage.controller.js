@@ -41,7 +41,7 @@ async function loadOwnedAuction(auctionId, shopId) {
 }
 
 // Batch helpers
-async function enrichAuctions(rawAuctions) {
+async function enrichAuctions(rawAuctions, { leaderboardLimit = 25 } = {}) {
   if (!rawAuctions.length) return [];
   const now = new Date();
   const productIds = [...new Set(rawAuctions.map(a => a.product_id))];
@@ -89,20 +89,25 @@ async function enrichAuctions(rawAuctions) {
       } catch { /* ignore */ }
     }
   }
-  // Fetch user names for leaderboards (dedup)
-  const allUserIds = [...new Set(Object.values(bidsByAuction).flat().map(b => b.user_id).filter(Boolean))];
+  // Order winner lookup for ended auctions (authoritative winner + fulfillment
+  // state). Loaded BEFORE the user batch so a confirmed winner's name is always
+  // resolved in the same query round-trip (no N+1).
+  let orderMap = {};
+  if (auctionIds.length) {
+    try {
+      const { rows: orders } = await pool.query(`SELECT auction_id, buyer_id, amount, status, payment_deadline, winner_confirmed_at, winner_rank FROM orders WHERE auction_id IN (${auctionIds.map((_, i) => `$${i + 1}`).join(',')})`, auctionIds);
+      for (const o of orders) orderMap[String(o.auction_id)] = o;
+    } catch {}
+  }
+  // Fetch user names for leaderboards + winner (dedup)
+  const allUserIds = [...new Set([
+    ...Object.values(bidsByAuction).flat().map(b => b.user_id).filter(Boolean),
+    ...Object.values(orderMap).map(o => o.buyer_id).filter(Boolean),
+  ])];
   let userMap = {};
   if (allUserIds.length) {
     const { rows: users } = await pool.query(`SELECT id, name FROM users WHERE id IN (${allUserIds.map((_, i) => `$${i + 1}`).join(',')})`, allUserIds);
     userMap = Object.fromEntries(users.map(u => [String(u.id), u.name]));
-  }
-  // Order winner lookup for ended auctions
-  let orderMap = {};
-  if (auctionIds.length) {
-    try {
-      const { rows: orders } = await pool.query(`SELECT auction_id, buyer_id, amount FROM orders WHERE auction_id IN (${auctionIds.map((_, i) => `$${i + 1}`).join(',')})`, auctionIds);
-      for (const o of orders) orderMap[String(o.auction_id)] = o;
-    } catch {}
   }
 
   return rawAuctions.map(a => {
@@ -116,9 +121,15 @@ async function enrichAuctions(rawAuctions) {
     for (const bid of bids) {
       if (!seen.has(String(bid.user_id))) seen.set(String(bid.user_id), bid);
     }
-    const ranked = Array.from(seen.values()).sort((x, y) => Number(y.amount) - Number(x.amount)).slice(0, 5).map((bid, idx) => {
-      const winnerId = orderMap[String(a.id)]?.buyer_id;
-      const isWinner = computed === 'ended' && winnerId && String(winnerId) === String(bid.user_id);
+    // Authoritative winner: the order row (buyer_id) is the source of truth —
+    // it also reflects the 7-day payment fallback that can pass the opportunity
+    // to the next eligible bidder. An expired order has no confirmed winner.
+    const order = orderMap[String(a.id)] || null;
+    const orderStatus = order ? String(order.status || '').toLowerCase() : null;
+    const winnerId = order && order.buyer_id ? String(order.buyer_id) : null;
+    const winnerConfirmed = !!winnerId && orderStatus !== 'expired';
+    const ranked = Array.from(seen.values()).sort((x, y) => Number(y.amount) - Number(x.amount)).slice(0, leaderboardLimit).map((bid, idx) => {
+      const isWinner = winnerConfirmed && String(bid.user_id) === winnerId;
       return {
         rank: idx + 1,
         bidder_id: bid.user_id,
@@ -127,11 +138,48 @@ async function enrichAuctions(rawAuctions) {
         created_at: bid.created_at,
         is_winner: !!isWinner,
         is_leading: idx === 0 && computed === 'live',
+        is_top_bidder: idx === 0,
       };
     });
-    // Mask emails not needed — we return name only
-    const watcher_count = watcherCounts[a.id] || 0;
+    // Result state derived from the real auction/order state (never guessed in the UI).
     const bid_count = bidCounts[a.id] || 0;
+    const watcher_count = watcherCounts[a.id] || 0;
+    let resultState = 'live';
+    if (computed === 'ended') {
+      if (!winnerId) resultState = bid_count > 0 ? 'no_winner' : 'no_bids';
+      else if (orderStatus === 'expired') resultState = 'winner_expired';
+      else if (orderStatus === 'completed') resultState = 'completed';
+      else if (orderStatus === 'ready_pickup') resultState = 'ready_pickup';
+      else if (orderStatus === 'preparing') resultState = 'preparing';
+      else resultState = 'payment_pending';
+    }
+    const RESULT_LABELS = {
+      live: 'Auction live',
+      payment_pending: 'Winner confirmed — payment pending',
+      preparing: 'Payment received — preparing fulfillment',
+      ready_pickup: 'Ready for pickup',
+      completed: 'Completed — picked up',
+      winner_expired: 'Winner expired — payment deadline passed',
+      no_winner: 'Ended — no confirmed winner',
+      no_bids: 'Ended — no bids',
+    };
+    const result = {
+      state: resultState,
+      label: RESULT_LABELS[resultState] || RESULT_LABELS.live,
+      winner_confirmed: winnerConfirmed,
+      final_bid: winnerConfirmed ? Number(order?.amount) || 0 : 0,
+      highest_bid: bids.length ? Number(bids[0].amount) || 0 : 0,
+      total_bids: bid_count,
+      watcher_count,
+      order_status: orderStatus,
+      payment_deadline: order?.payment_deadline || null,
+      winner_confirmed_at: order?.winner_confirmed_at || null,
+      winner_rank: order?.winner_rank ?? null,
+    };
+    const winner = winnerConfirmed
+      ? { id: winnerId, name: userMap[winnerId] || 'Bidder', amount: Number(order?.amount) || 0 }
+      : null;
+    // Mask emails not needed — we return name only
     // Ends/starts in seconds
     const startsInSec = Math.max(0, Math.floor((new Date(a.start_time) - now) / 1000));
     const endsInSec = Math.max(0, Math.floor((new Date(a.end_time) - now) / 1000));
@@ -145,6 +193,7 @@ async function enrichAuctions(rawAuctions) {
       name: p.name,
       category: p.category || 'Other',
       karat_weight: p.karat_weight,
+      description: p.description || null,
       image_url: p.image_url,
       img: p.image_url,
       branch: b.name || null,
@@ -169,6 +218,10 @@ async function enrichAuctions(rawAuctions) {
       watcher_count,
       watchers: watcher_count,
       leaderboard: ranked,
+      result,
+      winner,
+      // Relisting is only legal from a terminal (ended) auction.
+      can_relist: computed === 'ended',
       paused_at: a.paused_at || null,
       participants: new Set(bids.map(bb => String(bb.user_id))).size,
     };
@@ -484,30 +537,105 @@ export const relistAuction = async (req, res) => {
   if (error) return res.status(error.code).json({ message: error.message });
   const computed = effectiveStatus(auction.start_time, auction.end_time, auction.status);
   if (computed !== 'ended' && String(auction.status).toLowerCase() !== 'ended') return res.status(409).json({ message: 'Only ended auctions can be relisted' });
-  const { start_time, end_time, duration } = req.body || {};
+  const { start_time, end_time, duration, start_price, minimum_bid_increment } = req.body || {};
   let start = start_time ? new Date(start_time) : new Date(Date.now() + 24 * 3600 * 1000);
   let end = end_time ? new Date(end_time) : null;
   if (!end && duration) end = new Date(start.getTime() + Number(duration) * 3600 * 1000);
   if (!end) end = new Date(start.getTime() + 7 * 86400000);
   if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return res.status(400).json({ message: 'Invalid schedule' });
+  // Bidding rules for the NEW auction. Unset values inherit from the source
+  // auction (unchanged behaviour); supplied values must be valid.
+  const inheritedStartPrice = Number(auction.start_price) || 0;
+  const inheritedIncrement = Number(auction.minimum_bid_increment) || 1000;
+  let finalStartPrice = inheritedStartPrice;
+  if (start_price !== undefined && start_price !== null && start_price !== '') {
+    const n = Number(start_price);
+    if (!Number.isFinite(n) || n <= 0) return res.status(400).json({ message: 'Starting price must be greater than 0' });
+    finalStartPrice = Math.round(n);
+  }
+  let finalIncrement = inheritedIncrement;
+  if (minimum_bid_increment !== undefined && minimum_bid_increment !== null && minimum_bid_increment !== '') {
+    const n = Number(minimum_bid_increment);
+    if (!Number.isFinite(n) || n <= 0) return res.status(400).json({ message: 'Minimum bid increment must be greater than 0' });
+    finalIncrement = Math.round(n);
+  }
+  if (!finalStartPrice || finalStartPrice <= 0) return res.status(400).json({ message: 'Starting price must be greater than 0' });
   const { rows: prodRows } = await pool.query('SELECT * FROM products WHERE id=$1', [auction.product_id]);
   const prod = prodRows[0];
   if (!prod) return res.status(404).json({ message: 'Product not found' });
-  const client = await pool.connect();
+  // Transactional mutation — fail closed when direct Postgres is unavailable
+  // (never downgrade to a REST write that cannot honour BEGIN/COMMIT).
+  try { await ensureDirectPgAvailable('relistAuction'); } catch (err) { return auctionUnavailable(res, 'relistAuction', err); }
+  let tx;
   try {
+    tx = await acquireTxClient('relistAuction');
+  } catch (err) {
+    return auctionUnavailable(res, 'relistAuction', err);
+  }
+  const client = tx.client;
+  const releaseTx = tx.release;
+  try {
+    if (client.__restFallback) throw new ServiceUnavailableError('relistAuction requires direct DB');
     await client.query('BEGIN');
-    // Create new product copy? Spec: create NEW auction based on product, preserve history.
-    // We keep same product but create new auction. Product stays approved.
+    // Spec: create a NEW auction for the same product. The original ended
+    // auction, its bids, its order and its winner are never touched.
     const status = start <= new Date() ? 'live' : 'scheduled';
     const { rows: newAuc } = await client.query(
       'INSERT INTO auctions (product_id, start_price, current_bid, minimum_bid_increment, status, start_time, end_time) VALUES ($1,$2,$2,$3,$4,$5,$6) RETURNING *',
-      [prod.id, auction.start_price, Number(auction.minimum_bid_increment) || 1000, status, start.toISOString(), end.toISOString()]
+      [prod.id, finalStartPrice, finalIncrement, status, start.toISOString(), end.toISOString()]
     );
     await client.query('COMMIT');
     const enriched = await enrichAuctions(newAuc);
     res.status(201).json(enriched[0]);
   } catch (e) {
     try { await client.query('ROLLBACK'); } catch {}
+    if (e instanceof ServiceUnavailableError || isConnFailure(e)) return auctionUnavailable(res, 'relistAuction', e);
     res.status(500).json({ message: 'Failed to relist auction' });
-  } finally { client.release(); }
+  } finally { releaseTx(); }
+};
+
+/**
+ * GET /shop-owner/auctions/:id/result
+ * Authoritative result payload for ONE seller-owned auction. Used by the
+ * Auction Result modal so it always shows current server state (winner order
+ * row, final bid, bid count, watcher count, full bidder leaderboard).
+ * Cross-seller access returns 404 (same convention as the other seller routes)
+ * so no private bidding data can be inferred.
+ */
+export const getAuctionResult = async (req, res) => {
+  const shop = await getOwnShop(req.user.id);
+  if (!shop) return res.status(404).json({ message: 'Shop not found' });
+  const { error, auction } = await loadOwnedAuction(req.params.id, shop.id);
+  if (error) return res.status(error.code).json({ message: error.message });
+  const [enriched] = await enrichAuctions([auction], { leaderboardLimit: 100 });
+  if (!enriched) return res.status(404).json({ message: 'Auction not found' });
+  res.json({
+    auction: {
+      id: enriched.id,
+      auction_code: enriched.auction_code,
+      lot_code: enriched.lot_code,
+      status: enriched.status,
+      stored_status: enriched.stored_status,
+      start_time: enriched.start_time,
+      end_time: enriched.end_time,
+      start_price: enriched.start_price,
+      current_bid: enriched.current_bid,
+      minimum_bid_increment: enriched.minimum_bid_increment,
+      product_id: enriched.product_id,
+    },
+    product: {
+      id: enriched.product_id,
+      name: enriched.name,
+      title: enriched.title,
+      category: enriched.category,
+      karat_weight: enriched.karat_weight,
+      description: enriched.description,
+      image_url: enriched.image_url,
+    },
+    branch: enriched.branch_id ? { id: enriched.branch_id, name: enriched.branch_name } : null,
+    result: enriched.result,
+    winner: enriched.winner,
+    leaderboard: enriched.leaderboard,
+    can_relist: enriched.can_relist,
+  });
 };

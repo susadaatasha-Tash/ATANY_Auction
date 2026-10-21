@@ -57,6 +57,24 @@
   align-items: center;
 }
 
+/* Stacked title + one-line subtitle (used by the Admin Orders screen). */
+.portal-page-header__titles--stacked {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+}
+
+.portal-page-header__subtitle {
+  font-size: 11.5px;
+  line-height: 1.3;
+  color: var(--cust-muted, var(--muted, #7B8493));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
 .portal-page-header__title,
 .portal-page-header.topbar .topbar-title h1,
 .portal-page-header .topbar-title h1 {

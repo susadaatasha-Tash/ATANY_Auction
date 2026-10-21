@@ -55,8 +55,12 @@ describe('Audit Logs + Chatbot Logs removal — backend contract', () => {
   });
 
   it('backend audit logging (audit_logs inserts) is preserved for security/history', () => {
+    // The audit INSERT now lives in the shared audit service (one mechanism
+    // for every admin surface) — the admin controller still uses it.
+    const auditSvc = readFileSync(join(repoRoot, 'src/services/auditLog.js'), 'utf8');
+    expect(auditSvc).toMatch(/INSERT INTO audit_logs/);
     const userCtrl = readFileSync(join(repoRoot, 'src/controllers/admin/user.controller.js'), 'utf8');
-    expect(userCtrl).toMatch(/INSERT INTO audit_logs/);
+    expect(userCtrl).toMatch(/writeAuditLog|services\/auditLog/);
 
     const setup = readFileSync(join(repoRoot, 'src/db/setup_complete.sql'), 'utf8');
     expect(setup).toMatch(/CREATE TABLE IF NOT EXISTS audit_logs/);

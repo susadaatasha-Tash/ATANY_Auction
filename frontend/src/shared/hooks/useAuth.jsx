@@ -1,7 +1,7 @@
 // frontend/src/shared/hooks/useAuth.jsx
 // Wraps Supabase Auth + role. Login/signup previously were demo redirects
 // login.html:263 / signup.html:262  — now real auth via supabaseClient.
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabaseClient';
 
 const AuthContext = createContext(null);
@@ -17,7 +17,15 @@ async function fetchUserMeta(token) {
       return null;
     }
     const data = await res.json();
-    return { role: data.role || null, preferredBranchId: data.preferred_branch_id || null };
+    return {
+      // The DB (public.users) is the source of truth for the profile name —
+      // it is what the Profile page edits and what /auth/me returns.
+      name: data.name || null,
+      email: data.email || null,
+      role: data.role || null,
+      status: data.status || null,
+      preferredBranchId: data.preferred_branch_id || null,
+    };
   } catch (e) {
     console.error('[useAuth] GET /auth/me network/error', e?.message || e);
     return null;
@@ -27,7 +35,9 @@ async function fetchUserMeta(token) {
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [role, setRole] = useState(null);
+  const [status, setStatus] = useState(null);
   const [preferredBranchId, setPreferredBranchId] = useState(null);
+  const [profileName, setProfileName] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -44,15 +54,21 @@ export function AuthProvider({ children }) {
           if (cancelled) return;
           if (meta) {
             setRole(meta.role);
+            setStatus(meta.status);
             setPreferredBranchId(meta.preferredBranchId);
+            setProfileName(meta.name);
           } else {
             console.error('[useAuth] /auth/me returned no metadata for authenticated user');
             setRole(null);
+            setStatus(null);
             setPreferredBranchId(null);
+            setProfileName(null);
           }
         } else {
           setRole(null);
+          setStatus(null);
           setPreferredBranchId(null);
+          setProfileName(null);
         }
       } catch (e) {
         console.error('[useAuth] Session init failed', e?.message || e);
@@ -72,15 +88,21 @@ export function AuthProvider({ children }) {
           if (cancelled) return;
           if (meta) {
             setRole(meta.role);
+            setStatus(meta.status);
             setPreferredBranchId(meta.preferredBranchId);
+            setProfileName(meta.name);
           } else {
             console.error('[useAuth] /auth/me returned no metadata on auth change');
             setRole(null);
+            setStatus(null);
             setPreferredBranchId(null);
+            setProfileName(null);
           }
         } else {
           setRole(null);
+          setStatus(null);
           setPreferredBranchId(null);
+          setProfileName(null);
         }
       } catch (e) {
         console.error('[useAuth] Auth state change failed', e?.message || e);
@@ -94,12 +116,48 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
+  // Re-read the server profile (name / branch / status) after a profile save
+  // so the header and sidebar reflect the new values without a page reload.
+  const refreshProfile = useCallback(async () => {
+    try {
+      const { data } = await supabase.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token) return null;
+      const meta = await fetchUserMeta(token);
+      if (!meta) return null;
+      setRole(meta.role);
+      setStatus(meta.status);
+      setPreferredBranchId(meta.preferredBranchId);
+      setProfileName(meta.name);
+      return meta;
+    } catch (e) {
+      console.error('[useAuth] refreshProfile failed', e?.message || e);
+      return null;
+    }
+  }, []);
+
   const signOut = async () => {
     await supabase.auth.signOut();
     window.location.href = '/login';
   };
 
-  return <AuthContext.Provider value={{ user, role, preferredBranchId, setPreferredBranchId, loading, signOut }}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        role,
+        status,
+        preferredBranchId,
+        setPreferredBranchId,
+        profileName,
+        refreshProfile,
+        loading,
+        signOut,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export const useAuth = () => {

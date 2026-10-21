@@ -4,7 +4,7 @@
 // lets user pick one, then PUT /customer/preferred-branch before redirecting to /customer.
 
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../shared/hooks/useAuth';
 import { useToast } from '../shared/components/Toast';
 import { supabase } from '../shared/lib/supabaseClient';
@@ -136,6 +136,10 @@ export default function SelectBranch() {
   const { user, loading: authLoading, setPreferredBranchId } = useAuth();
   const showToast = useToast();
   const navigate = useNavigate();
+  // Preserve the original login destination (e.g. the auction a guest was
+  // bidding on) so branch selection does not swallow the return path.
+  const [searchParams] = useSearchParams();
+  const redirect = searchParams.get('redirect') || '/customer';
 
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -197,7 +201,7 @@ export default function SelectBranch() {
 
       showToast(`Branch set to ${branch.name}`);
       setPreferredBranchId(branch.id ?? branch._id);
-      navigate('/customer', { replace: true });
+      navigate(redirect, { replace: true });
     } catch (err) {
       showToast(err.message || 'Something went wrong');
       setSelecting(null);
@@ -237,7 +241,7 @@ export default function SelectBranch() {
         <div style={styles.eyebrow}>SELECT YOUR BRANCH</div>
         <h1 style={styles.title}>Choose a Pickup Location</h1>
         <p style={styles.subtitle}>
-          Select your preferred branch for order pickups. You can change this later in your account settings.
+          Select your preferred branch for order pickups. You can change this later in your Profile.
         </p>
       </div>
 

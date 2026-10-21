@@ -18,11 +18,16 @@ export function useAdminData() {
       apiFetch('/admin/products').catch(() => []),
       apiFetch('/admin/auctions').catch(() => []),
       apiFetch('/admin/users').catch(() => []),
-      apiFetch('/admin/transactions').catch(() => []),
-      apiFetch('/admin/security-alerts').catch(() => []),
+      // The orders endpoint is paginated ({ items, pagination, summary }) —
+      // the dashboard only needs the most recent rows, so ask for a page.
+      apiFetch('/admin/transactions?limit=50').catch(() => []),
+      apiFetch('/admin/security-alerts?limit=50').catch(() => []),
       apiFetch('/branches', { public: true }).catch(() => []), // public endpoint, single source of truth spec 4.5
     ]);
-    setProducts(p); setAuctions(a); setUsers(u); setTxns(t); setAlerts(s); setBranches(b);
+    setProducts(p); setAuctions(a); setUsers(u);
+    setTxns(Array.isArray(t) ? t : (t?.items || []));
+    setAlerts(Array.isArray(s) ? s : (s?.items || []));
+    setBranches(b);
   }, []);
 
   const loadAnalytics = useCallback(async (range = 6) => {

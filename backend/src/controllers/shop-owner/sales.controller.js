@@ -2,69 +2,108 @@
 // Spec 4.4/4.7: sales are orders where product's shop_id matches. Payout = 90% per original mock
 // REST-compatible: decomposes JOINs into simple queries for Supabase REST fallback
 import { pool } from '../../db/pool.js';
+
+// Canonical money rule (backend is the ONLY source of truth):
+// platform commission = 10% of the sale amount, seller payout = 90%.
+const COMMISSION_RATE = 0.10;
+
 export const listSales = async (req, res) => {
   try {
-    const shop = (await pool.query('SELECT id FROM shops WHERE user_id=$1', [req.user.id])).rows[0];
-    if (!shop) return res.json([]);
-    const { rows: products } = await pool.query('SELECT id FROM products WHERE shop_id=$1', [shop.id]);
+    // Seller ownership — the caller's shop rows are resolved server-side, the
+    // client never sends a shop_id / owner id.
+    const { rows: shopRows } = await pool.query('SELECT id FROM shops WHERE user_id=$1', [req.user.id]);
+    if (!shopRows.length) return res.json([]);
+    const shopIds = shopRows.map((s) => s.id);
+
+    const { rows: products } = await pool.query(
+      `SELECT id, name, category, image_url FROM products WHERE shop_id IN (${shopIds.map((_, i) => `$${i + 1}`).join(',')})`,
+      shopIds
+    );
     if (!products.length) return res.json([]);
-    const productIds = products.map(p => p.id);
+    const productMap = Object.fromEntries(products.map((p) => [p.id, p]));
+    const productIds = products.map((p) => p.id);
+
     const { rows: auctions } = await pool.query(
       `SELECT id, product_id FROM auctions WHERE product_id IN (${productIds.map((_, i) => `$${i + 1}`).join(',')})`,
       productIds
     );
     if (!auctions.length) return res.json([]);
-    const auctionMap = Object.fromEntries(auctions.map(a => [a.id, a.product_id]));
-    const auctionIds = auctions.map(a => a.id);
+    const auctionMap = Object.fromEntries(auctions.map((a) => [a.id, a.product_id]));
+    const auctionIds = auctions.map((a) => a.id);
+
     const { rows: orders } = await pool.query(
-      `SELECT id, auction_id, buyer_id, amount, status, created_at, transaction_code FROM orders WHERE auction_id IN (${auctionIds.map((_, i) => `$${i + 1}`).join(',')}) ORDER BY created_at DESC`,
+      `SELECT id, auction_id, buyer_id, amount, status, created_at, transaction_code,
+              branch_id, payment_method, payment_deadline, winner_confirmed_at
+         FROM orders WHERE auction_id IN (${auctionIds.map((_, i) => `$${i + 1}`).join(',')}) ORDER BY created_at DESC`,
       auctionIds
     );
     if (!orders.length) return res.json([]);
 
-    // fetch product names + images (for dashboard thumbnails)
-    const { rows: prodDetails } = await pool.query(
-      `SELECT id, name, image_url FROM products WHERE id IN (${productIds.map((_, i) => `$${i + 1}`).join(',')})`,
-      productIds
-    );
-    const prodMap = Object.fromEntries(prodDetails.map(p => [p.id, p]));
-
-    // fetch buyer names
-    const buyerIds = [...new Set(orders.map(o => o.buyer_id).filter(Boolean))];
+    // Buyer names (batch)
+    const buyerIds = [...new Set(orders.map((o) => o.buyer_id).filter(Boolean))];
     let buyerMap = {};
     if (buyerIds.length) {
       const { rows: buyers } = await pool.query(
         `SELECT id, name FROM users WHERE id IN (${buyerIds.map((_, i) => `$${i + 1}`).join(',')})`,
         buyerIds
       );
-      buyerMap = Object.fromEntries(buyers.map(u => [u.id, u.name]));
+      buyerMap = Object.fromEntries(buyers.map((u) => [u.id, u.name]));
     }
 
-    // attach payment_status per order (simple, REST-compatible)
-    const rows = [];
-    for (const o of orders) {
-      let payment_status = null;
-      try {
-        const { rows: pay } = await pool.query(`SELECT status FROM payments WHERE order_id=$1 ORDER BY created_at DESC LIMIT 1`, [o.id]);
-        payment_status = pay[0]?.status || null;
-      } catch { payment_status = null; }
-      const productId = auctionMap[o.auction_id];
-      const product = prodMap[productId] || {};
-      const commission = Math.round(o.amount * 0.10);
-      rows.push({
+    // Payments — ONE batched query for every order (the previous version ran a
+    // COUNT-style lookup per order, which was an N+1 on the page load).
+    const orderIds = orders.map((o) => o.id);
+    const { rows: payments } = await pool.query(
+      `SELECT order_id, status, payment_method, amount, paid_at, created_at
+         FROM payments WHERE order_id IN (${orderIds.map((_, i) => `$${i + 1}`).join(',')})`,
+      orderIds
+    );
+    const paymentMap = {};
+    for (const p of payments) {
+      const existing = paymentMap[p.order_id];
+      if (!existing || new Date(p.created_at) > new Date(existing.created_at)) {
+        paymentMap[p.order_id] = p;
+      }
+    }
+
+    // Pickup branch per order (batch)
+    const branchIds = [...new Set(orders.map((o) => o.branch_id).filter(Boolean))];
+    let branchMap = {};
+    if (branchIds.length) {
+      const { rows: branches } = await pool.query(
+        `SELECT id, name FROM branches WHERE id IN (${branchIds.map((_, i) => `$${i + 1}`).join(',')})`,
+        branchIds
+      );
+      branchMap = Object.fromEntries(branches.map((b) => [b.id, b.name]));
+    }
+
+    const rows = orders.map((o) => {
+      const product = productMap[auctionMap[o.auction_id]] || {};
+      const payment = paymentMap[o.id] || null;
+      const amount = Number(o.amount || 0);
+      const commission = Math.round(amount * COMMISSION_RATE);
+      // payout = sale amount - commission, so Amount = Commission + Payout always holds
+      const payout = amount - commission;
+      return {
         id: o.id,
         transaction_code: o.transaction_code,
         item: product.name || 'Jewelry Item',
         item_image: product.image_url || null,
+        category: product.category || null,
         buyer: buyerMap[o.buyer_id] || 'Customer',
-        amount: o.amount,
+        amount,
         commission,
-        payout: Math.round(o.amount * 0.9),
+        payout,
         status: o.status,
-        payment_status,
+        payment_status: payment?.status || null,
+        payment_method: payment?.payment_method || o.payment_method || null,
+        paid_at: payment?.paid_at || null,
+        branch_name: branchMap[o.branch_id] || null,
+        payment_deadline: o.payment_deadline || null,
+        winner_confirmed_at: o.winner_confirmed_at || null,
         date: o.created_at,
-      });
-    }
+      };
+    });
     res.json(rows);
   } catch (e) {
     console.error('[shop-owner/sales]', e.message);
@@ -122,7 +161,6 @@ export const getSalesSummary = async (req, res) => {
     );
     const defaultMethod = paymentMethods[0];
 
-    const COMMISSION_RATE = 0.10;
     const now = new Date();
     const currentYear = now.getFullYear();
     const yearStart = new Date(currentYear, 0, 1);

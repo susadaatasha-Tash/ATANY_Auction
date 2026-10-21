@@ -10,6 +10,7 @@ import { createUploadUrl } from '../services/storageService.js';
 import {
   manageAuctions,
   getTopBidders,
+  getAuctionResult,
   startAuction,
   extendAuction,
   pauseAuction,
@@ -21,6 +22,7 @@ import {
 const router = Router();
 router.get('/auctions/manage', manageAuctions);
 router.get('/auctions/top-bidders', getTopBidders);
+router.get('/auctions/:id/result', getAuctionResult); // seller-owned auction result (winner, final bid, leaderboard)
 router.post('/auctions/:id/start', startAuction);
 router.post('/auctions/:id/extend', extendAuction);
 router.post('/auctions/:id/pause', pauseAuction);

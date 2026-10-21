@@ -3,7 +3,7 @@
 -- RLS per spec 5.4: enable on user-specific tables.
 
 CREATE TYPE user_role AS ENUM ('customer','shop_owner','admin');
-CREATE TYPE user_status AS ENUM ('active','suspended');
+CREATE TYPE user_status AS ENUM ('active','suspended','invited','on_leave');
 CREATE TYPE branch_status AS ENUM ('Open','Temporarily Closed');
 CREATE TYPE product_status AS ENUM ('pending','approved','rejected');
 CREATE TYPE auction_status AS ENUM ('scheduled','live','paused','ended');
@@ -18,7 +18,8 @@ CREATE TABLE users (
   password_hash TEXT NOT NULL,
   role user_role NOT NULL DEFAULT 'customer',
   status user_status NOT NULL DEFAULT 'active',
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  phone TEXT
 );
 
 CREATE TABLE shops (

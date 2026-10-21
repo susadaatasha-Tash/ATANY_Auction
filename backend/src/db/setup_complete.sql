@@ -14,7 +14,7 @@ EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
 DO $$ BEGIN
-  CREATE TYPE user_status AS ENUM ('active','suspended');
+  CREATE TYPE user_status AS ENUM ('active','suspended','invited','on_leave');
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMPTZ DEFAULT NOW(),
   totp_secret TEXT,
   totp_enabled BOOLEAN DEFAULT false,
+  phone TEXT,
   preferred_branch_id UUID REFERENCES branches(id) ON DELETE SET NULL
 );
 

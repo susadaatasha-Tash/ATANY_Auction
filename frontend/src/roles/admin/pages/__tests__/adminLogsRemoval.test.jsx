@@ -112,8 +112,10 @@ describe('Audit Logs + Chatbot Logs removal — Admin UI', () => {
     expect(screen.getByTestId('nav-Branches')).toBeInTheDocument();
     expect(screen.getByTestId('nav-Users & Roles')).toBeInTheDocument();
     expect(screen.getByTestId('nav-Orders')).toBeInTheDocument();
-    expect(screen.getByTestId('nav-Jewelry')).toBeInTheDocument();
-    expect(screen.getByTestId('nav-Auctions')).toBeInTheDocument();
+    // Jewelry + Auctions are no longer standalone admin destinations — they
+    // live under Branches → selected branch → Jewelry / Auctions.
+    expect(screen.queryByTestId('nav-Jewelry')).toBeNull();
+    expect(screen.queryByTestId('nav-Auctions')).toBeNull();
   });
 
   it('admin routes do NOT register Audit Logs or Chatbot Logs', () => {

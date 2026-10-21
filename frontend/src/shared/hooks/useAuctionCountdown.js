@@ -28,6 +28,21 @@ export function formatCountdown(sec) {
   return `${h}h ${m}m ${secRem}s`;
 }
 
+// Compact countdown for dense table cells (My Bids): "2d 5h", "1h 14m", "45s".
+// Same source of truth as formatCountdown — only the precision differs.
+export function formatCountdownShort(sec) {
+  const s = Number(sec);
+  if (!Number.isFinite(s) || s <= 0) return '—';
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const secRem = Math.floor(s % 60);
+  if (d > 0) return `${d}d ${h}h`;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m`;
+  return `${secRem}s`;
+}
+
 // Shared scheduled-auction countdown — single source of truth for Customer
 // Auctions and Seller My Auctions. Input is milliseconds until start_time
 // (same authoritative auction.start_time on both pages, parsed via new Date()).

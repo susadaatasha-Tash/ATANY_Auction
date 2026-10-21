@@ -97,6 +97,12 @@ export default function Auctions({ auctions: propAuctions }) {
     e?.stopPropagation?.();
     setDetailId(null);
     setDetailAuction(null);
+    // Drop the deep-link param so a refresh does not reopen the modal.
+    if (searchParams.get('auction')) {
+      const p = new URLSearchParams(searchParams);
+      p.delete('auction');
+      setSearchParams(p, { replace: true });
+    }
   };
   useEffect(() => {
     if (!detailId) { setDetailAuction(null); return; }
@@ -104,6 +110,13 @@ export default function Auctions({ auctions: propAuctions }) {
     setDetailAuction(base || null);
     apiFetch(`/customer/auctions/${detailId}`).then((full) => setDetailAuction(full)).catch(() => {});
   }, [detailId, auctions]);
+
+  // Deep link: /customer/auctions?auction=<id> opens that auction's detail modal.
+  // Used by the public landing page so a guest returns to the exact auction after login.
+  useEffect(() => {
+    const target = searchParams.get('auction');
+    if (target) setDetailId(target);
+  }, [searchParams]);
 
   const handlePlaceBid = async (auctionId, amount) => {
     if (!amount || !Number.isFinite(Number(amount))) throw new Error('Enter a valid bid');

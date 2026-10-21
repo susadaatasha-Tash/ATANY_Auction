@@ -9,10 +9,12 @@ import adminRoutes from './routes/admin.routes.js';
 import { requireAuth } from './middleware/requireAuth.js';
 import { requireRole } from './middleware/requireRole.js';
 import { pool, getPoolHealth } from './db/pool.js';
+import { createClient } from '@supabase/supabase-js';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cron from 'node-cron';
 import { createSocketAuth } from './services/socketAuth.js';
+import { joinAuction, leaveAuction, handleDisconnect } from './services/auctionPresence.js';
 import { closeExpiredAuctions } from './services/auctionCloser.js';
 import { startScheduledAuctions } from './services/auctionStarter.js';
 import { checkAndExpireWinners } from './services/winnerExpiration.js';
@@ -71,8 +73,17 @@ io.use(createSocketAuth());
 io.on('connection', (socket) => {
   // Spec 1: live bidding updates — client subscribes via socketClient.js
   // Auction rooms are public observation channels (no private data).
+  // Live viewer presence (unique authenticated CUSTOMERS viewing a live auction)
+  // is tracked in services/auctionPresence.js and broadcast to the room.
   socket.on('join:auction', (auctionId) => {
-    if (auctionId) socket.join(`auction:${auctionId}`);
+    if (!auctionId) return;
+    joinAuction(socket, auctionId).catch(() => {});
+  });
+  socket.on('leave:auction', (auctionId) => {
+    leaveAuction(socket, auctionId);
+  });
+  socket.on('disconnect', () => {
+    handleDisconnect(socket);
   });
   // Deprecated client event — identity room already joined by socketAuth middleware.
   socket.on('join:user', () => {
@@ -81,33 +92,127 @@ io.on('connection', (socket) => {
 });
 
 // Public — branch locator read-only (spec 4.5) + chatbot (spec 4.8 Groq server-only)
+// Explicit safe-field projection: never SELECT * so a future private column
+// (revenue, staff notes, ...) can never leak to anonymous visitors.
+const PUBLIC_BRANCH_FIELDS = 'id, name, address, lat, lng, hours, phone, status, branch_image_url';
 app.get('/branches', rateLimit({ name: 'branches', windowMs: 60_000, max: 60 }), async (_req, res) => {
-  try { res.json((await pool.query('SELECT * FROM branches')).rows); }
+  try { res.json((await pool.query(`SELECT ${PUBLIC_BRANCH_FIELDS} FROM branches ORDER BY name`)).rows); }
   catch (e) {
     // Fallback to Supabase REST when direct pg (IPv6) is unreachable — keeps Dashboard branch badge alive
     try {
-      const r = await fetch(`${process.env.SUPABASE_URL}/rest/v1/branches?select=*`, {
+      const r = await fetch(`${process.env.SUPABASE_URL}/rest/v1/branches?select=${PUBLIC_BRANCH_FIELDS}&order=name`, {
         headers: { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` }
       });
       res.json(await r.json());
     } catch (err2) { res.status(500).json({ message: 'Failed to load branches' }); }
   }
 });
+
+// Public landing statistics — safe aggregate counts only.
+// Exposes no identities, revenue, payments or bidder details.
+app.get('/api/public/stats', rateLimit({ name: 'public-stats', windowMs: 60_000, max: 60 }), async (_req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT
+        (SELECT COUNT(*)::int FROM users WHERE role = 'customer' AND status = 'active') AS "customers",
+        (SELECT COUNT(*)::int FROM products) AS "jewelryPieces",
+        (SELECT COUNT(*)::int FROM auctions WHERE status = 'ended') AS "completedAuctions",
+        (SELECT COUNT(*)::int FROM branches WHERE status = 'Open') AS "branches"
+    `);
+    res.json(rows[0]);
+  } catch (e) {
+    console.error('[public/stats] failed:', e.message);
+    res.status(500).json({ message: 'Failed to load statistics' });
+  }
+});
+
+// Public contact form — validated + rate limited server-side.
+// The support_requests row is authoritative; an optional Resend notification is
+// best-effort and never blocks the insert.
+const CONTACT_SUBJECTS = ['General Inquiry', 'Bid Support', 'Payout Question', 'Account Issue', 'Partnership'];
+app.post('/api/public/contact', rateLimit({ name: 'public-contact', windowMs: 600_000, max: 5 }), async (req, res) => {
+  const { name, email, subject, message } = req.body || {};
+  const clean = (v) => (typeof v === 'string' ? v.trim() : '');
+  const cName = clean(name);
+  const cEmail = clean(email).toLowerCase();
+  const cSubject = clean(subject) || 'General Inquiry';
+  const cMessage = clean(message);
+
+  if (!cName || cName.length > 150) {
+    return res.status(400).json({ code: 'INVALID_NAME', message: 'Please provide your name (max 150 characters).' });
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(cEmail) || cEmail.length > 254) {
+    return res.status(400).json({ code: 'INVALID_EMAIL', message: 'Please provide a valid email address.' });
+  }
+  if (!CONTACT_SUBJECTS.includes(cSubject)) {
+    return res.status(400).json({ code: 'INVALID_SUBJECT', message: 'Please choose a valid subject.' });
+  }
+  if (!cMessage || cMessage.length > 5000) {
+    return res.status(400).json({ code: 'INVALID_MESSAGE', message: 'Please provide a message (max 5000 characters).' });
+  }
+
+  try {
+    const { rows } = await pool.query(
+      'INSERT INTO support_requests (name, email, subject, message) VALUES ($1,$2,$3,$4) RETURNING id, created_at',
+      [cName, cEmail, cSubject, cMessage]
+    );
+    // Best-effort notification to the support inbox — never blocks storage.
+    try {
+      const { sendNotificationEmail } = await import('./services/emailService.js');
+      await sendNotificationEmail({
+        to: process.env.SUPPORT_EMAIL || 'support@atany.ph',
+        subject: `ATANY contact — ${cSubject}`,
+        html: `<p><strong>${cName}</strong> (${cEmail})</p><p>${cMessage}</p>`,
+      });
+    } catch (mailErr) {
+      console.warn('[public/contact] email notification failed (row stored):', mailErr.message);
+    }
+    res.status(201).json({ id: rows[0].id, received: true });
+  } catch (e) {
+    console.error('[public/contact] insert failed:', e.message);
+    res.status(500).json({ message: 'Failed to send message' });
+  }
+});
+
+// Resolve the caller from a bearer token when one is present, without ever
+// rejecting the request. Used by public routes (chat) that must stay open to
+// guests but should attribute authenticated turns to the real account.
+const authClient = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY);
+async function resolveOptionalUserId(req) {
+  const header = req.headers.authorization || '';
+  if (!header.toLowerCase().startsWith('bearer ')) return null;
+  const token = header.slice(7).trim();
+  if (!token) return null;
+  try {
+    const r = await Promise.race([
+      authClient.auth.getUser(token),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('auth lookup timeout')), 5000)),
+    ]);
+    return r?.data?.user?.id || null;
+  } catch {
+    return null;
+  }
+}
+
 app.post('/chat', rateLimit({ name: 'chat', windowMs: 60_000, max: 20 }), async (req, res) => {
-  const { query, message, history, mode, userId } = req.body;
+  const { query, message, history, mode } = req.body;
   const text = query || message;
   // mode: 'customer' or 'seller' — from frontend page context (Landing/Login/Signup/Customer vs Shop Owner)
-  const result = await chatbotReply(text, { userId: req.user?.id, mode: mode || 'customer', history: history || [] });
+  // Chatbot identity: the route is public (guests must keep working), so a client-declared
+  // userId is NOT trusted. If the caller presents a bearer token we resolve the id
+  // server-side; otherwise the turn is attributed to a guest (NULL).
+  const resolvedUserId = await resolveOptionalUserId(req);
+  const result = await chatbotReply(text, { userId: resolvedUserId, mode: mode || 'customer', history: history || [] });
   // Chatbot conversation persistence (internal). Failure-safe: logging must
   // never break the chatbot response, so errors are swallowed inside the service.
-  // userId is client-supplied (route is public); the service validates it against
-  // users and falls back to NULL (guest) for missing/invalid ids — no fake accounts.
+  // The service validates the id against users and falls back to NULL (guest) for
+  // missing/invalid ids — no fake accounts.
   try {
     const replyText = result?.reply || result?.response || '';
     if (text && replyText) {
       const { logChatTurn } = await import('./services/chatbotLogService.js');
       const escalated = /human|agent|support/i.test(String(text));
-      logChatTurn({ userId: userId || req.user?.id, mode: mode || 'customer', query: text, reply: replyText, escalated }).catch((e) => console.warn('[chatbotLog] async persist failed:', e.message));
+      logChatTurn({ userId: resolvedUserId, mode: mode || 'customer', query: text, reply: replyText, escalated }).catch((e) => console.warn('[chatbotLog] async persist failed:', e.message));
     }
   } catch (e) {
     console.warn('[chatbotLog] persist skipped:', e.message);

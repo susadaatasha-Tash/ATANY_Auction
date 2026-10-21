@@ -29,7 +29,8 @@ export default function BranchLocator({ branches: propBranches }) {
 
   useEffect(() => {
     if (propBranches) return;
-    apiFetch('/branches').then(setFetched).catch(() => setFetched([]));
+    // Public endpoint — must work for anonymous visitors (no session yet).
+    apiFetch('/branches', { public: true }).then(setFetched).catch(() => setFetched([]));
   }, [propBranches]);
 
   const locate = useCallback(() => {
@@ -144,6 +145,9 @@ export default function BranchLocator({ branches: propBranches }) {
                 onSelectBranch={handleMapBranchSelect}
                 initialCenter={DAVAO_CENTER}
                 onMapReady={handleMapReady}
+                // The page owns the scroll — the wheel must not be trapped by
+                // the map. + / −, drag and touch still zoom/pan.
+                scrollWheelZoom={false}
               />
             ) : (
               <div className="map-loading">Loading map…</div>

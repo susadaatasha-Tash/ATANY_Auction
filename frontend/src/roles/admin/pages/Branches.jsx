@@ -1,30 +1,83 @@
 // frontend/src/roles/admin/pages/Branches.jsx
-// Rebuilt 1:1 from _legacy_html_backup/admin.html: 1071-1106 — branches is single source of truth (spec 4.5)
-// Full design and functionality, wired to real data via GET /branches (public) and POST/PUT/DELETE /admin/branches
-import { useState, useEffect } from 'react';
-import { MapPin, Clock, Phone, Image as ImageIcon, Edit, Trash2 } from 'lucide-react';
+// Admin → Branches (branch-centric monitoring).
+//
+// The Branches screen is the single entry point into the admin's view of the
+// marketplace: every branch, its listings and its auctions. Jewelry and
+// Auctions are no longer standalone admin pages — they are reached through
+// the selected branch (see BranchDetails.jsx).
+//
+// Everything rendered here comes from the real ATANY records:
+//   GET /admin/branches      → branches + per-branch lots / active lots / revenue
+//   GET /admin/analytics     → platform monthly revenue + the real delta
+//   POST/PUT/DELETE /admin/branches → branch administration (existing modal)
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  Building2, Gem, Wallet, Clock3, MoreVertical, Search, User,
+  Plus, Download, ChevronRight,
+} from 'lucide-react';
 import { BranchModal } from '../components/BranchModal';
 import { apiFetch } from '../../../shared/lib/apiClient';
 import { useToast } from '../../../shared/components/Toast';
+import {
+  compactPeso, isBranchOpen, branchStatusLabel, branchState, peso,
+} from '../lib/adminBranchLabels';
+import './branches.css';
+
+const STATUS_FILTERS = [
+  { value: 'all', label: 'All' },
+  { value: 'open', label: 'Open' },
+  { value: 'closed', label: 'Closed' },
+];
+
+function KpiSkeleton() {
+  return <div className="adm-skel adm-skel--kpi" />;
+}
+function CardSkeleton() {
+  return <div className="adm-skel adm-skel--card" />;
+}
 
 export default function AdminBranches() {
+  const navigate = useNavigate();
+  const showToast = useToast();
   const [branches, setBranches] = useState([]);
+  const [analytics, setAnalytics] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [q, setQ] = useState('');
+  const [status, setStatus] = useState('all');
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
-  const showToast = useToast();
+  const [menuFor, setMenuFor] = useState(null);
+  const menuRef = useRef(null);
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
+    setError(null);
     try {
-      const rows = await apiFetch('/branches', { public: true });
+      const [rows, stats] = await Promise.all([
+        apiFetch('/admin/branches'),
+        apiFetch('/admin/analytics?bucket=month&range=1').catch(() => null),
+      ]);
       setBranches(Array.isArray(rows) ? rows : []);
+      setAnalytics(stats);
     } catch (e) {
-      showToast(e.message || 'Failed to load branches');
+      setError(e.message || 'Failed to load branches');
       setBranches([]);
+    } finally {
+      setLoading(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { refresh(); }, []);
+  useEffect(() => { refresh(); }, [refresh]);
+
+  useEffect(() => {
+    if (!menuFor) return;
+    const onDown = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setMenuFor(null);
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [menuFor]);
 
   const handleSave = async (data) => {
     try {
@@ -44,6 +97,7 @@ export default function AdminBranches() {
   };
 
   const handleDelete = async (branch) => {
+    setMenuFor(null);
     if (!confirm(`Delete "${branch.name}"? This will remove a live pickup location.`)) return;
     try {
       await apiFetch(`/admin/branches/${branch.id}`, { method: 'DELETE' });
@@ -54,222 +108,281 @@ export default function AdminBranches() {
     }
   };
 
-  const filtered = branches.filter(b =>
-    !q || b.name.toLowerCase().includes(q.toLowerCase()) || b.address.toLowerCase().includes(q.toLowerCase())
-  );
+  const filtered = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return branches.filter((b) => {
+      if (status !== 'all' && branchState(b) !== status) return false;
+      if (!needle) return true;
+      return [b.name, b.address, b.manager_name, b.hours, b.phone]
+        .filter(Boolean)
+        .some((v) => String(v).toLowerCase().includes(needle));
+    });
+  }, [branches, q, status]);
 
-  const statusClass = (status) => (status === 'Open' ? 'active' : 'suspended');
+  const openCount = branches.filter(isBranchOpen).length;
+  const totalBranches = branches.length;
+  const activeLots = branches.reduce((sum, b) => sum + (b.active_lot_count || 0), 0);
+  const monthlyRevenue = analytics?.kpis?.totalRevenue ?? null;
+  const revenueDelta = analytics?.kpis?.revenueDelta;
 
-  const statusLabel = (status) => status;
-
-  const getBranchImage = (branch) => branch.branch_image_url || branch.image_url || null;
+  const exportCsv = () => {
+    const header = ['Branch', 'Address', 'Manager', 'Status', 'Lots', 'Active Lots', 'Revenue'];
+    const rows = branches.map((b) => [
+      b.name, b.address || '', b.manager_name || '', b.status || '',
+      b.lot_count || 0, b.active_lot_count || 0, b.revenue || 0,
+    ]);
+    const csv = [header, ...rows]
+      .map((r) => r.map((c) => `"${String(c ?? '').replace(/"/g, '""')}"`).join(','))
+      .join('\n');
+    if (typeof URL === 'undefined' || typeof URL.createObjectURL !== 'function') {
+      showToast('Branch list ready to export');
+      return;
+    }
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `atany-branches-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    if (typeof URL.revokeObjectURL === 'function') URL.revokeObjectURL(url);
+    showToast('Branch list exported');
+  };
 
   return (
-    <>
-      <div className="panel" style={{ padding: '16px 20px', display: 'flex', gap: 12, alignItems: 'flex-start', background: 'rgba(199,166,106,.08)', borderColor: 'var(--gold-light)' }}>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: 18, height: 18, color: 'var(--navy)', flexShrink: 0, marginTop: 2 }}>
-          <path d="M12 22s7-7.4 7-12.5A7 7 0 0 0 5 9.5C5 14.6 12 22 12 22Z"/>
-          <circle cx="12" cy="9.5" r="2.4"/>
-        </svg>
-        <p style={{ fontSize: 12, color: 'var(--text)', lineHeight: 1.6 }}>
-          <b style={{ color: 'var(--navy)' }}>Branches are managed here, and only here.</b> Whatever you add, edit, or remove in this list is what appears on the customer-facing GPS locator and in the "preferred branch" pickers on the customer and shop owner dashboards — admins are the only ones who can open, close, or relocate a branch.
-        </p>
-      </div>
-
-      <div className="panel">
-        <div className="toolbar">
-          <div className="search-box">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-            <input type="text" value={q} onChange={(e)=>setQ(e.target.value)} placeholder="Search branches..." />
-          </div>
-          <button className="btn btn-primary" onClick={() => { setEditing(null); setOpen(true); }}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4"><path d="M12 5v14M5 12h14"/></svg>
-            Add Branch
+    <div className="adm-page">
+      <div className="adm-head">
+        <div>
+          <h1 className="adm-head__title">Branches</h1>
+          <p className="adm-head__sub">
+            {loading ? 'Loading the ATANY network…' : `${totalBranches} operating locations across the ATANY network`}
+          </p>
+        </div>
+        <div className="adm-head__actions">
+          <button type="button" className="adm-btn" onClick={exportCsv} disabled={!branches.length}>
+            <Download size={14} /> Export
+          </button>
+          <button type="button" className="adm-btn adm-btn--primary" onClick={() => { setEditing(null); setOpen(true); }}>
+            <Plus size={15} /> Add branch
           </button>
         </div>
+      </div>
 
-        <div className="branches-grid" style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))',
-          gap: 16,
-          padding: '16px 20px'
-        }}>
-          {filtered.length ? filtered.map((b) => {
-            const branchImage = getBranchImage(b);
+      {error && <div className="adm-error">{error}</div>}
+
+      {loading ? (
+        <div className="adm-kpi-grid">
+          <KpiSkeleton /><KpiSkeleton /><KpiSkeleton /><KpiSkeleton />
+        </div>
+      ) : (
+        <div className="adm-kpi-grid">
+          <article className="adm-kpi">
+            <MoreVertical size={15} className="adm-kpi__dots" aria-hidden="true" />
+            <div className="adm-kpi__top">
+              <div className="adm-kpi__icon"><Building2 size={18} /></div>
+              <div>
+                <p className="adm-kpi__label">Total Branches</p>
+                <p className="adm-kpi__value">{totalBranches}</p>
+              </div>
+            </div>
+            <div className="adm-kpi__foot">
+              <span className="adm-pill adm-pill--blue">{openCount} open</span>
+              <span className="adm-kpi__context">across the ATANY network</span>
+            </div>
+          </article>
+
+          <article className="adm-kpi">
+            <MoreVertical size={15} className="adm-kpi__dots" aria-hidden="true" />
+            <div className="adm-kpi__top">
+              <div className="adm-kpi__icon"><Gem size={18} /></div>
+              <div>
+                <p className="adm-kpi__label">Active Lots</p>
+                <p className="adm-kpi__value">{activeLots}</p>
+              </div>
+            </div>
+            <div className="adm-kpi__foot">
+              <span className="adm-pill">Live + scheduled</span>
+              <span className="adm-kpi__context">branch-scoped listings</span>
+            </div>
+          </article>
+
+          <article className="adm-kpi">
+            <MoreVertical size={15} className="adm-kpi__dots" aria-hidden="true" />
+            <div className="adm-kpi__top">
+              <div className="adm-kpi__icon adm-kpi__icon--gold"><Wallet size={18} /></div>
+              <div>
+                <p className="adm-kpi__label">Monthly Revenue</p>
+                <p className="adm-kpi__value">{compactPeso(monthlyRevenue)}</p>
+              </div>
+            </div>
+            <div className="adm-kpi__foot">
+              {Number.isFinite(revenueDelta) ? (
+                <span className={`adm-pill ${revenueDelta >= 0 ? '' : 'adm-pill--grey'}`}>
+                  {revenueDelta >= 0 ? '+' : ''}{revenueDelta}%
+                </span>
+              ) : (
+                <span className="adm-pill adm-pill--grey">Recognized</span>
+              )}
+              <span className="adm-kpi__context">vs last month</span>
+            </div>
+          </article>
+
+          <article className="adm-kpi">
+            <MoreVertical size={15} className="adm-kpi__dots" aria-hidden="true" />
+            <div className="adm-kpi__top">
+              <div className="adm-kpi__icon"><Clock3 size={18} /></div>
+              <div>
+                <p className="adm-kpi__label">Open Now</p>
+                <p className="adm-kpi__value">{openCount}/{totalBranches}</p>
+              </div>
+            </div>
+            <div className="adm-kpi__foot">
+              <span className="adm-pill adm-pill--green">Operational</span>
+              <span className="adm-kpi__context">branches accepting pickups</span>
+            </div>
+          </article>
+        </div>
+      )}
+
+      <div className="adm-filter-panel">
+        <div className="adm-search">
+          <Search size={16} />
+          <input
+            type="text"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search branch, address or manager..."
+            aria-label="Search branches"
+          />
+        </div>
+        <div className="adm-pills" role="group" aria-label="Filter branches by status">
+          {STATUS_FILTERS.map((f) => (
+            <button
+              key={f.value}
+              type="button"
+              className={`adm-pills__btn${status === f.value ? ' is-active' : ''}`}
+              onClick={() => setStatus(f.value)}
+              aria-pressed={status === f.value}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="adm-branch-grid">
+          <CardSkeleton /><CardSkeleton /><CardSkeleton />
+          <CardSkeleton /><CardSkeleton /><CardSkeleton />
+        </div>
+      ) : filtered.length ? (
+        <div className="adm-branch-grid">
+          {filtered.map((b) => {
+            const open = isBranchOpen(b);
+            const image = b.image_url || b.branch_image_url;
             return (
-              <article key={b.id} className="branch-card" style={{
-                background: '#fff',
-                border: '1px solid rgba(230,226,218,.7)',
-                borderRadius: '12px',
-                boxShadow: '0 1px 3px rgba(22,43,77,0.06)',
-                overflow: 'hidden',
-                display: 'flex',
-                flexDirection: 'column'
-              }}>
-                <div style={{
-                  display: 'flex',
-                  gap: 12,
-                  padding: 14
-                }}>
-                  <div style={{
-                    width: 110,
-                    height: 110,
-                    borderRadius: '10px',
-                    overflow: 'hidden',
-                    flexShrink: 0,
-                    background: 'var(--soft)'
-                  }}>
-                    {branchImage ? (
-                      <img
-                        src={branchImage}
-                        alt={`${b.name} branch`}
-                        style={{
-                          width: '100%',
-                          height: '100%',
-                          objectFit: 'cover'
-                        }}
-                        onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }}
-                      />
-                    ) : null}
-                    {!branchImage && (
-                      <div style={{
-                        width: '100%',
-                        height: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        color: 'var(--muted)',
-                        fontSize: 28
-                      }}>
-                        <ImageIcon size={28} />
-                      </div>
-                    )}
+              <article
+                key={b.id}
+                className="adm-branch-card"
+                role="button"
+                tabIndex={0}
+                onClick={() => navigate(`/admin/branches/${b.id}`)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    navigate(`/admin/branches/${b.id}`);
+                  }
+                }}
+                aria-label={`Open ${b.name} details`}
+              >
+                <div className={`adm-branch-card__media${image ? '' : ' adm-branch-card__media--empty'}`}>
+                  {image && <img src={image} alt={`${b.name} branch`} loading="lazy" />}
+                  {!image && <Building2 size={26} />}
+                  <span className={`adm-branch-card__badge${open ? '' : ' adm-branch-card__badge--closed'}`}>
+                    <i /> {branchStatusLabel(b)}
+                  </span>
+                  <button
+                    type="button"
+                    className="adm-branch-card__menu-btn"
+                    aria-label={`Actions for ${b.name}`}
+                    onClick={(e) => { e.stopPropagation(); setMenuFor(menuFor === b.id ? null : b.id); }}
+                  >
+                    <MoreVertical size={15} />
+                  </button>
+                </div>
+
+                <div className="adm-branch-card__body">
+                  <h3 className="adm-branch-card__name">{b.name}</h3>
+                  {b.address && <p className="adm-branch-card__addr">{b.address}</p>}
+                  <div className="adm-branch-card__meta">
+                    <User size={14} />
+                    <span>Manager · {b.manager_name || 'Unassigned'}</span>
                   </div>
 
-                  <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                  <div className="adm-branch-card__stats">
                     <div>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 6 }}>
-                        <h3 style={{
-                          fontSize: 15,
-                          fontWeight: 800,
-                          color: 'var(--navy)',
-                          margin: 0,
-                          lineHeight: 1.3
-                        }}>
-                          {b.name}
-                        </h3>
-                        <span className={`badge ${statusClass(b.status)}`} style={{ flexShrink: 0, marginTop: 2 }}>
-                          {statusLabel(b.status)}
-                        </span>
-                      </div>
-
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, fontSize: 12, color: 'var(--text)' }}>
-                        {b.address && (
-                          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}>
-                            <MapPin size={14} style={{ color: 'var(--muted)', flexShrink: 0, marginTop: 1 }} />
-                            <span style={{ wordBreak: 'break-word' }}>{b.address}</span>
-                          </div>
-                        )}
-                        {b.hours && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <Clock size={14} style={{ color: 'var(--muted)', flexShrink: 0 }} />
-                            <span>{b.hours}</span>
-                          </div>
-                        )}
-                        {b.phone && (
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                            <Phone size={14} style={{ color: 'var(--muted)', flexShrink: 0 }} />
-                            <span>{b.phone}</span>
-                          </div>
-                        )}
-                      </div>
+                      <div className="adm-branch-card__stat-label">Lots</div>
+                      <div className="adm-branch-card__stat-value">{b.lot_count || 0}</div>
                     </div>
-
-                    <div style={{
-                      display: 'flex',
-                      justifyContent: 'flex-end',
-                      gap: 8,
-                      marginTop: 10
-                    }}>
-                      <button
-                        className="btn-ghost"
-                        onClick={() => { setEditing(b); setOpen(true); }}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          padding: '7px 14px',
-                          fontSize: 12,
-                          fontWeight: 700,
-                          border: '1px solid var(--line)',
-                          borderRadius: '8px',
-                          background: 'transparent',
-                          color: 'var(--navy)',
-                          cursor: 'pointer',
-                          transition: 'all .15s ease',
-                          height: 36
-                        }}
-                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--gold)'; e.currentTarget.style.background = 'rgba(196,162,101,.08)'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--line)'; e.currentTarget.style.background = 'transparent'; }}
-                      >
-                        <Edit size={13} /> Edit
-                      </button>
-                      <button
-                        className="btn-danger-ghost"
-                        onClick={() => handleDelete(b)}
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 6,
-                          padding: '7px 14px',
-                          fontSize: 12,
-                          fontWeight: 700,
-                          border: '1px solid var(--danger)',
-                          borderRadius: '8px',
-                          background: 'transparent',
-                          color: 'var(--danger)',
-                          cursor: 'pointer',
-                          transition: 'all .15s ease',
-                          height: 36
-                        }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(220,38,38,.08)'; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
-                      >
-                        <Trash2 size={13} /> Delete
-                      </button>
+                    <div className="adm-branch-card__stat--right">
+                      <div className="adm-branch-card__stat-label">Revenue</div>
+                      <div className="adm-branch-card__stat-value">{peso(b.revenue || 0)}</div>
                     </div>
                   </div>
+
+                  {menuFor === b.id && (
+                    <div className="adm-menu" ref={menuRef} role="menu" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        className="adm-menu__item"
+                        role="menuitem"
+                        onClick={(e) => { e.stopPropagation(); setMenuFor(null); navigate(`/admin/branches/${b.id}`); }}
+                      >
+                        <ChevronRight size={14} /> View details
+                      </button>
+                      <button
+                        type="button"
+                        className="adm-menu__item"
+                        role="menuitem"
+                        onClick={(e) => { e.stopPropagation(); setMenuFor(null); setEditing(b); setOpen(true); }}
+                      >
+                        <Building2 size={14} /> Edit branch
+                      </button>
+                      <button
+                        type="button"
+                        className="adm-menu__item adm-menu__item--danger"
+                        role="menuitem"
+                        onClick={(e) => { e.stopPropagation(); handleDelete(b); }}
+                      >
+                        <Trash2Icon /> Delete branch
+                      </button>
+                    </div>
+                  )}
                 </div>
               </article>
             );
-          }) : (
-            <div className="empty-state" style={{
-              gridColumn: '1 / -1',
-              textAlign: 'center',
-              padding: '32px 20px',
-              color: 'var(--muted)',
-              background: 'var(--ivory)',
-              border: '1px solid var(--line)',
-              borderRadius: '12px'
-            }}>
-              <p>No branches match your search.</p>
-            </div>
-          )}
+          })}
         </div>
+      ) : (
+        <div className="adm-empty">No branches match your search.</div>
+      )}
 
-        <div className="pager" style={{ padding: '0 22px 20px' }}>
-          <span style={{ fontSize: 12, color: 'var(--muted)' }}>{filtered.length} branches</span>
-        </div>
-      </div>
-
-      <div className="panel" style={{ padding: '18px 20px' }}>
-        <p style={{ fontSize: 12.5, color: 'var(--muted)' }}>
-          The full GPS map with live distance and directions is on the customer-facing locator page.
+      {!loading && !error && (
+        <p className="adm-footnote">
+          {filtered.length} of {totalBranches} branches shown. Select a branch to inspect its listings and auctions.
         </p>
-        <a className="btn btn-outline" style={{ marginTop: 12 }} href="/branches">Open GPS Branch Locator →</a>
-      </div>
+      )}
 
       <BranchModal open={open} onClose={() => { setOpen(false); setEditing(null); }} initial={editing} onSave={handleSave} />
-    </>
+    </div>
+  );
+}
+
+function Trash2Icon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" />
+    </svg>
   );
 }

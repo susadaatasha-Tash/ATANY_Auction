@@ -22,6 +22,7 @@ const ChevronIcon = () => (
 export function PortalPageHeader({
   title,
   eyebrow,
+  subtitle,
   search,
   actions,
   user,
@@ -68,9 +69,10 @@ export function PortalPageHeader({
             <Menu size={18} />
           </button>
         )}
-        <div className="portal-page-header__titles">
+        <div className={`portal-page-header__titles${subtitle ? ' portal-page-header__titles--stacked' : ''}`}>
           {eyebrow && <span className="portal-page-header__eyebrow">{eyebrow}</span>}
           <h1 className="portal-page-header__title">{title}</h1>
+          {subtitle && <span className="portal-page-header__subtitle">{subtitle}</span>}
         </div>
       </div>
 

@@ -28,32 +28,22 @@ function getUserInitials(name, email) {
   return parts.slice(0, 2).map(p => p.charAt(0).toUpperCase()).join('');
 }
 
-export function PurchaseHeader({ globalQuery, onGlobalQuerySubmit, liveLots }) {
+export function PurchaseHeader({
+  liveLots,
+  onMenuToggle,
+  onSidebarToggle,
+  sidebarCollapsed,
+}) {
   const navigate = useNavigate();
   const { user } = useAuth();
   const { branchName } = useBranch();
   const displayName = getDisplayName(user);
   const initials = getUserInitials(displayName, user?.email);
 
-  const search = (
-    <form
-      className="mp-header-search portal-search"
-      onSubmit={(e) => {
-        e.preventDefault();
-        onGlobalQuerySubmit?.(globalQuery);
-      }}
-      role="search"
-    >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
-      <input
-        type="search"
-        value={globalQuery}
-        onChange={(e) => onGlobalQuerySubmit?.(e.target.value, { live: true })}
-        placeholder="Search lots, branches..."
-        aria-label="Search lots and branches"
-      />
-    </form>
-  );
+  // NOTE: the top-header search was removed on purpose — the page-level
+  // "Search your purchases..." field inside the My Purchases content owns the
+  // search. The header keeps the same left menu control the other customer
+  // pages use (drawer on mobile / sidebar collapse on desktop).
 
   const actions = (
     <>
@@ -74,7 +64,9 @@ export function PurchaseHeader({ globalQuery, onGlobalQuerySubmit, liveLots }) {
     <PortalPageHeader
       title="My Purchases"
       role="customer"
-      search={search}
+      onMenuToggle={onMenuToggle}
+      onSidebarToggle={onSidebarToggle}
+      sidebarCollapsed={sidebarCollapsed}
       actions={actions}
       user={{ initials, name: displayName, role: branchName || 'Customer' }}
       settingsTo="/customer/account"

@@ -91,7 +91,7 @@ Public:
   / (Landing page), /login (Log In), /signup (Create Account), /branches (Branch Locator / Find a Branch)
 Customer (logged in as customer):
   /customer (Dashboard), /customer/auctions (Auctions — Live + Scheduled), /customer/bids (My Bids),
-  /customer/watchlist (My Watchlist), /customer/purchases (My Purchases), /customer/account (Account Settings)
+  /customer/watchlist (My Watchlist), /customer/purchases (My Purchases), /customer/account (Profile)
   Compatibility: /customer/live redirects to /customer/auctions
 Seller (logged in as shop owner):
   /shop (Dashboard), /shop/listings (My Listings), /shop/auctions (My Auctions),

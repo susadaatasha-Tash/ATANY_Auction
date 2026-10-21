@@ -13,6 +13,7 @@ import Login from './pages/Login';
 import Signup from './pages/Signup';
 import AuthCallback from './pages/AuthCallback';
 import SelectBranch from './pages/SelectBranch';
+import AccountSuspended from './pages/AccountSuspended';
 import BranchLocator from './roles/customer/pages/BranchLocator';
 import { customerRoutes } from './roles/customer/routes';
 import { shopOwnerRoutes } from './roles/shop-owner/routes';
@@ -32,6 +33,7 @@ export default function App() {
             <Route path="/branches" element={<BranchLocator />} />
             <Route path="/seller-application" element={<Navigate to="/" replace />} />
             <Route path="/select-branch" element={<RequireRole role="customer"><SelectBranch /></RequireRole>} />
+            <Route path="/account-suspended" element={<AccountSuspended />} />
             {/* Customer */}
             <Route path="/customer" element={<RequireRole role="customer"><CustomerLayout /></RequireRole>}>
               {customerRoutes.map((r) => <Route key={r.path} path={r.path} element={r.element} />)}

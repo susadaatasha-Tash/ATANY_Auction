@@ -1,7 +1,7 @@
 // frontend/src/roles/customer/pages/__tests__/MyPurchases.test.jsx
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
+import { MemoryRouter, Routes, Route, Outlet } from 'react-router-dom';
 import React from 'react';
 
 const apiFetch = vi.fn();
@@ -146,5 +146,73 @@ describe('MyPurchases redesign', () => {
       expect(screen.getByText('No purchases yet')).toBeInTheDocument();
     });
     expect(screen.getByText(/Explore Auctions/)).toBeInTheDocument();
+  });
+
+  it('does NOT render a search input inside the top header', async () => {
+    apiFetch.mockImplementation((path) => {
+      if (path === '/customer/orders') return Promise.resolve(orders);
+      return Promise.resolve([]);
+    });
+
+    const { container } = renderPage(<MyPurchases />);
+    await waitFor(() => expect(screen.getByText('Gold Ring')).toBeInTheDocument());
+
+    const header = container.querySelector('.portal-page-header');
+    expect(header).toBeTruthy();
+    expect(header.querySelector('.portal-page-header__search')).toBeNull();
+    expect(header.querySelectorAll('input').length).toBe(0);
+    expect(screen.queryByLabelText('Search lots and branches')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Search lots, branches...')).not.toBeInTheDocument();
+  });
+
+  it('keeps the page-level "Search your purchases..." field working', async () => {
+    apiFetch.mockImplementation((path) => {
+      if (path === '/customer/orders') return Promise.resolve(orders);
+      return Promise.resolve([]);
+    });
+
+    renderPage(<MyPurchases />);
+    await waitFor(() => expect(screen.getByText('Gold Ring')).toBeInTheDocument());
+
+    const search = screen.getByLabelText('Search your purchases');
+    expect(search).toHaveAttribute('placeholder', 'Search your purchases...');
+    fireEvent.change(search, { target: { value: 'diamond' } });
+    await waitFor(() => expect(screen.queryByText('Gold Ring')).not.toBeInTheDocument());
+    expect(screen.getByText('Diamond Necklace')).toBeInTheDocument();
+  });
+
+  it('renders the menu (hamburger) control from the customer layout outlet context', async () => {
+    apiFetch.mockImplementation((path) => {
+      if (path === '/customer/orders') return Promise.resolve(orders);
+      return Promise.resolve([]);
+    });
+
+    const toggleMenu = vi.fn();
+    const toggleSidebar = vi.fn();
+    // The customer layout hands the SAME drawer/collapse controls to the page
+    // through the outlet context.
+    const Layout = () => (
+      <Outlet context={{ toggleMenu, toggleSidebar, sidebarCollapsed: false }} />
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/customer/purchases']}>
+        <Routes>
+          <Route element={<Layout />}>
+            <Route path="/customer/purchases" element={<MyPurchases />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>
+    );
+    await waitFor(() => expect(screen.getByText('Gold Ring')).toBeInTheDocument());
+
+    const hamburger = screen.getByLabelText('Open navigation menu');
+    expect(hamburger).toBeInTheDocument();
+    fireEvent.click(hamburger);
+    expect(toggleMenu).toHaveBeenCalled();
+
+    const collapse = screen.getByLabelText('Toggle sidebar');
+    fireEvent.click(collapse);
+    expect(toggleSidebar).toHaveBeenCalled();
   });
 });

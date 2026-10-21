@@ -36,23 +36,33 @@ export function BranchProvider({ children }) {
   }, []);
 
   // Fetch preferred branch only after auth hydration and when authenticated
+  const loadPreferredBranch = useCallback(async () => {
+    const pref = await apiFetch('/customer/preferred-branch').catch(() => null);
+    if (pref?.preferred_branch_id) {
+      setBranchId(pref.preferred_branch_id);
+      setBranchName(pref.branch_name || '');
+      setPreferredBranchId(pref.preferred_branch_id);
+    }
+    return pref;
+  }, [setPreferredBranchId]);
+
   useEffect(() => {
     if (authLoading) return;
     if (!userId) return;
     let cancelled = false;
     (async () => {
       try {
-        const pref = await apiFetch('/customer/preferred-branch').catch(() => null);
-        if (cancelled) return;
-        if (pref?.preferred_branch_id) {
-          setBranchId(pref.preferred_branch_id);
-          setBranchName(pref.branch_name || '');
-          setPreferredBranchId(pref.preferred_branch_id);
-        }
+        await loadPreferredBranch();
       } catch {}
     })();
     return () => { cancelled = true; };
-  }, [authLoading, userId, setPreferredBranchId]);
+  }, [authLoading, userId, loadPreferredBranch]);
+
+  // Re-read the preferred branch from the server (after a Profile save) so the
+  // customer header reflects the new branch without a page reload.
+  const refreshBranch = useCallback(async () => {
+    try { return await loadPreferredBranch(); } catch { return null; }
+  }, [loadPreferredBranch]);
 
   // Switch branch — updates local state only after backend succeeds
   const switchBranch = useCallback(async (newBranchId) => {
@@ -74,7 +84,7 @@ export function BranchProvider({ children }) {
   }, [branches, showToast, setPreferredBranchId]);
 
   return (
-    <BranchContext.Provider value={{ branchId, branchName, branches, loading, switchBranch }}>
+    <BranchContext.Provider value={{ branchId, branchName, branches, loading, switchBranch, refreshBranch }}>
       {children}
     </BranchContext.Provider>
   );

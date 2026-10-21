@@ -3,11 +3,11 @@
 import { Router } from 'express';
 import { crud as productCrud } from '../controllers/admin/product.controller.js';
 import { crud as auctionCrud } from '../controllers/admin/auction.controller.js';
-import { listUsers, createUser, updateUser, suspendUser } from '../controllers/admin/user.controller.js';
+import { listUsers, getUsersSummary, createUser, updateUser, suspendUser, inviteUser, resendInvite, cancelInvite } from '../controllers/admin/user.controller.js';
 import { listTransactions, markPaid, updateOrderStatus } from '../controllers/admin/transaction.controller.js';
 import { getAnalytics, exportCsv } from '../controllers/admin/analytics.controller.js';
-import { listAlerts, updateAlert } from '../controllers/admin/security.controller.js';
-import { listBranches, createBranch, updateBranch, deleteBranch } from '../controllers/admin/branch.controller.js';
+import { listAlerts, getAlert, updateAlert } from '../controllers/admin/security.controller.js';
+import { listBranches, getBranchOverview, createBranch, updateBranch, deleteBranch } from '../controllers/admin/branch.controller.js';
 import { listHistory, markAllRead, markOneRead, deleteNotification } from '../controllers/admin/notification.controller.js';
 
 const router = Router();
@@ -15,17 +15,29 @@ const router = Router();
 router.get('/products', productCrud.list); router.get('/products/:id', productCrud.get); router.post('/products', productCrud.create); router.post('/products/bulk', productCrud.bulk); router.put('/products/:id', productCrud.update); router.delete('/products/:id', productCrud.remove);
 // Auctions — monitor-only (shop owners create/manage their own via /shop-owner/auctions)
 router.get('/auctions', auctionCrud.list); router.get('/auctions/:id', auctionCrud.get);
-// Users
-router.get('/users', listUsers); router.post('/users', createUser); router.put('/users/:id', updateUser); router.patch('/users/:id/suspend', suspendUser);
+// Users — list/aggregate/update/suspend + real staff invitation flow
+router.get('/users', listUsers);
+router.get('/users/summary', getUsersSummary);
+router.post('/users', createUser);
+router.post('/users/invite', inviteUser);
+router.put('/users/:id', updateUser);
+router.patch('/users/:id/suspend', suspendUser);
+router.patch('/users/:id/resend-invite', resendInvite);
+router.delete('/users/:id/invite', cancelInvite);
 // Transactions / Orders
 router.get('/transactions', listTransactions); router.patch('/transactions/:id/pay', markPaid);
 router.patch('/orders/:id/status', updateOrderStatus);
 // Analytics — spec 4.7 real SQL aggregates + CSV export from same queries
 router.get('/analytics', getAnalytics); router.get('/analytics/export', exportCsv);
 // Security — spec 4.2 alerts
-router.get('/security-alerts', listAlerts); router.patch('/security-alerts/:id', updateAlert);
+router.get('/security-alerts', listAlerts);
+router.get('/security-alerts/:id', getAlert);
+router.patch('/security-alerts/:id', updateAlert);
 // Branches — single source of truth spec 4.5
-router.get('/branches', listBranches); router.post('/branches', createBranch); router.put('/branches/:id', updateBranch); router.delete('/branches/:id', deleteBranch);
+router.get('/branches', listBranches);
+// Branch-centric monitoring read (listings + auctions + KPIs, server-scoped)
+router.get('/branches/:id/overview', getBranchOverview);
+router.post('/branches', createBranch); router.put('/branches/:id', updateBranch); router.delete('/branches/:id', deleteBranch);
 // Notifications — automatic system-generated only (manual POST removed)
 // Mutations are scoped to the authenticated admin's own rows (see controller).
 router.get('/notifications/history', listHistory);

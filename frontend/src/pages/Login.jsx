@@ -45,7 +45,9 @@ export default function Login() {
     } else if (role === 'shop_owner') {
       navigate('/shop', { replace: true });
     } else if (!preferredBranchId) {
-      navigate('/select-branch', { replace: true });
+      // Keep the original destination through the branch picker so a guest who
+      // signs in from a landing-page bid returns to the exact auction.
+      navigate(`/select-branch?redirect=${encodeURIComponent(redirect)}`, { replace: true });
     } else {
       navigate('/customer', { replace: true });
     }

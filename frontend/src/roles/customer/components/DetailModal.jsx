@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { BidStepper } from './BidStepper';
 import { formatCountdown } from '../../../shared/hooks/useAuctionCountdown';
 import { useToast } from '../../../shared/components/Toast';
+import { socket } from '../../../shared/lib/socketClient';
 
 function peso(n) {
   const num = Number(n);
@@ -55,6 +56,19 @@ export function DetailModal({ auction, isFavorited, isNotifying, onClose, onTogg
     return Math.max(0, Math.floor((new Date(startRaw) - now) / 1000));
   })();
   const liveSec = countdownSecRaw;
+  // Live viewer presence: while a CUSTOMER has a live auction open, the socket
+  // joins the auction room so the server can count this customer as a watcher
+  // (the admin monitor reads the same count). Closing the detail (or switching
+  // auctions) removes the viewer again — no ghost watchers.
+  useEffect(() => {
+    if (!isLive || !auction?.id) return undefined;
+    const id = String(auction.id);
+    try { socket.connect(); } catch { /* the socket is optional */ }
+    try { socket.emit('join:auction', id); } catch { /* noop */ }
+    return () => {
+      try { socket.emit('leave:auction', id); } catch { /* noop */ }
+    };
+  }, [isLive, auction?.id]);
   const handleClose = (e) => {
     e?.preventDefault();
     e?.stopPropagation();

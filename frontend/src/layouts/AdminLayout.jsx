@@ -14,10 +14,6 @@ const sections = [
     { to: '/admin/users', name: 'Users & Roles' },
     { to: '/admin/transactions', name: 'Orders' },
   ]},
-  { label: 'INVENTORY & AUCTIONS', items: [
-    { to: '/admin/products', name: 'Jewelry' },
-    { to: '/admin/auctions', name: 'Auctions' },
-  ]},
   { label: 'PLATFORM MANAGEMENT', items: [
     { to: '/admin/billing', name: 'Subscriptions' },
     { to: '/admin/analytics', name: 'Reports' },
@@ -27,15 +23,21 @@ const sections = [
 
 const titles = {
   '/admin': ['Dashboard'],
-  '/admin/products': ['Jewelry'],
-  '/admin/auctions': ['Auctions'],
   '/admin/users': ['Users & Roles'],
   '/admin/transactions': ['Orders'],
+  '/admin/orders': ['Orders'],
   '/admin/analytics': ['Reports'],
   '/admin/security': ['Security Alerts'],
   '/admin/notifications': ['Notifications'],
   '/admin/branches': ['Branches'],
   '/admin/billing': ['Subscriptions'],
+};
+
+// One-line context under the page title (Admin portal only).
+const subtitles = {
+  '/admin/transactions': 'Manage and monitor all customer orders and transactions across branches.',
+  '/admin/orders': 'Manage and monitor all customer orders and transactions across branches.',
+  '/admin/security': 'Monitor and review suspicious activities, security events, and account risks across the platform.',
 };
 
 function getUserInitials(name, email) {
@@ -65,7 +67,9 @@ export default function AdminLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { user, signOut } = useAuth();
   const { pathname } = useLocation();
-  const title = titles[pathname]?.[0] || titles['/admin'][0];
+  const title = titles[pathname]?.[0]
+    || (pathname.startsWith('/admin/branches') ? 'Branches' : titles['/admin'][0]);
+  const subtitle = subtitles[pathname] || null;
   const displayName = getDisplayName(user);
   const initials = getUserInitials(displayName, user?.email);
   // Subscriptions page owns its flat portal header (search + platform pill)
@@ -79,6 +83,7 @@ export default function AdminLayout() {
         {!isBilling && (
           <Topbar
             title={title}
+            subtitle={subtitle}
             role="admin"
             onMenuToggle={() => setOpen((v) => !v)}
             sidebarCollapsed={sidebarCollapsed}

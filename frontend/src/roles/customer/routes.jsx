@@ -13,8 +13,7 @@ import MyPurchases from './pages/MyPurchases';
 import OrderDetails from './pages/OrderDetails';
 import CompletePayment from './pages/CompletePayment';
 import PaymentSuccess from './pages/PaymentSuccess';
-import AccountSettings from './pages/AccountSettings';
-import Settings from './pages/Settings';
+import Profile from './pages/Profile';
 import Notifications from './pages/Notifications';
 import BranchLocator from './pages/BranchLocator';
 import MessagesPage from '../../shared/components/MessagesPage';
@@ -33,6 +32,8 @@ export const customerRoutes = [
   { path: 'orders/:id/success', element: <PaymentSuccess /> },
   { path: 'messages', element: <MessagesPage role="customer" /> },
   { path: 'notifications', element: <Notifications /> },
-  { path: 'account', element: <AccountSettings /> },
-  { path: 'settings', element: <Settings /> },
+  { path: 'account', element: <Profile /> },
+  // The customer Settings page was removed (its content moved to Profile).
+  // Old bookmarks/deep links redirect to Profile instead of 404ing.
+  { path: 'settings', element: <Navigate to="/customer/account" replace /> },
 ];

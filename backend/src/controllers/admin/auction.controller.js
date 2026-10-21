@@ -1,5 +1,6 @@
 import { pool } from '../../db/pool.js';
 import { listAuctions as listAuctionsService, effectiveStatus } from '../../services/auctionService.js';
+import { getWatcherCount } from '../../services/auctionPresence.js';
 // Admin is monitor-only for auctions — shop owners create/manage their own (see shop-owner/auction.controller.js).
 // This controller intentionally exposes read-only listing; create/update/delete were removed.
 export const crud = {
@@ -62,16 +63,18 @@ export const crud = {
       }
 
       const now = new Date();
-      const computedStatus = effectiveStatus(auction.start_time, auction.end_time);
+      const computedStatus = effectiveStatus(auction.start_time, auction.end_time, auction.status);
 
       res.json({
         id: auction.id,
         auction_code: auction.auction_code,
         start_price: auction.start_price,
         current_bid: auction.current_bid,
+        minimum_bid_increment: auction.minimum_bid_increment,
         status: computedStatus,
         start_time: auction.start_time,
         end_time: auction.end_time,
+        paused_at: auction.paused_at,
         endsInSec: Math.max(0, Math.floor((new Date(auction.end_time) - now) / 1000)),
         product: {
           id: product.id,
@@ -101,6 +104,11 @@ export const crud = {
         })),
         total_bids: bids.length,
         participants: uniqueBidders,
+        // Live viewer presence — unique authenticated CUSTOMERS viewing now.
+        watchers: getWatcherCount(id),
+        // The current leader (highest eligible bid). Only an ended auction has
+        // a winner; for a live auction this is the leader, never "the winner".
+        leader: bids.length ? { name: bids[0].bidder_name || 'Anonymous', amount: bids[0].amount } : null,
         order: orderInfo,
       });
     } catch (e) {

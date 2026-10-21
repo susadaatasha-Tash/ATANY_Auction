@@ -10,6 +10,7 @@ import { getReminders, addReminder, removeReminder } from '../controllers/custom
 import { getOrders, payOrder } from '../controllers/customer/order.controller.js';
 import { getOrderDetails, createCheckout } from '../controllers/customer/payment.controller.js';
 import { getAccount, updateAccount, getPreferredBranch, setPreferredBranch } from '../controllers/customer/account.controller.js';
+import { submitSupportRequest } from '../controllers/customer/support.controller.js';
 import { listNotifications, markAllRead, markOneRead, deleteNotification } from '../controllers/customer/notification.controller.js';
 
 const router = Router();
@@ -33,6 +34,7 @@ router.post('/orders/:id/payment', createCheckout);
 router.post('/orders/:id/pay', payOrder); // legacy: Pay at Branch Counter fallback
 router.get('/account', getAccount);
 router.put('/account', updateAccount);
+router.post('/support', submitSupportRequest); // authenticated customer support request
 router.get('/preferred-branch', getPreferredBranch);
 router.put('/preferred-branch', setPreferredBranch);
 router.get('/notifications', listNotifications);

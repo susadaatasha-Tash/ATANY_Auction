@@ -5,6 +5,7 @@ import { PortalPageHeader } from './PortalPageHeader';
 export function Topbar({
   title,
   eyebrow,
+  subtitle,
   search,
   actions,
   role,
@@ -44,6 +45,7 @@ export function Topbar({
     <PortalPageHeader
       title={title}
       eyebrow={eyebrow}
+      subtitle={subtitle}
       search={search}
       actions={resolvedActions}
       user={user}

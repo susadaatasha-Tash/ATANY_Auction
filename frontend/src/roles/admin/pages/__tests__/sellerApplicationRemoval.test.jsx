@@ -2,7 +2,7 @@
 // Product scope change: Seller Application removed from Admin Portal + Landing/Public.
 // Covers the required removal cases: admin sidebar/route, landing CTAs, public route,
 // registration/seller-auth preserved, and no seller-application API requests fired.
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import React from 'react';
@@ -49,8 +49,15 @@ vi.mock('../../../../shared/components/Topbar', () => ({
     <div data-testid="topbar"><span>{title}</span></div>
   ),
 }));
+// Mutable so a test can render the landing page as a guest (public state).
+const authMock = {
+  user: { id: 'admin-1', email: 'admin@example.com', user_metadata: {} },
+  role: 'customer',
+  loading: false,
+};
+const GUEST_USER = { id: 'admin-1', email: 'admin@example.com', user_metadata: {} };
 vi.mock('../../../../shared/hooks/useAuth', () => ({
-  useAuth: () => ({ user: { id: 'admin-1', email: 'admin@example.com', user_metadata: {} }, signOut: vi.fn(), role: 'customer', loading: false }),
+  useAuth: () => ({ ...authMock, signOut: vi.fn() }),
   RequireRole: ({ children }) => <>{children}</>,
   AuthProvider: ({ children }) => <>{children}</>,
 }));
@@ -161,6 +168,13 @@ describe('Seller Application removal — Landing / Public', () => {
   beforeEach(() => {
     apiFetch.mockReset();
     apiFetch.mockResolvedValue([]);
+    // The public landing page is rendered as an anonymous visitor here — that is
+    // the public state these assertions are about.
+    authMock.user = null;
+  });
+
+  afterEach(() => {
+    authMock.user = GUEST_USER;
   });
 
   it('landing hero has no seller-application CTA', () => {

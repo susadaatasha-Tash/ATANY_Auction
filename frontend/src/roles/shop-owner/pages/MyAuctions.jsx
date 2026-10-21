@@ -4,6 +4,8 @@ import { apiFetch } from '../../../shared/lib/apiClient';
 import { useToast } from '../../../shared/components/Toast';
 import { CreateAuctionModal } from '../components/CreateAuctionModal';
 import { CreateAuctionWizard } from '../components/CreateAuctionWizard';
+import { AuctionWizard } from '../components/AuctionWizard';
+import { AuctionResultModal } from '../components/AuctionResultModal';
 import { socket } from '../../../shared/lib/socketClient';
 import { formatOpensIn } from '../../../shared/hooks/useAuctionCountdown';
 import '../my-auctions.css';
@@ -195,11 +197,8 @@ export default function MyAuctions() {
   const [confirmEnd, setConfirmEnd] = useState(null);
   const [resultAuction, setResultAuction] = useState(null);
   const [relistTarget, setRelistTarget] = useState(null);
-  const [relistStart, setRelistStart] = useState('');
-  const [relistEnd, setRelistEnd] = useState('');
   const [busyKey, setBusyKey] = useState(null);
   const [endingBusy, setEndingBusy] = useState(false);
-  const [relistBusy, setRelistBusy] = useState(false);
   const showToast = useToast();
 
   const fetchAll = useCallback(async () => {
@@ -355,12 +354,9 @@ export default function MyAuctions() {
     try {
       if (type === 'edit') { setEditing(auction); setOpen(true); return; }
       if (type === 'relist') {
-        const d = new Date(Date.now() + 24 * 3600 * 1000);
-        d.setHours(10, 0, 0, 0);
-        const e2 = new Date(d.getTime() + 7 * 86400000);
-        const pad = (n) => String(n).padStart(2, '0');
-        const toLocal = (dt) => `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
-        setRelistStart(toLocal(d)); setRelistEnd(toLocal(e2)); setRelistTarget(auction); return;
+        // The relist wizard prefills itself from the source auction.
+        setRelistTarget(auction);
+        return;
       }
       if (type === 'end') { setConfirmEnd(auction); return; }
       setBusyKey(`${type}:${auction.id}`);
@@ -397,17 +393,20 @@ export default function MyAuctions() {
     } catch (e) { showToast(e.message || 'End failed'); } finally { setEndingBusy(false); }
   };
 
-  const doRelist = async () => {
-    if (!relistTarget) return;
-    setRelistBusy(true);
-    try {
-      const start = relistStart ? new Date(relistStart).toISOString() : undefined;
-      const end = relistEnd ? new Date(relistEnd).toISOString() : undefined;
-      await apiFetch(`/shop-owner/auctions/${relistTarget.id}/relist`, { method: 'POST', body: JSON.stringify({ start_time: start, end_time: end }) });
-      showToast('Auction relisted');
-      setRelistTarget(null);
-      await fetchAll();
-    } catch (e) { showToast(e.message || 'Relist failed'); } finally { setRelistBusy(false); }
+  // Relist submission — the wizard owns validation, loading state and
+  // double-submit protection. This only calls the existing relist endpoint and
+  // refreshes the list, so the new auction appears in Scheduled/Live while the
+  // original ended auction stays in Ended.
+  const doRelist = async (payload) => {
+    if (!relistTarget) return false;
+    const created = await apiFetch(`/shop-owner/auctions/${relistTarget.id}/relist`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    showToast('Auction relisted');
+    setRelistTarget(null);
+    await fetchAll();
+    return created || true;
   };
 
   // Modal: Escape closes, focus first button
@@ -566,44 +565,27 @@ export default function MyAuctions() {
         </div>
       )}
 
-      {/* View Result — Esc closes */}
+      {/* View Result — premium structured result modal, server state on open */}
       {resultAuction && (
-        <div className="modal-overlay show" onClick={() => setResultAuction(null)} role="dialog" aria-modal="true" aria-labelledby="result-title">
-          <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
-            <div className="modal-box-head"><h3 id="result-title">Auction result — {resultAuction.title}</h3><button className="modal-close" onClick={() => setResultAuction(null)} aria-label="Close">×</button></div>
-            <div className="modal-box-body" style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
-              <div><b>Status:</b> {resultAuction.status} · {(resultAuction.leaderboard?.[0]?.is_winner ? 'Winner confirmed' : 'Ended — No winning bid')}</div>
-              <div><b>Winning bid:</b> {resultAuction.leaderboard?.[0] ? `${peso(resultAuction.leaderboard[0].amount)} — ${resultAuction.leaderboard[0].bidder_name}` : 'No winner'}</div>
-              <div><b>Period:</b> {resultAuction.start_time ? new Date(resultAuction.start_time).toLocaleString() : '—'} → {resultAuction.end_time ? new Date(resultAuction.end_time).toLocaleString() : '—'}</div>
-              <div><b>Bids:</b> {resultAuction.bid_count} · <b>Watchers:</b> {resultAuction.watcher_count}</div>
-              {resultAuction.leaderboard?.length > 0 && (
-                <div>
-                  <b>Top bidders:</b>
-                  <ul style={{ margin: '6px 0 0 16px' }}>{resultAuction.leaderboard.map(r => <li key={r.bidder_id}>{r.rank}. {r.bidder_name} — {peso(r.amount)} {r.is_winner ? '(Winner)' : ''}</li>)}</ul>
-                </div>
-              )}
-            </div>
-            <div className="modal-box-foot"><button className="btn btn-outline" onClick={() => setResultAuction(null)}>Close</button></div>
-          </div>
-        </div>
+        <AuctionResultModal
+          auction={resultAuction}
+          open={!!resultAuction}
+          onClose={() => setResultAuction(null)}
+          onRelist={(a) => { setResultAuction(null); setRelistTarget(a); }}
+        />
       )}
 
-      {/* Relist — Esc closes, prevents double submit */}
+      {/* Relist — the SAME 4-step wizard as Create Auction, prefilled from the
+          original lot. The original ended auction is never modified. */}
       {relistTarget && (
-        <div className="modal-overlay show" onClick={() => !relistBusy && setRelistTarget(null)} role="dialog" aria-modal="true" aria-labelledby="relist-title">
-          <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 460 }}>
-            <div className="modal-box-head"><h3 id="relist-title">Relist — {relistTarget.title}</h3><button className="modal-close" onClick={() => setRelistTarget(null)} aria-label="Close" disabled={relistBusy}>×</button></div>
-            <div className="modal-box-body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <p style={{ fontSize: 12, color: '#5c6674' }}>Creates a new auction from this lot. Original ended auction is preserved.</p>
-              <div className="form-row"><label>New start</label><input type="datetime-local" value={relistStart} onChange={e => setRelistStart(e.target.value)} /></div>
-              <div className="form-row"><label>New end</label><input type="datetime-local" value={relistEnd} onChange={e => setRelistEnd(e.target.value)} /></div>
-            </div>
-            <div className="modal-box-foot">
-              <button className="btn btn-outline" onClick={() => setRelistTarget(null)} disabled={relistBusy}>Cancel</button>
-              <button className="btn btn-primary" onClick={doRelist} disabled={relistBusy} aria-busy={relistBusy ? 'true' : undefined}>{relistBusy ? 'Relisting…' : 'Relist'}</button>
-            </div>
-          </div>
-        </div>
+        <AuctionWizard
+          key={`relist-${relistTarget.id}`}
+          mode="relist"
+          open={!!relistTarget}
+          sourceAuction={relistTarget}
+          onClose={() => setRelistTarget(null)}
+          onSubmit={doRelist}
+        />
       )}
     </div>
   );

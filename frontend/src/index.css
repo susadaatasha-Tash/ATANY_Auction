@@ -1844,6 +1844,14 @@ tbody tr:hover { background: rgba(196,162,101,.03); }
   min-width: 190px;
 }
 
+/* The 190px brand floor is wider than the wordmark itself and pushed the full
+   nav past the viewport between 769px and 900px, causing horizontal overflow.
+   Release it only in that band — the layout at <=768px (dropdown nav) and
+   >=901px (full nav with room to spare) is untouched. */
+@media (max-width: 900px) and (min-width: 769px) {
+  .brand { min-width: 0; }
+}
+
 .brand-mark { width: 42px; height: 42px; color: var(--navy); }
 
 .brand-name {
@@ -1919,6 +1927,12 @@ tbody tr:hover { background: rgba(196,162,101,.03); }
   position: relative;
   overflow: hidden;
   background-color: var(--cream);
+  /* WebP first (~92 KB) with the original PNG as fallback (~1.8 MB).
+     Same source artwork and framing — no visual change, no quality loss. */
+  background-image: image-set(
+    url("./assests/landing-page-background.webp") type("image/webp"),
+    url("./assests/landing-page-background.png") type("image/png")
+  );
   background-size: cover;
   background-position: center right;
   background-repeat: no-repeat;
@@ -2218,41 +2232,163 @@ section { padding: 55px 0; }
 .branch-info { display: grid; gap: 9px; margin-bottom: 22px; }
 .branch-info div { display: flex; gap: 9px; align-items: center; font-size: 11px; color: #4f5865; }
 
+/* ================================================================
+   LANDING CTA + FOOTER
+   The CTA is the page's strongest element (navy card on cream).
+   The footer stays a subtle neutral so the hierarchy reads
+   CTA → footer. Every link is a real route/mailto.
+   ================================================================ */
+
 /* CTA */
+.cta { padding-bottom: 48px; }
+
 .cta-box {
   background: var(--navy);
-  border-radius: var(--radius);
-  min-height: 100px;
-  padding: 24px 30px;
+  border-radius: 18px;
+  padding: 32px 36px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 25px;
-  color: white;
+  gap: 32px;
+  color: #fff;
+  box-shadow: var(--shadow-lg);
 }
 
-.cta-title { display: flex; align-items: center; gap: 14px; }
-.cta-icon { width: 38px; height: 38px; color: var(--gold-light); }
-.cta h2 { font-size: 24px; line-height: 1; margin-bottom: 4px; }
-.cta p { color: rgba(255,255,255,.6); font-size: 10px; }
-.cta .btn { background: #fffefa; color: var(--navy); min-width: 150px; }
+.cta-title { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.cta h2 { font-size: 28px; line-height: 1.18; font-weight: 800; letter-spacing: -.01em; margin: 0; }
+.cta p { color: rgba(255,255,255,.72); font-size: 14px; line-height: 1.6; margin: 0; max-width: 54ch; }
+
+.cta .cta-action {
+  background: var(--ivory);
+  color: var(--navy);
+  min-width: 172px;
+  height: 50px;
+  padding: 0 26px;
+  border-radius: var(--radius-sm);
+  font-size: 13.5px;
+  box-shadow: 0 2px 10px rgba(0,0,0,.18);
+}
+.cta .cta-action svg { width: 16px; height: 16px; transition: transform .18s var(--ease); }
+.cta .cta-action:hover { background: #fff; box-shadow: 0 6px 18px rgba(0,0,0,.24); }
+.cta .cta-action:hover svg { transform: translateX(3px); }
+.cta .cta-action:focus-visible { outline: 2px solid var(--gold-light); outline-offset: 3px; }
 
 /* Footer */
 footer { background: #f0eee8; border-top: 1px solid var(--line); }
-.footer-main { padding: 42px 0 32px; display: grid; grid-template-columns: 1.4fr repeat(3, 1fr); gap: 45px; }
-.footer-brand p { max-width: 290px; color: var(--muted); font-size: 11px; margin-top: 12px; }
-.footer h3 { color: var(--navy); font-size: 11px; margin-bottom: 13px; }
-.footer a { display: block; color: #69707a; font-size: 10px; margin: 7px 0; }
-.footer a:hover { color: var(--navy); }
+.site-footer {
+  background: var(--soft);
+  border-top: 1px solid var(--line);
+  padding: 50px 0 34px;
+}
+
+.footer-main {
+  display: grid;
+  /* Minimums are sized so the 4-column grid always fits its container
+     (240+150+140+200 + 3x64 = 922px) — otherwise the columns overflow
+     horizontally on narrow desktop widths. */
+  grid-template-columns: minmax(240px, 1.3fr) minmax(150px, .9fr) minmax(140px, .8fr) minmax(200px, 1fr);
+  column-gap: 64px;
+  row-gap: 40px;
+}
+
+.footer-brand { min-width: 0; }
+.footer-logo {
+  display: inline-block;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: var(--navy);
+  transition: color .18s var(--ease);
+}
+.footer-logo:hover { color: var(--gold); }
+.footer-logo:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 4px; }
+.footer-brand p {
+  margin-top: 14px;
+  max-width: 36ch;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+/* Each link group is a real stacked list (flex column + gap) —
+   no manual spacing, no <br>, no &nbsp;. */
+.footer-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 11px;
+  min-width: 0;
+}
+.footer-col h3 {
+  color: var(--navy);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -.01em;
+  margin: 0 0 5px;
+}
+.footer-col a {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: #4f5866;
+  font-size: 14.5px;
+  line-height: 1.45;
+  transition: color .18s var(--ease);
+}
+.footer-col a:hover { color: var(--gold); }
+.footer-col a svg { width: 15px; height: 15px; flex-shrink: 0; color: var(--gold); }
+.footer-col a:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 4px; }
+
+/* Actions (e.g. Sign Out) look identical to links but are real buttons. */
+.footer-col .footer-link-btn {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 14.5px;
+  line-height: 1.45;
+  color: #4f5866;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  cursor: pointer;
+  text-align: left;
+  transition: color .18s var(--ease);
+}
+.footer-col .footer-link-btn:hover { color: var(--gold); }
+.footer-col .footer-link-btn:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 4px; }
 
 .footer-bottom {
+  margin-top: 42px;
+  padding-top: 24px;
+  /* Keeps the legal row clear of the floating chatbot button. */
+  padding-right: 88px;
   border-top: 1px solid var(--line);
-  min-height: 55px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
   color: #7b8088;
-  font-size: 9px;
+  font-size: 13px;
+}
+
+/* Footer + CTA responsive — 4 cols → 2 cols → 1 col */
+@media (max-width: 1024px) {
+  .footer-main { grid-template-columns: 1fr 1fr; column-gap: 44px; row-gap: 40px; }
+}
+@media (max-width: 640px) {
+  .cta { padding-bottom: 40px; }
+  .cta-box { flex-direction: column; align-items: stretch; padding: 28px 22px; gap: 24px; }
+  .cta .cta-action { width: 100%; }
+  .footer-main { grid-template-columns: 1fr; gap: 30px; }
+  .footer-bottom {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    margin-top: 32px;
+    padding-top: 20px;
+    padding-right: 0;
+  }
 }
 
 /* Landing modal */
@@ -2354,6 +2490,10 @@ footer { background: #f0eee8; border-top: 1px solid var(--line); }
   grid-template-columns: 360px 1fr;
   gap: 20px;
   padding-bottom: 60px;
+  /* Columns align at the top and keep their own heights: the branch list
+     grows with the number of records (the page scrolls), while the map
+     stays a controlled, finite height instead of stretching to the row. */
+  align-items: start;
 }
 
 .branch-list {
@@ -2361,6 +2501,13 @@ footer { background: #f0eee8; border-top: 1px solid var(--line); }
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
+  /* Grows naturally with the number of branches — the page scrolls, not the
+     list. Dashboard shells (fixed 100vh viewport) keep an internal scroll so
+     a long list cannot push the shell layout around. */
+}
+
+/* Inside the fixed dashboard shell (.app) the list gets its own scrollbar. */
+.app .branch-list {
   max-height: 620px;
   overflow-y: auto;
 }
@@ -2499,7 +2646,11 @@ footer { background: #f0eee8; border-top: 1px solid var(--line); }
 .locator-page {
   padding: 24px 0 60px;
   background: var(--cream);
+  /* min-height, never a fixed height: the page may exceed the viewport
+     (branch list + map) and the document must be free to scroll. */
   min-height: 100vh;
+  min-height: 100dvh;
+  height: auto;
 }
 
 .locator-page .container {
@@ -2552,7 +2703,7 @@ footer { background: #f0eee8; border-top: 1px solid var(--line); }
   align-items: center;
   justify-content: center;
   height: 100%;
-  min-height: 620px;
+  min-height: var(--branch-map-min-h, 620px);
   color: var(--muted);
   font-size: 14px;
 }
@@ -2561,7 +2712,15 @@ footer { background: #f0eee8; border-top: 1px solid var(--line); }
 .map-panel > div {
   width: 100%;
   height: 100%;
-  min-height: 620px;
+  min-height: var(--branch-map-min-h, 620px);
+}
+
+/* Leaflet canvas. The height is driven by a CSS custom property so media
+   queries can shrink it — an inline min-height could never be overridden. */
+.branch-map-canvas {
+  width: 100%;
+  height: 100%;
+  min-height: var(--branch-map-min-h, 620px);
 }
 
 /* ================================================================
@@ -2758,11 +2917,18 @@ footer { background: #f0eee8; border-top: 1px solid var(--line); }
   .stat:nth-child(n+3) { padding-top: 10px; }
   .branch-box { grid-template-columns: 1fr; }
   .branch-map { min-height: 250px; }
+  /* Keep the landing hero map inside its 250px frame (overflow:hidden). */
+  .public-page .branch-map .branch-map-canvas { min-height: 250px; }
   .steps { grid-template-columns: repeat(2, 1fr); }
   .jewelry-grid { grid-template-columns: repeat(3, 1fr) !important; }
+  /* Locator stacks: search → branch list → map. The map keeps a finite
+     height and the page scrolls normally (no nested scroll trap). */
   .locator-layout { grid-template-columns: 1fr; }
-  #map { height: 380px; }
-  .branch-list { max-height: none; }
+  .locator-page .branch-map-canvas,
+  .locator-page .map-panel > div,
+  .locator-page .map-loading { min-height: 380px; }
+  .branch-list,
+  .app .branch-list { max-height: none; overflow-y: visible; }
 
   .branch-banner { height: auto; padding: 18px 20px; flex-wrap: wrap; gap: 14px; background-size: cover; }
   .branch-banner-name { font-size: 17px; }
@@ -2799,10 +2965,8 @@ footer { background: #f0eee8; border-top: 1px solid var(--line); }
   .collection-grid { grid-template-columns: repeat(2, 1fr); }
   .jewelry-grid { grid-template-columns: repeat(2, 1fr) !important; }
   .steps { grid-template-columns: 1fr; gap: 22px; }
-  .cta-box { padding: 24px 20px; align-items: flex-start; flex-direction: column; }
-  .footer-main { grid-template-columns: 1fr 1fr; gap: 30px; }
-  .footer-brand { grid-column: 1 / -1; }
-  .footer-bottom { padding: 13px 0; flex-direction: column; justify-content: center; gap: 5px; }
+  /* Footer columns are handled by the dedicated CTA/footer responsive block
+     (2 columns <=900px, 1 column <=640px). */
 }
 
 /* Mobile extra small */
@@ -2839,7 +3003,6 @@ footer { background: #f0eee8; border-top: 1px solid var(--line); }
   .collection-grid { grid-template-columns: 1fr; }
   .jewelry-grid { grid-template-columns: repeat(2, 1fr) !important; }
   .landing-steps { grid-template-columns: 1fr !important; gap: 18px !important; }
-  .footer-main { grid-template-columns: 1fr; }
 }
 
 /* ================================================================
@@ -3195,6 +3358,205 @@ footer { background: #f0eee8; border-top: 1px solid var(--line); }
 
 
 /* ================================================================
+   CUSTOMER PROFILE (Personal Information / Security / Help & Support)
+   ================================================================ */
+.profile-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--shell-gap);
+  /* Extra breathing room at the bottom so the fixed chatbot FAB never sits on
+     top of the Help & Support card (the chatbot itself is not moved). */
+  padding-bottom: 96px;
+}
+
+/* Top row: Personal Information (~60%) | Security (~40%) */
+.profile-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  gap: var(--shell-gap);
+  align-items: start;
+}
+
+.profile-card { min-width: 0; }
+.profile-card__body { padding: 20px 24px 24px; display: flex; flex-direction: column; }
+.profile-card__actions { display: flex; gap: 10px; margin-top: 4px; }
+
+/* Suspended-account notice (profile editing is paused) */
+.profile-suspended {
+  padding: 11px 14px;
+  margin-bottom: 16px;
+  border: 1px solid #f0dcae;
+  border-radius: 10px;
+  background: #fdf7e6;
+  color: #7a5c12;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+.profile-suspended a { color: #6b4f0d; font-weight: 700; text-decoration: underline; }
+
+/* Input with a leading icon */
+.profile-input-wrap { position: relative; display: flex; align-items: center; }
+.profile-input-wrap__icon {
+  position: absolute;
+  left: 13px;
+  color: var(--muted);
+  pointer-events: none;
+}
+.profile-input-wrap input,
+.profile-input-wrap select { padding-left: 38px !important; }
+.profile-input-wrap input:disabled,
+.profile-input-wrap input[readonly] {
+  background: var(--soft);
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+/* Password field — the eye toggle lives INSIDE the input on the right and the
+   input reserves matching right padding so the text never runs under it.
+   Browser-injected password-manager/autofill controls are left untouched. */
+.pwd-field { position: relative; display: flex; align-items: center; }
+.pwd-field input { padding-right: 44px !important; }
+.pwd-field__toggle {
+  position: absolute;
+  right: 6px;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color .15s var(--ease), background .15s var(--ease);
+}
+.pwd-field__toggle:hover:not(:disabled) { color: var(--gold); background: var(--gold-dim); }
+.pwd-field__toggle:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+.pwd-field__toggle:disabled { opacity: .5; cursor: not-allowed; }
+
+/* Help & Support — full width under the top row */
+.profile-support__rows { padding: 6px 24px 14px; display: flex; flex-direction: column; }
+.profile-support__row {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  padding: 14px 2px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background .15s var(--ease);
+  border-radius: 6px;
+}
+.profile-support__row:last-child { border-bottom: 0; }
+.profile-support__row:hover { background: var(--soft); }
+.profile-support__row:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.profile-support__icon {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #fdf6e3;
+  border: 1px solid #f0e6c8;
+  display: grid;
+  place-items: center;
+  color: #8a6d2b;
+}
+.profile-support__text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.profile-support__title { font-size: 13px; font-weight: 700; color: var(--navy); }
+.profile-support__desc { font-size: 11.5px; color: var(--muted); }
+.profile-support__chev { flex-shrink: 0; color: #c1c7d0; }
+
+/* FAQ + Contact Us modals */
+.profile-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(20, 42, 74, .45);
+  backdrop-filter: blur(4px);
+}
+.profile-modal {
+  width: min(560px, 100%);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--ivory);
+  border: 1px solid rgba(230, 226, 218, .7);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-clay-lg);
+  overflow: hidden;
+}
+.profile-modal__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--line);
+}
+.profile-modal__head h3 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--navy);
+}
+.profile-modal__body { padding: 16px 20px 20px; overflow-y: auto; }
+
+.profile-faq { border-bottom: 1px solid var(--line); padding: 10px 0; }
+.profile-faq:last-of-type { border-bottom: 0; }
+.profile-faq summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--navy);
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.profile-faq summary::-webkit-details-marker { display: none; }
+.profile-faq summary::before {
+  content: '+';
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  color: var(--gold);
+  font-size: 12px;
+  font-weight: 800;
+}
+.profile-faq[open] summary::before { content: '\2212'; }
+.profile-faq p { margin: 8px 0 2px 26px; font-size: 12.5px; line-height: 1.6; color: var(--muted); }
+
+.profile-skeleton {
+  border-radius: var(--radius-lg);
+  background: linear-gradient(90deg, var(--soft) 25%, #eceae4 37%, var(--soft) 63%);
+  background-size: 400% 100%;
+  animation: resultShimmer 1.3s ease infinite;
+}
+
+@media (max-width: 1024px) {
+  .profile-top { grid-template-columns: 1fr; }
+}
+@media (max-width: 560px) {
+  .profile-card__body { padding: 16px 16px 18px; }
+  .profile-support__rows { padding: 4px 16px 12px; }
+  .profile-modal__head { padding: 14px 16px; }
+  .profile-modal__body { padding: 14px 16px 18px; }
+}
+
+/* ================================================================
    CREATE AUCTION LOT WIZARD (shop owner)
    ================================================================ */
 .modal-box.auction-wizard-modal {
@@ -3234,6 +3596,27 @@ footer { background: #f0eee8; border-top: 1px solid var(--line); }
   background: var(--ivory);
   border-bottom: 1px solid var(--line);
 }
+
+/* Horizontal connector lines BETWEEN the step circles so the four steps read
+   as one connected flow. The line is centred on the circle row (top: 18px =
+   button padding 4px + circle radius 14px) and spans the gap to the next
+   circle (18px = radius 14px + half the 8px grid gap). */
+.wizard-step { position: relative; }
+.wizard-step:not(:last-child)::after {
+  content: '';
+  position: absolute;
+  top: 18px;
+  left: calc(50% + 18px);
+  right: calc(-50% + 18px);
+  height: 2px;
+  transform: translateY(-50%);
+  border-radius: 2px;
+  background: var(--line);
+  transition: background .18s var(--ease);
+}
+/* A completed step's connector to the next (completed or current) step is
+   visually active. */
+.wizard-step.done:not(:last-child)::after { background: var(--success); }
 
 .wizard-step-btn {
   width: 100%;
@@ -3286,6 +3669,277 @@ footer { background: #f0eee8; border-top: 1px solid var(--line); }
 }
 
 .wizard-panel { display: flex; flex-direction: column; }
+
+/* ---- Relist: read-only lot summary from the original product ---- */
+.wizard-lot-card {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--soft);
+  margin-bottom: 12px;
+}
+.wizard-lot-card__img {
+  width: 78px;
+  height: 78px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--ivory);
+  display: grid;
+  place-items: center;
+  font-size: 22px;
+  color: var(--muted);
+}
+.wizard-lot-card__body { min-width: 0; }
+.wizard-lot-card__title { font-size: 14px; font-weight: 800; color: var(--navy); }
+.wizard-lot-card__meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+.wizard-lot-card__code {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: var(--gold);
+  border: 1px solid var(--gold-dim);
+  background: var(--ivory);
+  border-radius: var(--radius-pill);
+  padding: 3px 10px;
+}
+.wizard-lot-card__desc {
+  margin: 8px 0 0;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.wizard-notice {
+  margin: 14px 0 4px;
+  padding: 11px 13px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--gold-dim);
+  background: var(--warn-bg);
+  color: var(--warn);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+.wizard-notice strong { color: var(--navy); }
+
+/* ================================================================
+   SELLER AUCTION RESULT MODAL
+   ================================================================ */
+.modal-box.auction-result-modal {
+  width: min(620px, 100%);
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.modal-box.auction-result-modal .modal-box-head {
+  flex-shrink: 0;
+  align-items: flex-start;
+  padding: 16px 20px;
+}
+.modal-box.auction-result-modal .modal-box-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 20px 18px;
+}
+.modal-box.auction-result-modal .modal-box-foot {
+  flex-shrink: 0;
+  padding: 12px 20px;
+  align-items: center;
+}
+
+.modal-box-head__text { min-width: 0; }
+.modal-box-eyebrow {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  color: var(--gold);
+  margin-bottom: 3px;
+}
+
+.result-body { display: flex; flex-direction: column; gap: 14px; }
+
+.result-product {
+  display: flex;
+  gap: 13px;
+  align-items: center;
+  padding: 13px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--soft);
+}
+.result-product__img {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  object-fit: cover;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--line);
+  background: var(--ivory);
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  color: var(--muted);
+}
+.result-product__body { min-width: 0; }
+.result-product__title {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--navy);
+  line-height: 1.3;
+}
+.result-product__meta { font-size: 12px; color: var(--muted); margin-top: 3px; }
+
+.result-status {
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  background: var(--soft);
+  padding: 15px 16px 14px;
+}
+.result-status--ok { background: var(--success-bg); border-color: rgba(74,124,92,.28); }
+.result-status--warn { background: var(--warn-bg); border-color: rgba(160,124,58,.28); }
+.result-status__head { display: flex; align-items: center; gap: 12px; }
+.result-status__icon {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  display: grid;
+  place-items: center;
+  font-size: 19px;
+  background: var(--ivory);
+  border: 1px solid var(--line);
+}
+.result-status--ok .result-status__icon { border-color: rgba(74,124,92,.3); }
+.result-status__title { font-size: 15px; font-weight: 800; color: var(--navy); }
+.result-status__sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.result-status__note { margin: 10px 0 0; font-size: 11.5px; color: var(--muted); }
+
+.result-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 14px;
+}
+.result-metric { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.result-metric__label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .09em;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+.result-metric__value { font-size: 17px; font-weight: 800; color: var(--navy); }
+
+.result-leader { display: flex; flex-direction: column; gap: 8px; }
+.result-leader__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.result-leader__list { display: flex; flex-direction: column; gap: 6px; }
+.result-leader__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--ivory);
+}
+.result-leader__rank {
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 800;
+  background: var(--soft);
+  color: var(--muted);
+}
+.result-leader__rank--1 { background: var(--gold); color: #fff; }
+.result-leader__name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--navy);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.result-leader__amt { font-size: 13px; font-weight: 800; color: var(--navy); white-space: nowrap; }
+.result-leader__tag {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: .03em;
+  padding: 3px 9px;
+  border-radius: var(--radius-pill);
+  background: var(--soft);
+  color: var(--muted);
+}
+.result-leader__tag--winner { background: var(--warn-bg); color: var(--warn); }
+.result-leader__tag--leading { background: var(--gold-dim); color: var(--gold); }
+.result-leader__empty {
+  padding: 16px 12px;
+  text-align: center;
+  font-size: 12.5px;
+  color: var(--muted);
+  background: var(--soft);
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-sm);
+}
+
+.result-foot-meta { flex: 1; min-width: 0; }
+.result-foot-period { font-size: 11px; color: var(--muted); }
+.result-foot-actions { display: flex; gap: 10px; flex-shrink: 0; }
+
+.result-skeleton { display: flex; flex-direction: column; gap: 10px; }
+.result-skeleton__row {
+  border-radius: var(--radius);
+  background: linear-gradient(90deg, var(--soft) 25%, #eceae4 37%, var(--soft) 63%);
+  background-size: 400% 100%;
+  animation: resultShimmer 1.3s ease infinite;
+}
+.result-skeleton__label { font-size: 11.5px; color: var(--muted); text-align: center; }
+@keyframes resultShimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+.result-error {
+  padding: 18px;
+  text-align: center;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: 13px;
+}
+.result-error .btn { margin-top: 12px; }
+
+@media (max-width: 560px) {
+  .result-metrics { grid-template-columns: repeat(2, 1fr); }
+  .result-foot-meta { display: none; }
+  .result-foot-actions { width: 100%; }
+  .result-foot-actions .btn { flex: 1; }
+}
 
 .wizard-field-error {
   margin: 6px 0 0;
@@ -3782,12 +4436,19 @@ footer { background: #f0eee8; border-top: 1px solid var(--line); }
 /* ================================================================
    PUBLIC PAGES — normal document scrolling + mobile nav extras.
    Dashboards (.app fixed 100vh shell) are untouched: these rules only
-   apply when #root's direct child is .public-page (landing, login,
-   signup, select-branch).
+   apply when #root's direct child is a public page root (.public-page —
+   landing, login, signup, select-branch — or .locator-page — /branches).
    ================================================================ */
 #root > .public-page { min-height: 100dvh; }
-body:has(#root > .public-page) { height: auto; min-height: 100%; overflow-y: auto; overflow-x: hidden; }
-body:has(#root > .public-page) #root { height: auto; min-height: 100%; }
+#root > .locator-page { min-height: 100dvh; }
+body:has(#root > .public-page),
+body:has(#root > .locator-page) { height: auto; min-height: 100%; overflow-y: auto; overflow-x: hidden; }
+body:has(#root > .public-page) #root,
+body:has(#root > .locator-page) #root { height: auto; min-height: 100%; }
+
+/* Landing anchor targets must clear the sticky 65px header — one consistent
+   offset for every landing section (no per-section magic numbers). */
+.public-page main section[id] { scroll-margin-top: 85px; }
 
 /* Login/Sign Up links inside the mobile nav dropdown. Desktop shows them
    in .nav-actions; they are hidden there at <=580px (see rule above), so the

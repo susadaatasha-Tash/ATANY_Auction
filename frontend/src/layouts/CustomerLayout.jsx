@@ -1,6 +1,6 @@
 // frontend/src/layouts/CustomerLayout.jsx
 // Shell for customer — BranchProvider + premium sidebar + topbar
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Sidebar } from '../shared/components/Sidebar';
 import { Topbar } from '../shared/components/Topbar';
@@ -10,7 +10,7 @@ import OtherBranchLivePopup from '../roles/customer/components/OtherBranchLivePo
 import AuctionStartPopup from '../roles/customer/components/AuctionStartPopup';
 import { useAuth } from '../shared/hooks/useAuth';
 import { BranchProvider, useBranch } from '../shared/hooks/useBranch';
-import { Home, Gavel, Tag, Heart, Eye, ShoppingBag, Settings, MapPin } from 'lucide-react';
+import { Home, Gavel, Tag, Heart, Eye, ShoppingBag, MapPin } from 'lucide-react';
 import '../roles/customer/customer-dashboard.css';
 
 const sections = [
@@ -23,7 +23,8 @@ const sections = [
     { to: '/customer/branch-locator', name: 'Branch Locator', icon: <MapPin size={16} /> },
   ]},
   { label: 'ORDERS', items: [{ to: '/customer/purchases', name: 'My Purchases', icon: <ShoppingBag size={16} /> }] },
-  { label: 'SETTINGS', items: [{ to: '/customer/settings', name: 'Settings', icon: <Settings size={16} /> }] },
+  // No SETTINGS section: the customer Settings page was removed. Profile stays
+  // reachable through the account dropdown (see PortalPageHeader settingsTo).
 ];
 
 const titles = {
@@ -37,7 +38,6 @@ const titles = {
   '/customer/messages': ['Messages'],
   '/customer/notifications': ['Notifications'],
   '/customer/account': ['Profile'],
-  '/customer/settings': ['Settings'],
 };
 
 function BranchSwitcher() {
@@ -63,6 +63,7 @@ function BranchSwitcher() {
         transition: 'all .18s var(--ease)',
       }}
       title="Change preferred branch"
+      aria-label="Change preferred branch"
       onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'var(--gold)'; e.currentTarget.style.background = 'rgba(196,162,101,.05)'; }}
       onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'var(--line)'; e.currentTarget.style.background = '#fff'; }}
     >
@@ -95,7 +96,7 @@ function getUserInitials(name, email) {
 function LayoutInner() {
   const [open, setOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const { user, signOut, preferredBranchId, loading } = useAuth();
+  const { user, signOut, preferredBranchId, profileName, loading } = useAuth();
 
   // Apply saved theme early to avoid flash (customer-only)
   useEffect(() => {
@@ -127,7 +128,9 @@ function LayoutInner() {
   // My Purchases owns its page-level header (title / search / profile)
   const isPurchases = pathname === '/customer/purchases';
   const title = titles[pathname]?.[0] || titles['/customer'][0];
-  const displayName = getDisplayName(user);
+  // profileName comes from the DB (public.users) via /auth/me — it is what the
+  // Profile page edits, so a rename shows up in the header immediately.
+  const displayName = profileName || getDisplayName(user);
   const initials = getUserInitials(displayName, user?.email);
 
   // Use auth context as primary source (updated immediately by SelectBranch),
@@ -144,6 +147,18 @@ function LayoutInner() {
   }, [hasBranch, loading, branchLoading, navigate]);
 
   if (!branchLoading && !loading && !hasBranch) return null;
+
+  // The customer drawer + sidebar collapse live here. Pages that render their
+  // own flat header (My Purchases) get the SAME controls through the outlet
+  // context — no second sidebar implementation.
+  const outletContext = useMemo(() => ({
+    menuOpen: open,
+    openMenu: () => setOpen(true),
+    closeMenu: () => setOpen(false),
+    toggleMenu: () => setOpen((v) => !v),
+    sidebarCollapsed,
+    toggleSidebar: () => setSidebarCollapsed((v) => !v),
+  }), [open, sidebarCollapsed]);
 
   return (
     <div className={`app customer-app${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
@@ -163,7 +178,7 @@ function LayoutInner() {
             settingsTo="/customer/account"
           />
         )}
-        <div className={`content${isPurchases ? ' content-purchases' : ''}`}><Outlet /></div>
+        <div className={`content${isPurchases ? ' content-purchases' : ''}`}><Outlet context={outletContext} /></div>
       </div>
       <AssistantWidget mode="customer" userId={user?.id} />
       <OtherBranchLivePopup />

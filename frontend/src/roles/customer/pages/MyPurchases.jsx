@@ -1,7 +1,7 @@
 // frontend/src/roles/customer/pages/MyPurchases.jsx
 // Premium My Purchases redesign — dashboard header, metrics, tabs, cards, deadline, progress
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useOutletContext } from 'react-router-dom';
 import { apiFetch } from '../../../shared/lib/apiClient';
 import { supabase } from '../../../shared/lib/supabaseClient';
 import { useAuth } from '../../../shared/hooks/useAuth';
@@ -22,10 +22,12 @@ import {
 import '../purchases/purchases.css';
 
 export default function MyPurchases({ orders: propOrders }) {
+  // The customer layout owns the sidebar/drawer; this page renders its own flat
+  // header, so it borrows the SAME menu controls through the outlet context.
+  const outlet = useOutletContext() || {};
   const [orders, setOrders] = useState(propOrders ? propOrders.map(mapOrderRow) : []);
   const [tab, setTab] = useState('all');
   const [query, setQuery] = useState('');
-  const [globalQuery, setGlobalQuery] = useState('');
   const [sort, setSort] = useState('newest');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(!propOrders?.length);
@@ -124,26 +126,17 @@ export default function MyPurchases({ orders: propOrders }) {
 
   const visible = useMemo(() => {
     const byTab = filterOrdersByTab(orders, tab);
-    const byQuery = searchOrders(byTab, query || globalQuery);
+    const byQuery = searchOrders(byTab, query);
     return sortOrders(byQuery, sort);
-  }, [orders, tab, query, globalQuery, sort]);
-
-  const onGlobalQuerySubmit = useCallback((value, opts) => {
-    if (opts?.live) {
-      setGlobalQuery(value);
-      setQuery(value);
-      return;
-    }
-    setGlobalQuery(value);
-    setQuery(value);
-  }, []);
+  }, [orders, tab, query, sort]);
 
   return (
     <div className="mp-page">
       <PurchaseHeader
-        globalQuery={globalQuery}
-        onGlobalQuerySubmit={onGlobalQuerySubmit}
         liveLots={liveLots}
+        onMenuToggle={outlet.toggleMenu}
+        onSidebarToggle={outlet.toggleSidebar}
+        sidebarCollapsed={outlet.sidebarCollapsed}
       />
 
       {loading ? (
