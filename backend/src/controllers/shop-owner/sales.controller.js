@@ -2,6 +2,7 @@
 // Spec 4.4/4.7: sales are orders where product's shop_id matches. Payout = 90% per original mock
 // REST-compatible: decomposes JOINs into simple queries for Supabase REST fallback
 import { pool } from '../../db/pool.js';
+import { localMonthKey, localMonthLabel } from '../../lib/monthKey.js';
 
 // Canonical money rule (backend is the ONLY source of truth):
 // platform commission = 10% of the sale amount, seller payout = 90%.
@@ -113,7 +114,10 @@ export const listSales = async (req, res) => {
 
 /* ── GET /shop-owner/sales/summary — sales analytics for Sales & Payouts dashboard ──
    All figures derived from real orders belonging to the caller's shop.
-   Commission = 10%, seller payout = 90% (canonical backend rule).
+   Commission = 10%, seller earnings = 90% (canonical backend rule).
+   NOTE: ATANY does NOT record seller disbursements, so this endpoint returns
+   recognized seller EARNINGS (never a payout) and there is no payout
+   destination / method in the payload.
    Decomposed into simple queries for Supabase REST fallback compatibility. */
 export const getSalesSummary = async (req, res) => {
   try {
@@ -140,10 +144,12 @@ export const getSalesSummary = async (req, res) => {
     );
     if (!orders.length) return res.json(emptySummary(res));
 
-    // Latest payment per order
+    // Latest payment per order — `paid_at` is REQUIRED: recognized revenue is
+    // grouped by the month the payment was confirmed, not the order month.
     const orderIds = orders.map(o => o.id);
     const { rows: payments } = await pool.query(
-      `SELECT order_id, status, payment_method, created_at FROM payments WHERE order_id IN (${orderIds.map((_, i) => `$${i + 1}`).join(',')})`,
+      `SELECT order_id, status, payment_method, amount, paid_at, created_at
+         FROM payments WHERE order_id IN (${orderIds.map((_, i) => `$${i + 1}`).join(',')})`,
       orderIds
     );
     const paymentMap = {};
@@ -154,12 +160,16 @@ export const getSalesSummary = async (req, res) => {
       }
     }
 
-    // Seller's default payment method (for masked display in payout history)
-    const { rows: paymentMethods } = await pool.query(
-      `SELECT provider, brand, last4 FROM seller_payment_methods WHERE seller_id=$1 AND is_default=true LIMIT 1`,
-      [shop.user_id]
-    );
-    const defaultMethod = paymentMethods[0];
+    // Buyer names for the earnings history — ONE batched query (no N+1).
+    const buyerIds = [...new Set(orders.map((o) => o.buyer_id).filter(Boolean))];
+    let buyerMap = {};
+    if (buyerIds.length) {
+      const { rows: buyers } = await pool.query(
+        `SELECT id, name FROM users WHERE id IN (${buyerIds.map((_, i) => `$${i + 1}`).join(',')})`,
+        buyerIds
+      );
+      buyerMap = Object.fromEntries(buyers.map((b) => [b.id, b.name]));
+    }
 
     const now = new Date();
     const currentYear = now.getFullYear();
@@ -168,43 +178,51 @@ export const getSalesSummary = async (req, res) => {
     const monthStart = new Date(currentYear, currentMonth, 1);
 
     let grossSalesYTD = 0;
-    let netPayoutYTD = 0;
-    let pendingPayout = 0;
+    let netEarningsYTD = 0;
+    let pendingEarnings = 0;
     let salesThisMonth = 0;
     let lotsSoldThisMonth = 0;
 
     const monthly = {}; // YYYY-MM -> { gross, net }
     const categoryRevenue = {};
-    const payoutHistory = [];
+    const earningsHistory = [];
 
     for (const o of orders) {
       const amount = Number(o.amount || 0);
       const product = productMap[auctionMap[o.auction_id]] || {};
       const payment = paymentMap[o.id] || {};
       const paymentStatus = payment.status || null;
-      const orderDate = new Date(o.created_at);
       // Canonical recognized-revenue rule: payments.status = 'paid'
       const isPaid = paymentStatus === 'paid';
       const payoutAmount = Math.round(amount * 0.90);
+      // payout = sale amount − commission, so Gross = Commission + Earnings always holds
+      const commission = amount - payoutAmount;
+      // Revenue is RECOGNIZED when the payment is confirmed, so the financial
+      // date is the payment date (paid_at). The order date is only a fallback
+      // for legacy paid rows without a paid_at.
+      const recognizedAt = payment.paid_at || payment.created_at || o.created_at;
+      const recognizedDate = new Date(recognizedAt);
 
       // Gross Sales YTD: recognized revenue (payments.status = 'paid') this calendar year
-      if (isPaid && orderDate >= yearStart) grossSalesYTD += amount;
+      if (isPaid && recognizedDate >= yearStart) grossSalesYTD += amount;
 
-      // Net Payout YTD: recognized revenue × 90% (after 10% commission), this calendar year
-      if (isPaid && orderDate >= yearStart) netPayoutYTD += payoutAmount;
+      // Net Earnings YTD: recognized revenue × 90% (after 10% commission), this calendar year
+      if (isPaid && recognizedDate >= yearStart) netEarningsYTD += payoutAmount;
 
-      // Pending Payout: recognized revenue (paid) but order not yet fulfilled (not completed)
-      if (isPaid && o.status !== 'completed') pendingPayout += payoutAmount;
+      // Pending Earnings: recognized revenue (paid) but the order is not yet
+      // fulfilled (not completed) — the earnings are recognized but the order
+      // is still in fulfilment. This is NOT a bank-transfer queue.
+      if (isPaid && o.status !== 'completed') pendingEarnings += payoutAmount;
 
-      // This Month: recognized revenue created this calendar month
-      if (isPaid && orderDate >= monthStart) {
+      // This Month: recognized revenue paid this calendar month
+      if (isPaid && recognizedDate >= monthStart) {
         salesThisMonth += amount;
         lotsSoldThisMonth += 1;
       }
 
-      // Revenue Trend: recognized revenue grouped by month
+      // Revenue Trend: recognized revenue grouped by the local calendar month
       if (isPaid) {
-        const monthKey = orderDate.toISOString().slice(0, 7);
+        const monthKey = localMonthKey(recognizedDate);
         if (!monthly[monthKey]) monthly[monthKey] = { gross: 0, net: 0 };
         monthly[monthKey].gross += amount;
         monthly[monthKey].net += payoutAmount;
@@ -215,27 +233,37 @@ export const getSalesSummary = async (req, res) => {
         categoryRevenue[product.category] = (categoryRevenue[product.category] || 0) + amount;
       }
 
-      // Payout History: all recognized-revenue orders (payments.status = 'paid')
+      // Earnings History: recognized revenue only (payments.status = 'paid').
+      // ATANY does NOT record seller disbursements yet, so this is the seller's
+      // recognized EARNINGS (gross − ATANY commission), never a paid-out payout.
+      // There is deliberately NO "method" column: the seller's subscription
+      // payment preference and the customer's checkout method are both NOT a
+      // payout destination.
       if (isPaid) {
-        payoutHistory.push({
+        earningsHistory.push({
           id: o.transaction_code || `PAY-${o.id.slice(0, 8).toUpperCase()}`,
-          date: o.created_at,
-          amount: payoutAmount,
-          method: defaultMethod ? maskPaymentMethod(defaultMethod) : (payment.payment_method || '—'),
-          status: o.status === 'completed' ? 'Paid' : 'Scheduled'
+          date: recognizedAt,
+          item: product.name || 'Jewelry Item',
+          buyer: buyerMap[o.buyer_id] || 'Customer',
+          gross: amount,
+          commission,
+          net: payoutAmount,
+          status: 'Earned',
+          // Fulfillment state, kept SEPARATE from the earnings state.
+          order_status: o.status === 'completed' ? 'Completed' : 'Pending fulfillment',
         });
       }
     }
 
-    // Build 12-month revenue trend (most recent last)
+    // Build 12-month revenue trend (most recent last).
+    // The lookup key AND the label come from the SAME local calendar month, so
+    // a month's revenue can never slide into the neighbouring bucket.
     const trend = [];
     for (let i = 11; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = d.toISOString().slice(0, 7);
-      const monthYear = d.toLocaleDateString('en-PH', { month: 'short', year: 'numeric' });
-      const [mo, yr] = monthYear.split(' ');
+      const key = localMonthKey(d);
       trend.push({
-        month: `${mo.toUpperCase()} ${yr}`,
+        month: localMonthLabel(d),
         gross: monthly[key]?.gross || 0,
         net: monthly[key]?.net || 0
       });
@@ -252,21 +280,23 @@ export const getSalesSummary = async (req, res) => {
       .sort((a, b) => b.revenue - a.revenue)
       .slice(0, 5);
 
-    // Payout history sorted newest first
-    payoutHistory.sort((a, b) => new Date(b.date) - new Date(a.date));
+    // Earnings history sorted newest first
+    earningsHistory.sort((a, b) => new Date(b.date) - new Date(a.date));
 
     res.json({
       summary: {
         gross_sales_ytd: grossSalesYTD,
-        net_payout_ytd: netPayoutYTD,
-        pending_payout: pendingPayout,
+        // Seller earnings (90% of recognized gross). ATANY does not record
+        // seller disbursements yet — these are EARNINGS, not a payout.
+        net_earnings_ytd: netEarningsYTD,
+        pending_earnings: pendingEarnings,
         sales_this_month: salesThisMonth,
         lots_sold_this_month: lotsSoldThisMonth,
         commission_rate: COMMISSION_RATE
       },
       revenue_trend: trend,
       top_categories: topCategories,
-      payout_history: payoutHistory
+      earnings_history: earningsHistory
     });
   } catch (e) {
     console.error('[shop-owner/getSalesSummary]', e.message);
@@ -279,26 +309,18 @@ function emptySummary(res) {
   const trend = [];
   for (let i = 11; i >= 0; i--) {
     const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const monthYear = d.toLocaleDateString('en-PH', { month: 'short', year: 'numeric' });
-    const [mo, yr] = monthYear.split(' ');
     trend.push({
-      month: `${mo.toUpperCase()} ${yr}`,
+      month: localMonthLabel(d),
       gross: 0,
       net: 0
     });
   }
   return res.json({
-    summary: { gross_sales_ytd: 0, net_payout_ytd: 0, pending_payout: 0, sales_this_month: 0, lots_sold_this_month: 0, commission_rate: 0.10 },
+    summary: { gross_sales_ytd: 0, net_earnings_ytd: 0, pending_earnings: 0, sales_this_month: 0, lots_sold_this_month: 0, commission_rate: 0.10 },
     revenue_trend: trend,
     top_categories: [],
-    payout_history: []
+    earnings_history: []
   });
-}
-
-function maskPaymentMethod(method) {
-  const label = method.brand || method.provider || 'Account';
-  const last4 = method.last4 ? String(method.last4).slice(-4) : '****';
-  return `${label} •••• ${last4}`;
 }
 
 const ALLOWED_TRANSITIONS = {

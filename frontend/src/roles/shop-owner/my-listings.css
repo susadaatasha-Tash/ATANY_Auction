@@ -9,30 +9,6 @@
   width: 100%;
 }
 
-/* ── Page header ──────────────────────────────────────────── */
-.ml-header {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.ml-header__eyebrow {
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #b8923c;
-  line-height: 1.15;
-  margin: 0;
-}
-.ml-header__title {
-  margin: 0;
-  font-size: 20px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  color: #142a4a;
-  line-height: 1.2;
-}
-
 /* ── Toolbar (search + status filter) ─────────────────────── */
 .ml-toolbar {
   display: flex;

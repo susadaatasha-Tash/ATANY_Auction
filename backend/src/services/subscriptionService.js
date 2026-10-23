@@ -11,6 +11,7 @@ import {
   isValidBillingInterval,
 } from '../config/subscriptionPlans.js';
 import { getCheckoutSession, checkoutStatus } from './paymongoService.js';
+import { toPayMongoMethodType } from './subscriptionPaymentMethods.js';
 
 export const OPEN_BILLING_STATUSES = ['pending', 'processing', 'overdue', 'failed', 'expired'];
 export const PAYABLE_BILLING_STATUSES = ['pending', 'overdue', 'failed', 'expired'];
@@ -177,6 +178,8 @@ export function buildSubscriptionSummary(records = []) {
       billing_status: open.status,
       subscription_status: deriveSubscriptionStatus(open).status,
       payment_reference: open.payment_reference || open.paymongo_checkout_session_id || null,
+      // The seller's chosen payment method for this invoice.
+      payment_method_type: open.payment_method_type || null,
     };
   } else if (derived.status === 'active' && current) {
     next_payment = {
@@ -190,6 +193,7 @@ export function buildSubscriptionSummary(records = []) {
       billing_status: current.status,
       subscription_status: 'active',
       payment_reference: current.payment_reference || null,
+      payment_method_type: current.payment_method_type || null,
       note: 'Renewal is billed manually when the period ends. Automatic recurring charges are not enabled.',
     };
   }
@@ -392,7 +396,10 @@ export async function notifyPaymentFailed(billing) {
  * Create (or reuse) a PayMongo checkout session for a billing record.
  * Amount always comes from the billing row / plan catalog — never from the client.
  */
-export async function createBillingCheckoutSession(billing, { actorRole = 'shop_owner' } = {}) {
+export async function createBillingCheckoutSession(
+  billing,
+  { actorRole = 'shop_owner', allowUnselected = false } = {}
+) {
   if (!billing) throw new Error('Billing record required');
   if (!isPayableStatus(billing.status)) {
     const err = new Error(
@@ -410,7 +417,41 @@ export async function createBillingCheckoutSession(billing, { actorRole = 'shop_
     throw err;
   }
 
-  // Reuse an existing active checkout when still valid
+  // The checkout is restricted to the ONE method the seller selected.
+  // The preference lives on the billing record (payment_method_type) and the
+  // provider identifier is resolved through the canonical map
+  // (maya -> paymaya).
+  //
+  // When NO method has been chosen yet:
+  //  - a normal "Pay now" requires the seller to choose one first
+  //  - a fresh plan checkout (new subscription / plan change) may still offer
+  //    the supported set so the seller can pick on the provider's page
+  const preferred = String(billing.payment_method_type || '').toLowerCase();
+  let methodTypes;
+  if (!preferred) {
+    if (!allowUnselected) {
+      const err = new Error('Choose a payment method before paying for your subscription.');
+      err.statusCode = 409;
+      err.code = 'PAYMENT_METHOD_REQUIRED';
+      throw err;
+    }
+    methodTypes = ['gcash', 'card', 'paymaya', 'qrph'];
+  } else {
+    let providerMethod;
+    try {
+      providerMethod = toPayMongoMethodType(preferred);
+    } catch {
+      const err = new Error('This payment method is not supported.');
+      err.statusCode = 400;
+      err.code = 'UNSUPPORTED_PAYMENT_METHOD';
+      throw err;
+    }
+    methodTypes = [providerMethod];
+  }
+
+  // Reuse an existing active checkout when still valid.
+  // A method change clears paymongo_checkout_session_id, so a session created
+  // for the previous method can never be reused for the new one.
   if (billing.paymongo_checkout_session_id) {
     const updatedRecently =
       billing.updated_at &&
@@ -436,6 +477,7 @@ export async function createBillingCheckoutSession(billing, { actorRole = 'shop_
   if (!key) {
     const err = new Error('PAYMONGO_SECRET_KEY not configured');
     err.statusCode = 500;
+    err.code = 'PROVIDER_CONFIG_MISSING';
     throw err;
   }
 
@@ -456,7 +498,7 @@ export async function createBillingCheckoutSession(billing, { actorRole = 'shop_
               quantity: 1,
             },
           ],
-          payment_method_types: ['gcash', 'card', 'paymaya', 'grab_pay', 'qrph', 'billease'],
+          payment_method_types: methodTypes,
           send_email_receipt: false,
           show_description: true,
           show_line_items: true,
@@ -551,11 +593,14 @@ export async function createPendingBillingForPlan({ sellerId, plan, interval = '
   const iv = normalizeBillingInterval(interval);
   const period = computeBillingPeriod(iv, new Date());
   const amount = getPlanPriceForInterval(plan, iv);
+  // The seller's chosen payment method carries into the new period.
+  const inheritedMethod = await getInheritedPaymentMethod(sellerId);
   const { rows } = await pool.query(
     `INSERT INTO billing_records
        (seller_id, amount, billing_period, status, due_date,
-        current_period_start, current_period_end, plan_code, billing_interval)
-     VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7, $8)
+        current_period_start, current_period_end, plan_code, billing_interval,
+        payment_method_type)
+     VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7, $8, $9)
      RETURNING *`,
     [
       sellerId,
@@ -566,9 +611,32 @@ export async function createPendingBillingForPlan({ sellerId, plan, interval = '
       period.end,
       plan.code,
       iv,
+      inheritedMethod,
     ]
   );
   return rows[0];
+}
+
+/**
+ * The payment method the seller last chose (for a new period).
+ * The most recent record that carries a preference wins, so a seller who
+ * switched to Card keeps Card for the next cycle.
+ */
+async function getInheritedPaymentMethod(sellerId) {
+  try {
+    const { rows } = await pool.query(
+      `SELECT payment_method_type FROM billing_records
+        WHERE seller_id = $1 AND payment_method_type IS NOT NULL
+        ORDER BY
+          CASE WHEN status::text IN ('pending', 'processing', 'overdue', 'failed', 'expired') THEN 0 ELSE 1 END,
+          created_at DESC
+        LIMIT 1`,
+      [sellerId]
+    );
+    return rows[0]?.payment_method_type || null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -609,8 +677,9 @@ export async function ensureNextPeriod(sellerId) {
   const { rows } = await pool.query(
     `INSERT INTO billing_records
        (seller_id, amount, billing_period, status, due_date,
-        current_period_start, current_period_end, plan_code, billing_interval)
-     VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7, $8)
+        current_period_start, current_period_end, plan_code, billing_interval,
+        payment_method_type)
+     VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7, $8, $9)
      RETURNING *`,
     [
       sellerId,
@@ -621,6 +690,7 @@ export async function ensureNextPeriod(sellerId) {
       nextPeriod.end,
       planCode,
       interval,
+      await getInheritedPaymentMethod(sellerId),
     ]
   );
   return rows[0] || null;

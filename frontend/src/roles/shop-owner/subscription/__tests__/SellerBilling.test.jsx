@@ -71,6 +71,9 @@ const pendingNext = {
   created_at: '2026-10-10T00:00:00Z',
 };
 
+// A pending invoice whose payment method has already been chosen.
+const pendingNextWithMethod = { ...pendingNext, payment_method_type: 'gcash' };
+
 const overdueBronze = {
   id: '33333333-3333-3333-3333-333333333333',
   seller_id: 'seller-1',
@@ -463,9 +466,15 @@ describe('Seller Subscription page', () => {
       if (path === '/shop-owner/auctions') return Promise.resolve(auctions);
       if (path === '/shop-owner/shop') return Promise.resolve(shop);
       if (path === '/billing/me/subscription') return Promise.resolve(null);
-      if (path === '/billing/payment-methods') {
+      if (path === '/billing/subscription/payment-methods') {
         return Promise.resolve({
-          payment_methods: [
+          methods: [
+            { value: 'qrph', label: 'QR Ph', description: 'Scan a QR Ph code to pay', group: 'qrph' },
+            { value: 'card', label: 'Card', description: 'Use a debit or credit card', group: 'card' },
+            { value: 'gcash', label: 'GCash', description: 'Pay using your GCash account', group: 'ewallet' },
+            { value: 'paymaya', label: 'Maya', description: 'Pay using your Maya account', group: 'ewallet' },
+          ],
+          saved_cards: [
             {
               id: 'pm-1',
               brand: 'visa',
@@ -475,6 +484,7 @@ describe('Seller Subscription page', () => {
               exp_year: 2028,
             },
           ],
+          preference: null,
         });
       }
       return Promise.resolve([]);
@@ -489,13 +499,19 @@ describe('Seller Subscription page', () => {
     await waitFor(() => {
       expect(screen.getByTestId('payment-method-modal')).toBeInTheDocument();
     });
-    expect(screen.getByTestId('saved-method-pm-1')).toBeInTheDocument();
+    // The initial step offers exactly QR Ph / Card / E-Wallet.
+    expect(screen.getByTestId('spm-method-qrph')).toBeInTheDocument();
+    expect(screen.getByTestId('spm-method-card')).toBeInTheDocument();
+    expect(screen.getByTestId('spm-method-ewallet')).toBeInTheDocument();
 
-    // Add-new-card tab must clearly say vaulting is not available yet
-    fireEvent.click(screen.getByTestId('tab-add-card'));
-    expect(screen.getByTestId('elements-notice')).toHaveTextContent(
-      /Adding a new saved card is not available yet/i
-    );
+    // Card explains that PayMongo hosts the card entry — there is no card
+    // number / CVC form anywhere in ATANY.
+    fireEvent.click(screen.getByTestId('spm-method-card'));
+    fireEvent.click(screen.getByTestId('spm-continue'));
+    await waitFor(() => expect(screen.getByTestId('spm-card-info')).toBeInTheDocument());
+    expect(screen.getByTestId('spm-card-info')).toHaveTextContent(/securely through PayMongo/i);
+    expect(document.querySelector('input[autocomplete="cc-number"]')).toBeNull();
+    expect(document.querySelector('input[autocomplete="cc-csc"]')).toBeNull();
   });
 
   it('displays scheduled downgrade banner from subscription summary', async () => {
@@ -574,7 +590,7 @@ describe('Seller Subscription page', () => {
   });
 
   it('shows pending payment state with complete payment action', async () => {
-    mockApis({ billing: [pendingNext] });
+    mockApis({ billing: [pendingNextWithMethod] });
     renderPage();
 
     await waitFor(() => {
@@ -583,6 +599,19 @@ describe('Seller Subscription page', () => {
     expect(screen.getByTestId('current-plan-status')).toHaveTextContent('Pending');
     expect(screen.getByTestId('pending-notice')).toBeInTheDocument();
     expect(screen.getByTestId('next-payment-pay-btn')).toBeInTheDocument();
+  });
+
+  it('asks for a payment method before paying when none is selected yet', async () => {
+    mockApis({ billing: [pendingNext] });
+    renderPage();
+
+    await waitFor(() => {
+      expect(screen.getByTestId('current-plan-hero')).toBeInTheDocument();
+    });
+    // No "Pay now" until a method is chosen.
+    expect(screen.queryByTestId('next-payment-pay-btn')).not.toBeInTheDocument();
+    expect(screen.getByTestId('next-payment-select-method-btn')).toBeInTheDocument();
+    expect(screen.getByTestId('next-payment-method')).toHaveTextContent(/not selected yet/i);
   });
 
   it('shows past due warning and retry payment', async () => {

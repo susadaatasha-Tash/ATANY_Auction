@@ -86,14 +86,18 @@ describe('OrderDetails — the terminal expired order', () => {
     expect(screen.queryByRole('button', { name: /Pay Now/ })).toBeNull();
   });
 
-  it('offers a working ATANY Support link with safe context', async () => {
+  it('opens the REAL support pipeline with safe context (not the buyer↔seller thread)', async () => {
     renderOrder(orderPayload({ status: 'expired' }));
     await waitFor(() => expect(screen.getAllByText('Payment Expired').length).toBeGreaterThan(0));
     const link = screen.getAllByRole('link', { name: /Contact ATANY Support/i })[0];
     const href = link.getAttribute('href');
-    expect(href).toContain('/customer/messages');
+    // The expired-winner action now opens the persisted support request flow.
+    expect(href).toContain('/customer/account');
+    expect(href).toContain('support=expired-payment');
     expect(href).toContain('order=TXN-1234');
-    expect(href).toContain('topic=expired-payment');
+    // The customer's own safe context is carried across.
+    expect(decodeURIComponent(href)).toContain('deadline=');
+    expect(decodeURIComponent(href)).toContain('amount=');
     // No other bidder's data may leak into the support context.
     expect(href).not.toMatch(/Britz|Maria|Juan/i);
   });

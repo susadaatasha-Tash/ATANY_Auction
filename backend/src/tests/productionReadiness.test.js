@@ -151,6 +151,8 @@ describe('production env validation', () => {
       PAYMONGO_SECRET_KEY: 'sk_live_x',
       PAYMONGO_WEBHOOK_SECRET: 'whsec_abcdef12',
       FRONTEND_URL: 'https://app.example.com',
+      RESEND_API_KEY: 're_live_x',
+      RESEND_FROM_EMAIL: 'ATANY <no-reply@verified.example>',
     });
     expect(r.ok).toBe(true);
   });
@@ -165,6 +167,8 @@ describe('production env validation', () => {
       PAYMONGO_SECRET_KEY: 'k',
       PAYMONGO_WEBHOOK_SECRET: 'whsec_abcdef12',
       FRONTEND_URL: 'https://app.example.com',
+      RESEND_API_KEY: 're_live_x',
+      RESEND_FROM_EMAIL: 'ATANY <no-reply@verified.example>',
       ALLOW_INSECURE_PAYMONGO_WEBHOOKS: 'true',
     });
     expect(r.ok).toBe(false);

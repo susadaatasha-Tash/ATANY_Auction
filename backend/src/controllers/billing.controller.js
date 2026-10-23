@@ -29,7 +29,13 @@ import {
   setDefaultPaymentMethod,
   deletePaymentMethod,
   assertNoSensitiveCardFields,
+  assertSupportedSubscriptionMethod,
+  getSubscriptionPaymentPreference,
+  saveSubscriptionPaymentPreference,
+  SUPPORTED_SUBSCRIPTION_METHODS,
+  SUBSCRIPTION_PAYMENT_METHOD,
 } from '../services/paymentMethodService.js';
+import { isPayMongoConfigured } from '../services/paymongoService.js';
 
 function readInterval(body) {
   const raw = body?.billing_interval ?? body?.billingInterval ?? body?.interval ?? 'monthly';
@@ -167,7 +173,7 @@ export const checkoutSubscriptionPlan = async (req, res) => {
       });
     }
 
-    const result = await createBillingCheckoutSession(billing, { actorRole: 'shop_owner' });
+    const result = await createBillingCheckoutSession(billing, { actorRole: 'shop_owner', allowUnselected: true });
     res.status(decision.mode === 'create_new' ? 201 : 200).json({
       checkout_url: result.checkout_url,
       billing: result.billing,
@@ -238,7 +244,7 @@ export const confirmSubscriptionChange = async (req, res) => {
         plan: decision.plan,
         interval: decision.interval || billingInterval,
       });
-      const checkout = await createBillingCheckoutSession(billing, { actorRole: 'shop_owner' });
+      const checkout = await createBillingCheckoutSession(billing, { actorRole: 'shop_owner', allowUnselected: true });
       return res.status(201).json({
         mode: 'new_subscription',
         checkout_url: checkout.checkout_url,
@@ -375,6 +381,134 @@ export const deleteMyPaymentMethod = async (req, res) => {
       error: e.code || 'PAYMENT_METHOD_ERROR',
       message: e.message || 'Failed to delete payment method',
     });
+  }
+};
+
+// ---------------------------------------------------------------------------
+// Subscription payment methods — QR Ph / Card / GCash / Maya ONLY.
+//
+// The ALLOWLIST lives here (server-side). GrabPay, ShopeePay, UnionBank,
+// BillEase and Buy Now Pay Later are rejected with 400 UNSUPPORTED_PAYMENT_METHOD
+// even if a client sends them.
+// ---------------------------------------------------------------------------
+
+/** The payment methods ATANY accepts for seller subscriptions. */
+const SUBSCRIPTION_METHOD_CATALOG = [
+  { value: SUBSCRIPTION_PAYMENT_METHOD.QRPH, label: 'QR Ph', description: 'Scan a QR Ph code to pay', group: 'qrph' },
+  { value: SUBSCRIPTION_PAYMENT_METHOD.CARD, label: 'Card', description: 'Use a debit or credit card', group: 'card' },
+  { value: SUBSCRIPTION_PAYMENT_METHOD.GCASH, label: 'GCash', description: 'Pay using your GCash account', group: 'ewallet' },
+  { value: SUBSCRIPTION_PAYMENT_METHOD.MAYA, label: 'Maya', description: 'Pay using your Maya account', group: 'ewallet' },
+];
+
+/**
+ * Per-method availability.
+ *
+ * Availability means: "can we create a PayMongo Hosted Checkout Session with
+ * this method?". It does NOT mean "does ATANY have its own card tokenization
+ * or QR generator" — those are no longer required, PayMongo hosts the actual
+ * payment UI for every method.
+ *
+ * Only safe, non-secret information is exposed.
+ */
+function buildMethodAvailability() {
+  const providerConfigured = isPayMongoConfigured();
+  const availability = {};
+  for (const method of SUPPORTED_SUBSCRIPTION_METHODS) {
+    availability[method] = {
+      enabled: providerConfigured,
+      reason: providerConfigured
+        ? null
+        : 'This payment method is temporarily unavailable. Please try another method.',
+    };
+  }
+  return {
+    availability,
+    providerConfigured,
+    reason: providerConfigured
+      ? null
+      : 'This payment method is temporarily unavailable. Please try another method.',
+  };
+}
+
+/** Consistent error envelope (flat + nested so every client can read it). */
+function paymentMethodError(res, status, code, message) {
+  return res.status(status).json({
+    success: false,
+    code,
+    message,
+    error: { code, message },
+  });
+}
+
+/**
+ * GET /billing/subscription/payment-methods
+ * The available methods, their availability and the seller's saved preference.
+ *
+ * The preference is INDEPENDENT of provider availability — a provider outage
+ * must never erase it.
+ */
+export const listSubscriptionPaymentMethods = async (req, res) => {
+  try {
+    const sellerId = req.user.id;
+    const preference = await getSubscriptionPaymentPreference(sellerId);
+    const { availability, providerConfigured, reason } = buildMethodAvailability();
+    res.json({
+      methods: SUBSCRIPTION_METHOD_CATALOG,
+      supported: SUPPORTED_SUBSCRIPTION_METHODS,
+      preference: preference ? { method: preference } : null,
+      availability,
+      provider_ready: providerConfigured,
+      provider_unavailable_reason: reason,
+    });
+  } catch (e) {
+    console.error('[subscription payment-methods list]', e.message);
+    res.status(500).json({
+      success: false,
+      code: 'PAYMENT_METHODS_UNAVAILABLE',
+      message: 'Unable to load payment options.',
+    });
+  }
+};
+
+/**
+ * POST /billing/subscription/payment-method
+ * Saves the payment method PREFERENCE for the next subscription payment.
+ * It does NOT charge anything, does NOT mark a payment paid and does NOT
+ * recognise revenue — the actual payment only happens through the provider.
+ */
+export const saveSubscriptionPaymentMethod = async (req, res) => {
+  try {
+    // Raw card data is never accepted.
+    assertNoSensitiveCardFields(req.body || {});
+    const sellerId = req.user.id;
+    const method = assertSupportedSubscriptionMethod(
+      req.body?.method ?? req.body?.payment_method ?? req.body?.payment_method_type
+    );
+    // Only the safe preference value is stored on the seller's OWN billing
+    // record. No provider session is created here — the actual payment only
+    // happens when the seller pays, through PayMongo Hosted Checkout.
+    const result = await saveSubscriptionPaymentPreference({
+      sellerId,
+      method,
+      billingId: req.body?.billing_id || null,
+    });
+    res.json({
+      success: true,
+      payment_method: { method: result.method },
+      billing_id: result.billing_id,
+    });
+  } catch (e) {
+    const status = e.statusCode || 500;
+    if (status < 500) {
+      return paymentMethodError(
+        res,
+        status,
+        e.code || 'INVALID_PAYMENT_METHOD',
+        e.message || 'This payment method is not supported.'
+      );
+    }
+    console.error('[subscription payment-method save]', e.message);
+    return paymentMethodError(res, 500, 'PAYMENT_METHOD_SAVE_FAILED', 'Unable to save your payment method.');
   }
 };
 
@@ -563,7 +697,7 @@ export const adminRetryBilling = async (req, res) => {
     ]);
     if (!rows.length) return res.status(404).json({ message: 'Billing record not found' });
     const billing = rows[0];
-    const result = await createBillingCheckoutSession(billing, { actorRole: 'admin' });
+    const result = await createBillingCheckoutSession(billing, { actorRole: 'admin', allowUnselected: true });
     await writeAuditLog({
       userId: req.user.id,
       action: 'billing_retry_admin',

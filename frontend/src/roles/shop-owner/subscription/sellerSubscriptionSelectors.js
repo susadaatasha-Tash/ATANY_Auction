@@ -149,6 +149,8 @@ export function buildSellerSubscriptionState(records = []) {
       reference: maskReference(
         nextPaymentRecord.payment_reference || nextPaymentRecord.paymongo_checkout_session_id
       ),
+      // The payment method the seller chose for this invoice.
+      payment_method_type: nextPaymentRecord.payment_method_type || null,
       mode: 'open_invoice',
     };
   } else if (kind === 'active' || kind === 'trialing' || kind === 'active_with_upcoming') {
@@ -162,6 +164,7 @@ export function buildSellerSubscriptionState(records = []) {
       statusKey: status.key,
       statusLabel: status.label,
       reference: maskReference(paymentReference),
+      payment_method_type: record?.payment_method_type || null,
       mode: 'next_billing_date',
     };
   }

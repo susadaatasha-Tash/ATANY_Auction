@@ -14,6 +14,8 @@ import {
 } from 'lucide-react';
 import '../roles/shop-owner/seller-dashboard.css';
 
+const COLLAPSED_KEY = 'atany_shop_sidebar_collapsed';
+
 const titles = {
   '/shop': ['Dashboard'],
   '/shop/listings': ['My Listings'],
@@ -56,6 +58,21 @@ export default function ShopOwnerLayout() {
   const displayName = getDisplayName(user);
   const initials = getUserInitials(displayName, user?.email);
   const isBilling = pathname === '/shop/billing';
+
+  // Restore saved collapsed state (role-scoped; never leaks to other roles).
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(COLLAPSED_KEY);
+      if (stored !== null) setSidebarCollapsed(JSON.parse(stored) === true);
+    } catch {}
+  }, []);
+
+  const persistCollapsed = useCallback((next) => {
+    setSidebarCollapsed(next);
+    try {
+      localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next));
+    } catch {}
+  }, []);
 
   // Portal data: shop identity + real sidebar/header counts + live auction
   const [shop, setShop] = useState(null);
@@ -152,6 +169,7 @@ export default function ShopOwnerLayout() {
         onClose={() => setOpen(false)}
         onSignOut={signOut}
         extra={<LiveAuctionCard auctions={auctions} loading={portalLoading} />}
+        collapsed={sidebarCollapsed}
       />
       {open && <div className="sidebar-backdrop" aria-hidden="true" onClick={() => setOpen(false)} />}
       <div className="main">
@@ -161,7 +179,7 @@ export default function ShopOwnerLayout() {
           role="seller"
           onMenuToggle={() => setOpen((v) => !v)}
           sidebarCollapsed={sidebarCollapsed}
-          onSidebarToggle={() => setSidebarCollapsed((v) => !v)}
+          onSidebarToggle={() => persistCollapsed((v) => !v)}
           user={{ initials: profileInitials, name: shopName, role: 'Shop Owner' }}
           onSignOut={signOut}
           actions={(

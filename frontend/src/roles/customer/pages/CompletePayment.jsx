@@ -40,11 +40,12 @@ export default function CompletePayment() {
     setCreating(true);
     try {
       const res = await apiFetch(`/customer/orders/${id}/payment`, { method: 'POST', body: JSON.stringify({ payment_method: method }) });
-      if (res?.checkout_url) {
-        window.location.href = res.checkout_url;
+      const checkoutUrl = res?.checkout_url;
+      if (typeof checkoutUrl === 'string' && checkoutUrl.startsWith('https://')) {
+        window.location.href = checkoutUrl;
       } else {
-        showToast('Checkout created — redirecting');
-        window.location.href = res.checkout_url || `/customer/orders/${id}/success`;
+        showToast('Payment could not be started. Please try again.');
+        setCreating(false);
       }
     } catch (e) {
       const msg = e.message || 'Payment could not be started. Please try again.';

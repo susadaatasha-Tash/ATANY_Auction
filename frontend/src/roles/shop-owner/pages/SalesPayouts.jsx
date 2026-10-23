@@ -1,8 +1,10 @@
 // frontend/src/roles/shop-owner/pages/SalesPayouts.jsx
-// Sales & Payouts dashboard — KPIs, revenue trend, top categories, payout history.
+// Sales & Payouts dashboard — KPIs, revenue trend, top categories, earnings history.
+// The history table shows recognized seller EARNINGS (ATANY does not record seller
+// disbursements yet), so it is never presented as a payout.
 // GET /shop-owner/sales/summary returns seller-scoped analytics.
 // All money figures derived from real orders belonging to the caller's shop.
-// Commission = 10%, seller payout = 90% (canonical backend rule).
+// Commission = 10%, seller earnings = 90% (canonical backend rule).
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../../../shared/lib/apiClient';
 import { useToast } from '../../../shared/components/Toast';
@@ -34,24 +36,11 @@ function monthLabel(d) {
 }
 function statusTone(status) {
   switch (status) {
-    case 'Paid': return 'paid';
-    case 'Scheduled': return 'scheduled';
+    case 'Earned': return 'paid';
     case 'Failed': return 'failed';
     default: return 'pending';
   }
 }
-function formatPaymentMethod(method) {
-  if (!method) return '—';
-  const m = method.trim();
-  const lower = m.toLowerCase();
-  const label = lower === 'gcash' ? 'GCash'
-    : lower === 'maya' ? 'Maya'
-    : lower === 'bpi' ? 'BPI'
-    : lower === 'bank' ? 'Bank Transfer'
-    : m.charAt(0).toUpperCase() + m.slice(1);
-  return label;
-}
-
 // ---- Custom tooltip for the trend chart ----
 function TrendTooltip({ active, payload, label }) {
   if (!active || !payload || payload.length === 0) return null;
@@ -73,7 +62,7 @@ function TrendTooltip({ active, payload, label }) {
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
           <span style={{ width: 8, height: 8, borderRadius: 4, background: '#1a2744', display: 'inline-block' }} />
-          <span style={{ fontSize: 13, color: '#1e2a3a', fontWeight: 700 }}>Net Payout</span>
+          <span style={{ fontSize: 13, color: '#1e2a3a', fontWeight: 700 }}>Net Earnings</span>
           <span style={{ fontSize: 13, color: '#1a2744', fontWeight: 800, marginLeft: 8 }}>{peso(net)}</span>
         </div>
       </div>
@@ -82,10 +71,10 @@ function TrendTooltip({ active, payload, label }) {
 }
 
 const EMPTY_SUMMARY = {
-  summary: { gross_sales_ytd: 0, net_payout_ytd: 0, pending_payout: 0, sales_this_month: 0, lots_sold_this_month: 0, commission_rate: 0.10 },
+  summary: { gross_sales_ytd: 0, net_earnings_ytd: 0, pending_earnings: 0, sales_this_month: 0, lots_sold_this_month: 0, commission_rate: 0.10 },
   revenue_trend: [],
   top_categories: [],
-  payout_history: []
+  earnings_history: []
 };
 
 export default function SalesPayouts() {
@@ -101,7 +90,7 @@ export default function SalesPayouts() {
       const d = await apiFetch('/shop-owner/sales/summary');
       setData(d || EMPTY_SUMMARY);
     } catch (e) {
-      setError(e.message || 'Unable to load sales and payout data.');
+      setError(e.message || 'Failed to load sales and earnings data.');
       setData(EMPTY_SUMMARY);
     } finally {
       setLoading(false);
@@ -110,7 +99,7 @@ export default function SalesPayouts() {
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  const { summary, revenue_trend: trend, top_categories: categories, payout_history: payouts } = data || EMPTY_SUMMARY;
+  const { summary, revenue_trend: trend, top_categories: categories, earnings_history: earnings } = data || EMPTY_SUMMARY;
 
   const kpis = [
     {
@@ -122,19 +111,19 @@ export default function SalesPayouts() {
       icon: <Gavel size={16} />
     },
     {
-      label: 'Net Payout',
+      label: 'Net Earnings',
       sub: 'After fees',
-      value: peso(summary.net_payout_ytd),
-      helper: summary.gross_sales_ytd > 0 ? `ATANY keeps ${Math.round(summary.commission_rate * 100)}% commission` : 'No payouts yet',
+      value: peso(summary.net_earnings_ytd),
+      helper: summary.gross_sales_ytd > 0 ? `ATANY keeps ${Math.round(summary.commission_rate * 100)}% commission` : 'No earnings yet',
       tone: 'gold',
       icon: <Wallet size={16} />
     },
     {
-      label: 'Pending Payout',
-      sub: summary.pending_payout > 0 ? 'Awaiting release' : 'None',
-      value: peso(summary.pending_payout),
-      helper: summary.pending_payout > 0 ? 'Ready for release to your account' : 'All caught up',
-      tone: summary.pending_payout > 0 ? 'gold' : 'muted',
+      label: 'Pending Earnings',
+      sub: summary.pending_earnings > 0 ? 'Awaiting fulfilment' : 'None',
+      value: peso(summary.pending_earnings),
+      helper: summary.pending_earnings > 0 ? 'Earned, order not yet completed' : 'All caught up',
+      tone: summary.pending_earnings > 0 ? 'gold' : 'muted',
       icon: <Clock size={16} />
     },
     {
@@ -147,42 +136,41 @@ export default function SalesPayouts() {
     }
   ];
 
-  // ---- CSV export ----
+  // ---- CSV export (earnings history — no payout destination column) ----
   const handleExportCsv = () => {
-    if (!payouts || !payouts.length) {
-      showToast('No payout data to export');
+    if (!earnings || !earnings.length) {
+      showToast('No earnings data to export');
       return;
     }
-    const headers = ['Payout ID', 'Date', 'Amount', 'Method', 'Status'];
-    const rows = payouts.map((p) => [
-      p.id || '—',
-      formatDate(p.date),
-      peso(p.amount),
-      p.method || '—',
-      p.status || '—'
+    const headers = ['Transaction ID', 'Date', 'Item', 'Buyer', 'Gross Sale', 'ATANY Commission', 'Net Earnings', 'Status'];
+    const rows = earnings.map((e) => [
+      e.id || '—',
+      formatDate(e.date),
+      e.item || '—',
+      e.buyer || '—',
+      peso(e.gross),
+      peso(e.commission),
+      peso(e.net),
+      e.status || '—'
     ]);
     const csv = [headers, ...rows].map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `atany-payout-history-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `atany-earnings-history-${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    showToast('Payout history exported');
+    showToast('Earnings history exported');
   };
 
   if (loading) {
     return (
       <div className="sp-page">
-        <div className="sp-header">
-          <p className="sp-eyebrow">EARNINGS</p>
-          <h1 className="sp-title">Sales & Payouts</h1>
-        </div>
         <div className="sp-loading" style={{ padding: 40, textAlign: 'center', color: '#848b96' }}>
-          Loading sales and payout data…
+          Loading sales and earnings data…
         </div>
       </div>
     );
@@ -191,10 +179,6 @@ export default function SalesPayouts() {
   if (error) {
     return (
       <div className="sp-page">
-        <div className="sp-header">
-          <p className="sp-eyebrow">EARNINGS</p>
-          <h1 className="sp-title">Sales & Payouts</h1>
-        </div>
         <div className="sp-error">
           <p>{error}</p>
           <button className="sp-btn-retry" onClick={refresh}>Retry</button>
@@ -203,27 +187,13 @@ export default function SalesPayouts() {
     );
   }
 
-  const hasData = summary.gross_sales_ytd > 0 || payouts.length > 0 || categories.length > 0;
+  const hasData = summary.gross_sales_ytd > 0 || earnings.length > 0 || categories.length > 0;
 
   return (
     <div className="sp-page">
-      {/* Header */}
-      <div className="sp-header">
-        <div className="sp-header-main">
-          <p className="sp-eyebrow">EARNINGS</p>
-          <h1 className="sp-title">Sales & Payouts</h1>
-          <p className="sp-subtitle">Track your sales performance and payout history</p>
-        </div>
-        <div className="sp-header-actions">
-          <span className="sp-active-pill" title="Active listings">
-            <span className="sp-dot" aria-hidden="true" />
-            <span className="sp-count">35</span>
-            active listings
-          </span>
-        </div>
-      </div>
-
-      {/* KPI Cards */}
+      {/* KPI Cards — the page identity comes from the portal topbar, so the
+          content starts directly with the KPIs (no duplicate heading and no
+          duplicated active-listing counter). */}
       <div className="sp-kpi">
         {kpis.map((k) => (
           <div key={k.label} className={`sp-card sp-kpi-card sp-kpi-${k.tone}`}>
@@ -246,7 +216,7 @@ export default function SalesPayouts() {
         <div className="sp-card sp-chart-card">
           <div className="sp-card-head">
             <h2 className="sp-card-title">Revenue Trend</h2>
-            <p className="sp-card-sub">Gross sales vs net payout over 12 months</p>
+            <p className="sp-card-sub">Gross sales vs net earnings over 12 months</p>
           </div>
           <div className="sp-chart-wrap">
             {hasData && trend.length ? (
@@ -270,8 +240,8 @@ export default function SalesPayouts() {
                   <YAxis tick={{ fontSize: 10, fill: '#848b96', formatter: (v) => `₱${Number(v / 1000).toFixed(0)}k` }} axisLine={false} tickMargin={4} width={40} />
                   <Tooltip content={<TrendTooltip />} cursor={{ stroke: '#c4a265', strokeWidth: 1, strokeDasharray: '3 3' }} />
                   <Legend verticalAlign="top" align="right" height={24} fill="#848b96" formatter={(value) => value} />
-                  <Line type="monotone" dataKey="gross" stroke="#c4a265" strokeWidth={2.5} dot={false} activeDot={{ r: 6, fill: '#c4a265' }} fill="url(#colorGross)" name="Gross sales" />
-                  <Line type="monotone" dataKey="net" stroke="#1a2744" strokeWidth={2.5} dot={false} activeDot={{ r: 6, fill: '#1a2744' }} fill="url(#colorNet)" name="Net payout" />
+                  <Line type="monotone" dataKey="gross" stroke="#c4a265" strokeWidth={2.5} dot={false} activeDot={{ r: 6, fill: '#c4a265' }} fill="url(#colorGross)" name="Gross Sales" />
+                  <Line type="monotone" dataKey="net" stroke="#1a2744" strokeWidth={2.5} dot={false} activeDot={{ r: 6, fill: '#1a2744' }} fill="url(#colorNet)" name="Net Earnings" />
                 </LineChart>
               </ResponsiveContainer>
             ) : (
@@ -311,14 +281,17 @@ export default function SalesPayouts() {
         </div>
       </div>
 
-      {/* Payout History (full width) */}
+      {/* Earnings History (full width) — recognized seller earnings.
+          ATANY does not record seller disbursements, so this is never shown
+          as a payout: no destination column, and the status is the EARNINGS
+          state ("Earned"), with the fulfilment state shown separately. */}
       <div className="sp-card sp-payout-card">
         <div className="sp-card-head sp-payout-head">
           <div className="sp-payout-head-left">
-            <h2 className="sp-card-title">Payout History</h2>
-            <p className="sp-card-sub">Recent releases to your preferred accounts</p>
+            <h2 className="sp-card-title">Earnings History</h2>
+            <p className="sp-card-sub">Your recognized seller earnings from paid auction orders</p>
           </div>
-          <button className="sp-btn-export" onClick={handleExportCsv} disabled={!payouts.length}>
+          <button className="sp-btn-export" onClick={handleExportCsv} disabled={!earnings.length}>
             <Download size={14} /> Export CSV
           </button>
         </div>
@@ -326,31 +299,40 @@ export default function SalesPayouts() {
           <table className="sp-payout-table">
             <thead>
               <tr>
-                <th>Payout ID</th>
+                <th>Transaction</th>
                 <th>Date</th>
-                <th>Amount</th>
-                <th>Method</th>
+                <th>Item</th>
+                <th>Buyer</th>
+                <th>Gross Sale</th>
+                <th>ATANY Commission</th>
+                <th>Net Earnings</th>
                 <th>Status</th>
               </tr>
             </thead>
             <tbody>
-              {hasData && payouts.length ? (
-                payouts.map((p) => (
-                  <tr key={p.id || p.date}>
-                    <td className="sp-pid">{p.id || '—'}</td>
-                    <td>{formatDate(p.date)}</td>
-                    <td className="sp-amt">{peso(p.amount)}</td>
-                    <td className="sp-method">{formatPaymentMethod(p.method)}</td>
+              {hasData && earnings.length ? (
+                earnings.map((e) => (
+                  <tr key={e.id || e.date}>
+                    <td className="sp-pid">{e.id || '—'}</td>
+                    <td>{formatDate(e.date)}</td>
+                    <td>{e.item || '—'}</td>
+                    <td>{e.buyer || '—'}</td>
+                    <td className="sp-amt">{peso(e.gross)}</td>
+                    <td className="sp-amt">{peso(e.commission)}</td>
+                    <td className="sp-amt">{peso(e.net)}</td>
                     <td>
-                      <span className={`sp-badge sp-badge-${statusTone(p.status)}`}>
+                      <span className={`sp-badge sp-badge-${statusTone(e.status)}`}>
                         <span className="sp-badge-dot" />
-                        {p.status}
+                        {e.status || '—'}
                       </span>
+                      {e.order_status ? (
+                        <span className="sp-order-status">{e.order_status}</span>
+                      ) : null}
                     </td>
                   </tr>
                 ))
               ) : (
-                <tr><td colSpan={5}><div className="sp-empty-inline"><span style={{ color: '#848b96', fontSize: 13 }}>No payout history yet.</span></div></td></tr>
+                <tr><td colSpan={8}><div className="sp-empty-inline"><span style={{ color: '#848b96', fontSize: 13 }}>No earnings history yet.</span></div></td></tr>
               )}
             </tbody>
           </table>

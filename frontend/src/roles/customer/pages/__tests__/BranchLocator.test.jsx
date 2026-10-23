@@ -127,7 +127,7 @@ describe('Branch Locator — public data + functionality', () => {
     renderLocator();
     await waitFor(() => expect(screen.getByText('Abreeza Branch')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: /Use My Location/ }));
-    await waitFor(() => expect(toastSpy).toHaveBeenCalledWith('User denied Geolocation'));
+    await waitFor(() => expect(toastSpy).toHaveBeenCalledWith('Location permission was denied. You can still search for a branch manually.'));
   });
 
   it('Back button navigates back in history', async () => {
@@ -135,6 +135,111 @@ describe('Branch Locator — public data + functionality', () => {
     await waitFor(() => expect(screen.getByText('Abreeza Branch')).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: /Back/ }));
     await waitFor(() => expect(screen.getByTestId('home-page')).toBeInTheDocument());
+  });
+});
+
+describe('Branch Locator — loading / error / empty states', () => {
+  beforeEach(() => {
+    apiFetch.mockReset();
+    toastSpy.mockReset();
+    mapProps.length = 0;
+    apiFetch.mockResolvedValue(BRANCHES);
+  });
+
+  it('shows Loading branches… while the request is in flight', async () => {
+    let resolveLoad;
+    apiFetch.mockImplementation(() => new Promise((res) => { resolveLoad = res; }));
+    renderLocator();
+    await waitFor(() => expect(screen.getByText('Loading branches…')).toBeInTheDocument());
+    resolveLoad(BRANCHES);
+    await waitFor(() => expect(screen.getByText('Abreeza Branch')).toBeInTheDocument());
+  });
+
+  it('API failure shows "Unable to load branches right now." with Retry, NOT "No branches match your search."', async () => {
+    apiFetch.mockRejectedValue(new Error('network down'));
+    renderLocator();
+    await waitFor(() => expect(screen.getByText('Unable to load branches right now.')).toBeInTheDocument());
+    expect(screen.queryByText(/No branches match your search/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Retry/ })).toBeInTheDocument();
+  });
+
+  it('Retry re-fetches branches after a failure', async () => {
+    apiFetch.mockRejectedValueOnce(new Error('network down')).mockResolvedValueOnce(BRANCHES);
+    renderLocator();
+    await waitFor(() => expect(screen.getByText('Unable to load branches right now.')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: /Retry/ }));
+    await waitFor(() => expect(screen.getByText('Abreeza Branch')).toBeInTheDocument());
+    expect(apiFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('successful empty database shows "No ATANY branches are currently available."', async () => {
+    apiFetch.mockResolvedValue([]);
+    renderLocator();
+    await waitFor(() => expect(screen.getByText('No ATANY branches are currently available.')).toBeInTheDocument());
+    expect(screen.queryByText(/No branches match your search/)).not.toBeInTheDocument();
+  });
+
+  it('empty search displays all branches', async () => {
+    renderLocator();
+    await waitFor(() => expect(screen.getByText('Abreeza Branch')).toBeInTheDocument());
+    expect(screen.getByText('Gmall Branch')).toBeInTheDocument();
+    expect(screen.getByText('SM Lanang Branch')).toBeInTheDocument();
+    expect(screen.queryByText(/No branches match your search/)).not.toBeInTheDocument();
+  });
+
+  it('search matches branch name (case-insensitive)', async () => {
+    renderLocator();
+    await waitFor(() => expect(screen.getByText('Abreeza Branch')).toBeInTheDocument());
+    const search = screen.getByPlaceholderText(/Search by city or branch name/);
+    fireEvent.change(search, { target: { value: 'GMALL' } });
+    await waitFor(() => expect(screen.getByText('Gmall Branch')).toBeInTheDocument());
+    expect(screen.queryByText('Abreeza Branch')).not.toBeInTheDocument();
+    expect(screen.queryByText('SM Lanang Branch')).not.toBeInTheDocument();
+  });
+
+  it('search matches branch address/city', async () => {
+    renderLocator();
+    await waitFor(() => expect(screen.getByText('Abreeza Branch')).toBeInTheDocument());
+    const search = screen.getByPlaceholderText(/Search by city or branch name/);
+    fireEvent.change(search, { target: { value: 'Laurel' } });
+    await waitFor(() => expect(screen.getByText('Abreeza Branch')).toBeInTheDocument());
+    expect(screen.getByText('Gmall Branch')).toBeInTheDocument();
+    expect(screen.getByText('SM Lanang Branch')).toBeInTheDocument();
+  });
+
+  it('non-empty search with no matches shows "No branches match your search."', async () => {
+    renderLocator();
+    await waitFor(() => expect(screen.getByText('Abreeza Branch')).toBeInTheDocument());
+    const search = screen.getByPlaceholderText(/Search by city or branch name/);
+    fireEvent.change(search, { target: { value: 'nonexistent-branch-xyz' } });
+    await waitFor(() => expect(screen.getByText(/No branches match your search/)).toBeInTheDocument());
+  });
+
+  it('Google Maps link is rendered only for branches with valid coordinates', async () => {
+    apiFetch.mockResolvedValue([
+      { id: 'b-valid', name: 'Valid Branch', address: 'Somewhere', phone: '(082) 111-1111', status: 'Open', lat: 7.07, lng: 125.6 },
+      { id: 'b-invalid', name: 'NoCoords Branch', address: 'Nowhere', phone: '(082) 222-2222', status: 'Open', lat: null, lng: null },
+    ]);
+    renderLocator();
+    await waitFor(() => expect(screen.getByText('Valid Branch')).toBeInTheDocument());
+    expect(screen.getByText('Valid Branch').closest('.branch-card').querySelector('a[href*="google.com/maps"]')).toBeTruthy();
+    expect(screen.getByText('NoCoords Branch').closest('.branch-card').querySelector('a[href*="google.com/maps"]')).toBeNull();
+  });
+
+  it('status badge treats open/Open/OPEN the same', async () => {
+    apiFetch.mockResolvedValue([
+      { id: 'b1', name: 'Branch A', address: 'Addr A', phone: '(082) 111-1111', status: 'Open', lat: 7.07, lng: 125.6 },
+      { id: 'b2', name: 'Branch B', address: 'Addr B', phone: '(082) 222-2222', status: 'open', lat: 7.08, lng: 125.7 },
+      { id: 'b3', name: 'Branch C', address: 'Addr C', phone: '(082) 333-3333', status: 'OPEN', lat: 7.09, lng: 125.8 },
+    ]);
+    renderLocator();
+    await waitFor(() => expect(screen.getByText('Branch A')).toBeInTheDocument());
+    expect(screen.getByText('Branch B')).toBeInTheDocument();
+    expect(screen.getByText('Branch C')).toBeInTheDocument();
+    // All open → badge displays 'Active', none 'Suspended'.
+    expect(screen.queryByText('Suspended')).not.toBeInTheDocument();
+    const activeBadges = screen.getAllByText('Active');
+    expect(activeBadges.length).toBe(3);
   });
 });
 

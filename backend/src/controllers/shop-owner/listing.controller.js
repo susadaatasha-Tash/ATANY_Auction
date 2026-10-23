@@ -5,6 +5,7 @@
 import { pool } from '../../db/pool.js';
 import { effectiveStatus } from '../../services/auctionService.js';
 import { acquireTxClient, ServiceUnavailableError } from '../../db/dbGuard.js';
+import { resolveDisplayImage } from '../../config/defaultProductImage.js';
 
 const VALID_CATEGORIES = ['Rings', 'Necklaces', 'Bracelets', 'Earrings', 'Pendants', 'Chains', 'Watches', 'Other'];
 
@@ -73,7 +74,15 @@ export const listListings = async (req, res) => {
     } else if (p.status === 'rejected') {
       computedStatus = 'ended';
     }
-    return { ...p, computed_status: computedStatus };
+    return {
+      ...p,
+      // The image the card/detail view must display. The seller's own upload
+      // always wins; a product with no photo gets the ATANY default instead of
+      // an empty placeholder. `image_url` stays the raw stored value so the
+      // edit form never silently persists the fallback.
+      display_image_url: resolveDisplayImage(p),
+      computed_status: computedStatus,
+    };
   });
   res.json(result);
 };
@@ -228,6 +237,9 @@ export const getListingDetail = async (req, res) => {
     res.json({
       listing: {
         ...product,
+        // Same resolved display image as the card — a photo-less listing still
+        // shows the ATANY default instead of an empty placeholder.
+        display_image_url: resolveDisplayImage(product),
         computed_status: computedStatus,
         bid_count: bidCount,
         order_count: orderCount,

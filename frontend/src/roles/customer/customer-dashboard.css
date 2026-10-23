@@ -39,12 +39,12 @@
   top: 0 !important;
   position: sticky !important;
   overflow-y: auto !important;
-  overflow-x: visible !important;
+  overflow-x: hidden !important;
   color: #E6EAF2 !important;
 }
 .app.customer-app .sidebar,
 .customer-app .sidebar {
-  overflow-x: visible !important;
+  overflow-x: hidden !important;
 }
 .app.customer-app .sidebar::after,
 .customer-app .sidebar::after {
@@ -141,19 +141,52 @@
 .app.customer-app .sidebar *,
 .customer-app .sidebar * { scrollbar-color: rgba(255,255,255,0.15) #050A16 !important; }
 
-/* Sidebar responsiveness — Desktop >=1200 full, Tablet 768-1199 compact/drawer, Mobile <768 drawer */
+/* Sidebar responsiveness — Desktop >=1200 full, Tablet 768-1199 compact 80px icon rail, Mobile <768 drawer */
 @media (min-width: 1200px) {
   .customer-app { grid-template-columns: 260px 1fr !important; }
-  .customer-app.sidebar-collapsed { grid-template-columns: 1fr !important; }
-  .customer-app.sidebar-collapsed .sidebar { display: none !important; }
-  .app.customer-app.sidebar-collapsed .sidebar { display: none !important; }
+  .customer-app.sidebar-collapsed { grid-template-columns: 80px 1fr !important; }
+  .customer-app.sidebar-collapsed .sidebar,
+  .app.customer-app.sidebar-collapsed .sidebar {
+    width: 80px !important;
+    max-width: 80px !important;
+    display: flex !important;
+    left: 0 !important;
+    transition: width .18s var(--ease) !important;
+  }
+  .customer-app.sidebar-collapsed .main,
+  .app.customer-app.sidebar-collapsed .main {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+  .customer-app.sidebar-collapsed .sidebar-brand .brand-name,
+  .customer-app.sidebar-collapsed .sidebar-brand .brand-tag,
+  .app.customer-app.sidebar-collapsed .sidebar-brand .brand-name,
+  .app.customer-app.sidebar-collapsed .sidebar-brand .brand-tag,
+  .customer-app.sidebar-collapsed .nav-section-label,
+  .app.customer-app.sidebar-collapsed .nav-section-label,
+  .customer-app.sidebar-collapsed .nav-label,
+  .app.customer-app.sidebar-collapsed .nav-label,
+  .customer-app.sidebar-collapsed .nav-badge,
+  .app.customer-app.sidebar-collapsed .nav-badge { display: none !important; }
+  .customer-app.sidebar-collapsed .sidebar-brand,
+  .app.customer-app.sidebar-collapsed .sidebar-brand { justify-content: center !important; padding: 12px 8px !important; gap: 6px !important; }
+  .customer-app.sidebar-collapsed .nav-item,
+  .app.customer-app.sidebar-collapsed .nav-item { justify-content: center !important; padding: 10px !important; gap: 6px !important; }
+  .customer-app.sidebar-collapsed .nav-item svg,
+  .app.customer-app.sidebar-collapsed .nav-item svg { opacity: 1 !important; color: #E6EAF2 !important; }
+  .customer-app.sidebar-collapsed .nav-item.active,
+  .app.customer-app.sidebar-collapsed .nav-item.active { background: rgba(200,155,60,0.14) !important; }
+  .customer-app.sidebar-collapsed .nav-item.active svg,
+  .app.customer-app.sidebar-collapsed .nav-item.active svg { color: #C89B3C !important; }
 }
 @media (min-width: 768px) and (max-width: 1199px) {
   .customer-app { grid-template-columns: 260px 1fr !important; }
-  .customer-app.sidebar-collapsed { grid-template-columns: 68px 1fr !important; }
+  .customer-app.sidebar-collapsed { grid-template-columns: 80px 1fr !important; }
   .customer-app.sidebar-collapsed .sidebar,
   .app.customer-app.sidebar-collapsed .sidebar {
-    width: 68px !important;
+    width: 80px !important;
+    max-width: 80px !important;
     display: flex !important;
     left: 0 !important;
   }

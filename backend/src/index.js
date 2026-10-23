@@ -5,6 +5,7 @@ import cors from 'cors';
 import authRoutes from './routes/auth.routes.js';
 import customerRoutes from './routes/customer.routes.js';
 import shopOwnerRoutes from './routes/shop-owner.routes.js';
+import supportRoutes from './routes/support.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import { requireAuth } from './middleware/requireAuth.js';
 import { requireRole } from './middleware/requireRole.js';
@@ -28,6 +29,7 @@ import messageRoutes from './routes/message.routes.js';
 import billingRoutes from './routes/billing.routes.js';
 import subscriptionPlansRoutes from './routes/subscription-plans.routes.js';
 import webhookRoutes from './routes/webhook.routes.js';
+import { isPayMongoConfigured } from './services/paymongoService.js';
 import { rateLimit } from './middleware/rateLimit.js';
 import { validateProductionEnv, warnMissingDevEnv, formatEnvReport } from './config/validateEnv.js';
 import { runExclusiveJob } from './services/jobLock.js';
@@ -45,6 +47,10 @@ if (envCheck.ok && envCheck.mode === 'production') {
 } else {
   for (const w of warnMissingDevEnv(process.env)) console.warn('[startup] env:', w);
 }
+
+// PayMongo startup diagnostics (key presence only — values never logged)
+console.log('[paymongo] secret key configured:', isPayMongoConfigured());
+console.log('[paymongo] webhook secret configured:', !!process.env.PAYMONGO_WEBHOOK_SECRET);
 
 const app = express();
 const corsOrigin = (origin, callback) => {
@@ -128,50 +134,43 @@ app.get('/api/public/stats', rateLimit({ name: 'public-stats', windowMs: 60_000,
 });
 
 // Public contact form — validated + rate limited server-side.
-// The support_requests row is authoritative; an optional Resend notification is
-// best-effort and never blocks the insert.
-const CONTACT_SUBJECTS = ['General Inquiry', 'Bid Support', 'Payout Question', 'Account Issue', 'Partnership'];
+// The support_requests row is authoritative; the notification to the official
+// ATANY inbox is best-effort and never blocks the insert.
+// ALL support sending goes through the shared support service — there is no
+// second mailer in this file.
 app.post('/api/public/contact', rateLimit({ name: 'public-contact', windowMs: 600_000, max: 5 }), async (req, res) => {
-  const { name, email, subject, message } = req.body || {};
-  const clean = (v) => (typeof v === 'string' ? v.trim() : '');
-  const cName = clean(name);
-  const cEmail = clean(email).toLowerCase();
-  const cSubject = clean(subject) || 'General Inquiry';
-  const cMessage = clean(message);
+  const { name, email, subject, category, message } = req.body || {};
+  const { validateSupportRequest, sendSupportNotification, SUPPORT_SOURCES } = await import('./services/supportService.js');
 
-  if (!cName || cName.length > 150) {
-    return res.status(400).json({ code: 'INVALID_NAME', message: 'Please provide your name (max 150 characters).' });
-  }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(cEmail) || cEmail.length > 254) {
-    return res.status(400).json({ code: 'INVALID_EMAIL', message: 'Please provide a valid email address.' });
-  }
-  if (!CONTACT_SUBJECTS.includes(cSubject)) {
-    return res.status(400).json({ code: 'INVALID_SUBJECT', message: 'Please choose a valid subject.' });
-  }
-  if (!cMessage || cMessage.length > 5000) {
-    return res.status(400).json({ code: 'INVALID_MESSAGE', message: 'Please provide a message (max 5000 characters).' });
-  }
+  const invalid = validateSupportRequest({ name, email, subject, category: category || subject, message });
+  if (invalid) return res.status(400).json(invalid);
 
   try {
-    const { rows } = await pool.query(
-      'INSERT INTO support_requests (name, email, subject, message) VALUES ($1,$2,$3,$4) RETURNING id, created_at',
-      [cName, cEmail, cSubject, cMessage]
-    );
-    // Best-effort notification to the support inbox — never blocks storage.
-    try {
-      const { sendNotificationEmail } = await import('./services/emailService.js');
-      await sendNotificationEmail({
-        to: process.env.SUPPORT_EMAIL || 'support@atany.ph',
-        subject: `ATANY contact — ${cSubject}`,
-        html: `<p><strong>${cName}</strong> (${cEmail})</p><p>${cMessage}</p>`,
-      });
-    } catch (mailErr) {
-      console.warn('[public/contact] email notification failed (row stored):', mailErr.message);
-    }
-    res.status(201).json({ id: rows[0].id, received: true });
+    const result = await sendSupportNotification({
+      source: SUPPORT_SOURCES.PUBLIC,
+      requesterName: name,
+      requesterEmail: email,
+      requesterRole: 'public',
+      subject: '',
+      category: category || subject || 'General Inquiry',
+      message,
+    });
+    res.status(201).json({
+      success: true,
+      request: { id: result.id, reference: result.reference, status: result.status },
+      email_notification: {
+        sent: result.emailNotification.sent,
+        accepted: result.emailNotification.accepted,
+        provider: result.emailNotification.provider,
+        ...(result.emailNotification.emailId ? { emailId: result.emailNotification.emailId } : {}),
+        ...(result.emailNotification.errorCode ? { errorCode: result.emailNotification.errorCode } : {}),
+        ...(result.emailNotification.message ? { message: result.emailNotification.message } : {}),
+        ...(result.emailNotification.reason ? { reason: result.emailNotification.reason } : {}),
+      },
+    });
   } catch (e) {
     console.error('[public/contact] insert failed:', e.message);
-    res.status(500).json({ message: 'Failed to send message' });
+    res.status(500).json({ message: 'Unable to send your support request. Please try again.' });
   }
 });
 
@@ -196,29 +195,56 @@ async function resolveOptionalUserId(req) {
 }
 
 app.post('/chat', rateLimit({ name: 'chat', windowMs: 60_000, max: 20 }), async (req, res) => {
-  const { query, message, history, mode } = req.body;
-  const text = query || message;
-  // mode: 'customer' or 'seller' — from frontend page context (Landing/Login/Signup/Customer vs Shop Owner)
-  // Chatbot identity: the route is public (guests must keep working), so a client-declared
-  // userId is NOT trusted. If the caller presents a bearer token we resolve the id
-  // server-side; otherwise the turn is attributed to a guest (NULL).
-  const resolvedUserId = await resolveOptionalUserId(req);
-  const result = await chatbotReply(text, { userId: resolvedUserId, mode: mode || 'customer', history: history || [] });
-  // Chatbot conversation persistence (internal). Failure-safe: logging must
-  // never break the chatbot response, so errors are swallowed inside the service.
-  // The service validates the id against users and falls back to NULL (guest) for
-  // missing/invalid ids — no fake accounts.
   try {
-    const replyText = result?.reply || result?.response || '';
-    if (text && replyText) {
+    const { query, message, history, mode } = req.body;
+    // Trim and validate input — never send empty text to Groq or the rule KB.
+    const text = String(query || message || '').trim();
+    if (!text) {
+      return res.status(400).json({ message: 'Message is required.' });
+    }
+    // mode: 'customer' or 'seller' — from frontend page context (Landing/Login/Signup/Customer vs Shop Owner)
+    // Chatbot identity: the route is public (guests must keep working), so a client-declared
+    // userId is NOT trusted. If the caller presents a bearer token we resolve the id
+    // server-side; otherwise the turn is attributed to a guest (NULL).
+    const resolvedUserId = await resolveOptionalUserId(req);
+    const result = await chatbotReply(text, { userId: resolvedUserId, mode: mode || 'customer', history: history || [] });
+
+    // Guarantee the client always receives a non-empty reply.
+    const reply = typeof result?.reply === 'string' && result.reply.trim().length > 0
+      ? result.reply.trim()
+      : "I can still help with ATANY. You can ask me about bidding, winning an auction, payments, pickup, branches, or your account.";
+    const safeResult = { ...result, reply };
+
+    // Chatbot conversation persistence (internal). Failure-safe: logging must
+    // never break the chatbot response, so errors are swallowed inside the service.
+    // The service validates the id against users and falls back to NULL (guest) for
+    // missing/invalid ids — no fake accounts.
+    try {
       const { logChatTurn } = await import('./services/chatbotLogService.js');
       const escalated = /human|agent|support/i.test(String(text));
-      logChatTurn({ userId: resolvedUserId, mode: mode || 'customer', query: text, reply: replyText, escalated }).catch((e) => console.warn('[chatbotLog] async persist failed:', e.message));
+      logChatTurn({
+          userId: resolvedUserId,
+          mode: mode || 'customer',
+          query: text,
+          reply: reply,
+          conversation_state: safeResult?.conversation_state || 'ongoing',
+          escalated,
+        }).catch((e) => console.warn('[chatbotLog] async persist failed:', e.message));
+    } catch (e) {
+      console.warn('[chatbotLog] persist skipped:', e.message);
     }
-  } catch (e) {
-    console.warn('[chatbotLog] persist skipped:', e.message);
+    res.json(safeResult);
+  } catch (error) {
+    console.error('[chat] unexpected error', error.message);
+    // Never leave the browser hanging — return a deterministic safe fallback.
+    res.status(200).json({
+      source: 'safety',
+      reply: "I can still help with ATANY. You can ask me about bidding, winning an auction, payments, pickup, branches, or your account.",
+      suggestions: ["How do I bid?", "How does payment work?", "Where can I pick up my jewelry?"],
+      conversation_state: 'ongoing',
+      mode: mode || 'customer',
+    });
   }
-  res.json(result);
 });
 app.use(reviewRoutes); // extension d) product reviews: GET/POST /products/:id/reviews
 
@@ -232,6 +258,10 @@ async function handlePublicAuctions(req, res) {
 }
 app.get('/api/auctions', rateLimit({ name: 'auctions', windowMs: 60_000, max: 120 }), handlePublicAuctions);
 app.get('/api/auctions/live', rateLimit({ name: 'auctions-live', windowMs: 60_000, max: 120 }), handlePublicAuctions);
+
+// Lightweight liveness check — confirms the backend process is reachable.
+// No auth, no secrets, no DB dependency.
+app.get('/api/health/live', (_req, res) => res.status(200).json({ ok: true }));
 
 // Sanitized database health for development diagnostics — pool counters, connection
 // mode, and last success/failure timestamps only. No credentials, no hostnames,
@@ -250,6 +280,17 @@ app.use('/seller-applications', (req, res) => {
   res.status(410).json({ message: 'Seller application is no longer available.' });
 });
 app.use('/customer', requireAuth, requireRole('customer'), customerRoutes);
+// ATANY support — the official support destination for signed-in customers and
+// shop owners. Mounted BEFORE the shop-owner guard on purpose: a SUSPENDED
+// account must still be able to contact support. There is no active-account
+// guard here and no other protected functionality is reachable from it.
+app.use(
+  '/support',
+  requireAuth,
+  requireRole(['customer', 'shop_owner']),
+  rateLimit({ name: 'account-support', windowMs: 600_000, max: 10 }),
+  supportRoutes
+);
 // Shop owners: a suspended seller loses every protected seller route
 // (dashboard, listings, auctions, won lots, sales/payouts, subscription, shop
 // profile) — the account state is read from public.users, never from the JWT.

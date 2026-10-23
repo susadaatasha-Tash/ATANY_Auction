@@ -119,10 +119,18 @@ export default function OrderDetails() {
   const isPayable = order.status === 'pending' && !payPaid && !isExpired && !deadlinePassed;
   const hrsLeft = hoursRemaining(order.payment_deadline);
   const isUrgent = hrsLeft !== null && hrsLeft <= 24 && hrsLeft > 0;
-  const supportHref = `/customer/messages?${new URLSearchParams({
-    order: order.transaction_code || order.id,
+  // The expired-winner support action opens the REAL support pipeline (a
+  // persisted support request that reaches the official ATANY inbox) — not the
+  // buyer↔seller message thread.
+  // ONLY safe, customer-visible context is passed: the item, the customer's
+  // own transaction reference, the expired payment deadline and the customer's
+  // OWN former winning amount. The next bidder's identity is NEVER included.
+  const supportHref = `/customer/account?${new URLSearchParams({
+    support: 'expired-payment',
+    order: order.transaction_code || order.id || '',
     item: product?.name || order.item || '',
-    topic: 'expired-payment',
+    deadline: order.payment_deadline || '',
+    amount: order.amount != null ? String(order.amount) : '',
   }).toString()}`;
 
   return (

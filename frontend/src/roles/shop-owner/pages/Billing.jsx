@@ -4,6 +4,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch } from '../../../shared/lib/apiClient';
 import { useToast } from '../../../shared/components/Toast';
+import SupportRequestForm from '../../../shared/components/SupportRequestForm';
+import { SUPPORT_EMAIL } from '../../../shared/config/support';
 import { CurrentPlanHero } from '../subscription/CurrentPlanHero';
 import { SubscriptionUsage } from '../subscription/SubscriptionUsage';
 import { NextPaymentCard } from '../subscription/NextPaymentCard';
@@ -25,6 +27,9 @@ import {
   getPlanForPlanCode,
   planPriceLabel,
 } from '../../../shared/lib/subscriptionPlans';
+import {
+  subscriptionMethodLabel,
+} from '../subscription/subscriptionPaymentMethods';
 import '../subscription/seller-subscription.css';
 
 export default function Billing() {
@@ -47,24 +52,29 @@ export default function Billing() {
   const [downgradePreview, setDowngradePreview] = useState(null);
   const [confirming, setConfirming] = useState(false);
   const [modalError, setModalError] = useState('');
+  const [supportOpen, setSupportOpen] = useState(false);
   const [busyPlanCode, setBusyPlanCode] = useState(null);
   const [scheduledChange, setScheduledChange] = useState(null);
+  // The saved "next payment method" preference (QR Ph / Card / GCash / Maya).
+  const [paymentPreference, setPaymentPreference] = useState(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [billingRows, listingRows, auctionRows, shopRow, subRes] = await Promise.all([
+      const [billingRows, listingRows, auctionRows, shopRow, subRes, methodsRes] = await Promise.all([
         apiFetch('/billing/me'),
         apiFetch('/shop-owner/listings').catch(() => []),
         apiFetch('/shop-owner/auctions').catch(() => []),
         apiFetch('/shop-owner/shop').catch(() => null),
         apiFetch('/billing/me/subscription').catch(() => null),
+        apiFetch('/billing/subscription/payment-methods').catch(() => null),
       ]);
       setRecords(Array.isArray(billingRows) ? billingRows : []);
       setListings(Array.isArray(listingRows) ? listingRows : []);
       setAuctions(Array.isArray(auctionRows) ? auctionRows : []);
       setShop(shopRow || null);
       setScheduledChange(subRes?.scheduled_change || subRes?.active_change || null);
+      setPaymentPreference(methodsRes?.preference || null);
       setError(null);
     } catch (e) {
       setError(e.message || 'Failed to load subscription data');
@@ -84,10 +94,35 @@ export default function Billing() {
     [listings, auctions, shop, state.plan]
   );
   const comparePlans = useMemo(() => buildComparePlans(state.plan), [state.plan]);
+
+  // SAFE billing context for a support request. Only the plan name, the
+  // ATANY billing record reference and the payment status are included —
+  // never a PayMongo secret, a raw payment payload or card data.
+  const billingSupportMetadata = useMemo(() => {
+    const meta = {};
+    const planName = state.planName || state.plan?.name || null;
+    const billingReference = state.nextPayment?.record?.id || state.record?.id || null;
+    const paymentStatus = state.nextPayment?.record?.status || state.record?.status || null;
+    if (planName) meta.plan_name = planName;
+    if (billingReference) meta.billing_reference = billingReference;
+    if (paymentStatus) meta.payment_status = paymentStatus;
+    meta.provider = 'PayMongo';
+    meta.role = 'shop_owner';
+    return meta;
+  }, [state]);
   const historyRows = useMemo(() => billingHistoryRows(records), [records]);
 
   const activeListings = usageMetrics?.activeListings ?? usageMetrics?.active_listings ?? listings.length;
   const billingInterval = normalizeBillingInterval(state.record?.billing_interval || 'monthly');
+
+  // The saved payment-method preference, shown on the Next payment card.
+  // The authoritative source is the seller's own billing record; the
+  // payment-method endpoint is the fallback.
+  const paymentPreferenceLabel = useMemo(() => {
+    const method =
+      state.nextPayment?.payment_method_type || paymentPreference?.method || null;
+    return method ? subscriptionMethodLabel(method) : null;
+  }, [state.nextPayment, paymentPreference]);
 
   const scrollTo = (ref) => {
     ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -295,6 +330,43 @@ export default function Billing() {
       {error && (
         <div className="ssub-error" data-testid="subscription-error">
           {error}
+          <div style={{ marginTop: 10 }}>
+            <button type="button" className="btn btn-outline" onClick={() => setSupportOpen(true)}>
+              Contact ATANY Support
+            </button>
+          </div>
+        </div>
+      )}
+
+      {supportOpen && (
+        <div className="profile-modal-overlay" role="presentation" onClick={() => setSupportOpen(false)}>
+          <div
+            className="profile-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="billing-support-title"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="profile-modal__head">
+              <h3 id="billing-support-title">Subscription Billing Support</h3>
+              <button type="button" className="modal-close" onClick={() => setSupportOpen(false)} aria-label="Close support form">
+                <span aria-hidden="true">×</span>
+              </button>
+            </div>
+            <div className="profile-modal__body">
+              <p className="form-hint">
+                Include anything that helps us identify the payment — but never send card numbers or PINs.
+              </p>
+              <SupportRequestForm
+                endpoint="/support/account"
+                initialCategory="Billing / Subscription"
+                initialSubject="Subscription Billing Support"
+                initialMessage={'Hello ATANY Support,\n\nI need help with my ATANY subscription billing.\n\n'}
+                submitLabel="Send Support Request"
+                metadata={billingSupportMetadata}
+              />
+            </div>
+          </div>
         </div>
       )}
 
@@ -323,6 +395,7 @@ export default function Billing() {
                 : null
             }
             onUpdatePaymentMethod={() => setPayMethodOpen(true)}
+            paymentMethodLabel={paymentPreferenceLabel}
           />
         </div>
       </div>
@@ -385,6 +458,17 @@ export default function Billing() {
         open={payMethodOpen}
         onClose={() => setPayMethodOpen(false)}
         showToast={showToast}
+        subscription={{
+          planName: state.planName,
+          planDescription: state.plan?.description || null,
+          amount: state.nextPayment?.amount ?? state.amount ?? 0,
+          billingDate: state.nextPayment?.date || null,
+          reference: state.nextPayment?.reference || null,
+          billingCycle:
+            (state.nextPayment?.billing_interval || billingInterval) === 'annual' ? 'Annual' : 'Monthly',
+          statusLabel: state.nextPayment?.statusLabel || state.statusLabel || null,
+        }}
+        onSaved={refresh}
       />
 
       {scheduledChange && (

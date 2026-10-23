@@ -733,7 +733,7 @@ export async function confirmPlanChange({ sellerId, planCode, billingInterval })
         ]);
         const billing = rows[0];
         if (billing && ['pending', 'processing'].includes(String(billing.status))) {
-          const checkout = await createBillingCheckoutSession(billing, { actorRole: 'shop_owner' });
+          const checkout = await createBillingCheckoutSession(billing, { actorRole: 'shop_owner', allowUnselected: true });
           return {
             mode: 'pending_payment',
             change: pending,
@@ -766,7 +766,7 @@ export async function confirmPlanChange({ sellerId, planCode, billingInterval })
       ]);
       const billing = rows[0];
       if (billing && ['pending', 'processing'].includes(String(billing.status))) {
-        const checkout = await createBillingCheckoutSession(billing, { actorRole: 'shop_owner' });
+        const checkout = await createBillingCheckoutSession(billing, { actorRole: 'shop_owner', allowUnselected: true });
         return {
           mode: 'pending_payment',
           change: pending,
@@ -909,7 +909,7 @@ export async function confirmPlanChange({ sellerId, planCode, billingInterval })
     [billing.id, billing.paymongo_checkout_session_id || null, change.id]
   );
 
-  const checkout = await createBillingCheckoutSession(billing, { actorRole: 'shop_owner' });
+  const checkout = await createBillingCheckoutSession(billing, { actorRole: 'shop_owner', allowUnselected: true });
 
   // Persist checkout session on the change row
   const checkoutId = checkout.billing?.paymongo_checkout_session_id || null;

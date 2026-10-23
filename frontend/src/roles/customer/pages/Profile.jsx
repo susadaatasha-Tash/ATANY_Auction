@@ -12,7 +12,7 @@
 // Email is read-only: ATANY has no verified email-change flow, so it is never
 // silently editable.
 import { useState, useEffect, useCallback } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Mail, Phone, MapPin, User, ChevronRight, Send, HelpCircle, FileText, X } from 'lucide-react';
 import { apiFetch } from '../../../shared/lib/apiClient';
 import { useToast } from '../../../shared/components/Toast';
@@ -21,8 +21,9 @@ import { useBranch } from '../../../shared/hooks/useBranch';
 import { supabase } from '../../../shared/lib/supabaseClient';
 import { validatePassword, validatePasswordMatch } from '../../../shared/validation/signupValidation';
 import { PasswordField } from '../components/PasswordField';
+import { SUPPORT_EMAIL, SUPPORT_CATEGORIES } from '../../../shared/config/support';
 
-const SUPPORT_SUBJECTS = ['General Inquiry', 'Bid Support', 'Payout Question', 'Account Issue', 'Partnership'];
+
 
 const FAQ_ITEMS = [
   {
@@ -54,6 +55,7 @@ const FAQ_ITEMS = [
 export function Profile() {
   const showToast = useToast();
   const { user, profileName, refreshProfile } = useAuth();
+  const [supportParams] = useSearchParams();
   const { branches, refreshBranch } = useBranch();
 
   const [account, setAccount] = useState(null);
@@ -70,10 +72,13 @@ export function Profile() {
 
   const [faqOpen, setFaqOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
-  const [contactSubject, setContactSubject] = useState('General Inquiry');
+  const [contactCategory, setContactCategory] = useState('General Inquiry');
+  const [contactSubject, setContactSubject] = useState('');
   const [contactMessage, setContactMessage] = useState('');
   const [contactSending, setContactSending] = useState(false);
   const [contactError, setContactError] = useState(null);
+  const [contactReference, setContactReference] = useState('');
+  const [contactMailSent, setContactMailSent] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -216,6 +221,48 @@ export function Profile() {
     }
   };
 
+  // Safe, customer-visible context for the support request. The backend
+  // whitelists these keys and drops anything credential-shaped.
+  const buildSupportMetadata = useCallback(() => {
+    if (supportParams.get('support') !== 'expired-payment') return null;
+    const item = supportParams.get('item');
+    const transactionCode = supportParams.get('order');
+    const expiredPaymentDeadline = supportParams.get('deadline');
+    const winningAmount = supportParams.get('amount');
+    const meta = {};
+    if (item) meta.item = item;
+    if (transactionCode) meta.transaction_code = transactionCode;
+    if (expiredPaymentDeadline) meta.expired_payment_deadline = expiredPaymentDeadline;
+    if (winningAmount) meta.winning_amount = winningAmount;
+    return Object.keys(meta).length ? meta : null;
+  }, [supportParams]);
+
+  // ── Support deep-link prefill ────────────────────────────────────────────
+  // /customer/account?support=expired-payment&order=…&item=…&deadline=…&amount=…
+  // opens the Contact Us modal with the SAFE, customer-visible context only.
+  // The next bidder's identity is never part of the payload.
+  useEffect(() => {
+    if (supportParams.get('support') !== 'expired-payment') return;
+    const item = supportParams.get('item') || '';
+    const orderRef = supportParams.get('order') || '';
+    const deadline = supportParams.get('deadline') || '';
+    const amount = supportParams.get('amount') || '';
+    const lines = [
+      'Hello ATANY Support,',
+      '',
+      'I have a question about the payment period that ended on one of my auction orders.',
+      '',
+    ];
+    if (item) lines.push(`Item: ${item}`);
+    if (orderRef) lines.push(`Order: ${orderRef}`);
+    if (deadline) lines.push(`Expired payment deadline: ${deadline}`);
+    if (amount) lines.push(`My former winning amount: ${amount}`);
+    lines.push('', 'Please let me know what happens next. Thank you.');
+    setContactCategory('Auction / Payment Support');
+    setContactMessage(lines.join('\n'));
+    setContactOpen(true);
+  }, [supportParams]);
+
   const handleContactSend = async () => {
     const message = contactMessage.trim();
     if (!message) {
@@ -225,15 +272,24 @@ export function Profile() {
     setContactSending(true);
     setContactError(null);
     try {
-      await apiFetch('/customer/support', {
+      const res = await apiFetch('/customer/support', {
         method: 'POST',
-        body: JSON.stringify({ subject: contactSubject, message }),
+        body: JSON.stringify({
+          category: contactCategory,
+          subject: contactSubject || contactCategory,
+          message,
+          // Safe, customer-visible context only (whitelisted server-side).
+          metadata: buildSupportMetadata(),
+        }),
       });
+      if (!res) throw new Error('Unable to send your support request. Please try again.');
+      setContactReference(res?.request?.reference || '');
+      setContactMailSent(res?.email_notification?.sent !== false);
       setContactMessage('');
       setContactOpen(false);
-      showToast('Message sent — our support team will get back to you.');
+      showToast('Support request sent');
     } catch (e) {
-      setContactError(e?.message || 'Unable to send your message right now.');
+      setContactError(e?.message || 'Unable to send your support request. Please try again.');
     } finally {
       setContactSending(false);
     }
@@ -444,11 +500,25 @@ export function Profile() {
             <span className="profile-support__icon"><Send size={17} aria-hidden="true" /></span>
             <span className="profile-support__text">
               <span className="profile-support__title">Contact Us</span>
-              <span className="profile-support__desc">Reach our support team.</span>
+              <span className="profile-support__desc">Reach our support team at {SUPPORT_EMAIL}.</span>
             </span>
             <ChevronRight size={16} className="profile-support__chev" aria-hidden="true" />
           </button>
         </div>
+        {contactReference && (
+          <div className="profile-support__last" role="status">
+            <strong>Support request sent</strong> — we've received your message. ATANY Support will review your request.
+            <br />
+            Reference: <strong>{contactReference}</strong>
+            {!contactMailSent && (
+              <>
+                <br />
+                Email notification is temporarily delayed — you can also email{' '}
+                <a href={`mailto:${SUPPORT_EMAIL}`} style={{ color: 'var(--navy)', fontWeight: 700 }}>{SUPPORT_EMAIL}</a>.
+              </>
+            )}
+          </div>
+        )}
       </section>
 
       {/* FAQ modal */}
@@ -501,18 +571,30 @@ export function Profile() {
             </div>
             <div className="profile-modal__body">
               <p className="form-hint">
-                Signed in as <strong>{account?.name}</strong> ({account?.email}).
+                Signed in as <strong>{account?.name}</strong> ({account?.email}). You can also{' '}
+                <a href={`mailto:${SUPPORT_EMAIL}`} style={{ color: 'var(--navy)', fontWeight: 700 }}>email us directly</a>.
               </p>
               <div className="form-row">
-                <label htmlFor="profile-contact-subject">Subject</label>
+                <label htmlFor="profile-contact-category">Category</label>
                 <select
+                  id="profile-contact-category"
+                  value={contactCategory}
+                  onChange={(e) => setContactCategory(e.target.value)}
+                  disabled={contactSending}
+                >
+                  {SUPPORT_CATEGORIES.map((s) => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+              <div className="form-row">
+                <label htmlFor="profile-contact-subject">Subject</label>
+                <input
                   id="profile-contact-subject"
                   value={contactSubject}
                   onChange={(e) => setContactSubject(e.target.value)}
                   disabled={contactSending}
-                >
-                  {SUPPORT_SUBJECTS.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
+                  maxLength={200}
+                  placeholder="Short summary"
+                />
               </div>
               <div className="form-row">
                 <label htmlFor="profile-contact-message">Message</label>

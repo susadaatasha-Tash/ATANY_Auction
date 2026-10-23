@@ -192,17 +192,20 @@ describe('Landing footer', () => {
     expect(footerLink('Sign In')).toBeFalsy();
   });
 
-  it('email links use real mailto addresses', async () => {
+  it('email links use the official ATANY support address', async () => {
     renderLanding();
-    await waitFor(() => expect(footerLink('hello@atany.ph')).toBeTruthy());
-    expect(footerLink('hello@atany.ph')).toHaveAttribute('href', 'mailto:hello@atany.ph');
-    expect(footerLink('support@atany.ph')).toHaveAttribute('href', 'mailto:support@atany.ph');
+    await waitFor(() => expect(footerLink('goldjewelryauction@gmail.com')).toBeTruthy());
+    expect(footerLink('goldjewelryauction@gmail.com')).toHaveAttribute('href', 'mailto:goldjewelryauction@gmail.com');
+    // The single official address replaces every outdated support mailbox.
+    expect(footerLink('hello@atany.ph')).toBeFalsy();
+    expect(footerLink('support@atany.ph')).toBeFalsy();
+    expect(footerLink('partnerships@atany.ph')).toBeFalsy();
   });
 
   it('contact links carry decorative icons', async () => {
     const { container } = renderLanding();
     await waitFor(() => expect(container.querySelector('.site-footer')).toBeInTheDocument());
-    expect(container.querySelector('a[href="mailto:hello@atany.ph"] svg')).toBeTruthy();
+    expect(container.querySelector('a[href="mailto:goldjewelryauction@gmail.com"] svg')).toBeTruthy();
     expect(container.querySelector('a[href="/branches"] svg')).toBeTruthy();
   });
 

@@ -12,6 +12,7 @@ import { apiFetch } from '../shared/lib/apiClient';
 import { useAuth } from '../shared/hooks/useAuth';
 import { roleHome, ACCOUNT_SUSPENDED_ROUTE } from '../shared/lib/roleRoutes';
 import { BranchMap } from '../roles/customer/components/BranchMap';
+import { SUPPORT_EMAIL, SUPPORT_CATEGORIES } from '../shared/config/support';
 
 function Countdown({ initial }) {
   const sec = useAuctionCountdown(initial);
@@ -40,6 +41,8 @@ export default function LandingPage() {
   const [cMessage, setCMessage] = useState('');
   const [cBusy, setCBusy] = useState(false);
   const [cSent, setCSent] = useState(false);
+  const [cReference, setCReference] = useState('');
+  const [cMailSent, setCMailSent] = useState(true);
   const { user, role, status, signOut } = useAuth();
 
   // ── Public data ────────────────────────────────────────────────────────────
@@ -56,7 +59,7 @@ export default function LandingPage() {
   const isSuspended = !!user && role === 'customer' && String(status || '').toLowerCase() === 'suspended';
 
   // Only real branches that are open for pickup. Deterministic order (server sorts by name).
-  const openBranches = useMemo(() => (branches || []).filter((b) => b.status === 'Open'), [branches]);
+  const openBranches = useMemo(() => (branches || []).filter((b) => String(b.status || '').toLowerCase() === 'open'), [branches]);
   const featuredBranch = openBranches[0] || null;
   const contactBranches = openBranches.slice(0, 3);
 
@@ -73,11 +76,13 @@ export default function LandingPage() {
       const res = await apiFetch('/api/public/contact', {
         method: 'POST',
         public: true,
-        body: JSON.stringify({ name: cName.trim(), email: cEmail.trim(), subject: cSubject, message: cMessage.trim() }),
+        body: JSON.stringify({ name: cName.trim(), email: cEmail.trim(), category: cSubject, subject: cSubject, message: cMessage.trim() }),
       });
-      if (!res) throw new Error('Failed to send message');
+      if (!res) throw new Error('Unable to send your support request. Please try again.');
+      setCReference(res?.request?.reference || '');
+      setCMailSent(res?.email_notification?.sent !== false);
       setCSent(true);
-      showToast("Message sent — we'll get back to you as soon as possible");
+      showToast('Message received. ATANY Support will review your request.');
       setCName(''); setCEmail(''); setCSubject('General Inquiry'); setCMessage('');
     } catch (err) {
       showToast(err?.message || 'Something went wrong — please try again or email us directly');
@@ -566,17 +571,35 @@ export default function LandingPage() {
                 {cSent ? (
                   <div style={{ textAlign: 'center', padding: '40px 20px' }}>
                     <div style={{ fontSize: 36, marginBottom: 12 }}>✓</div>
-                    <h3 style={{ fontSize: 18, color: 'var(--navy)', fontWeight: 800, marginBottom: 6 }}>Message Sent</h3>
-                    <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 18 }}>Thanks for reaching out. Our team will review your message as soon as possible.</p>
+                    <h3 style={{ fontSize: 18, color: 'var(--navy)', fontWeight: 800, marginBottom: 6 }}>Support Request Sent</h3>
+                    <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 12 }}>
+                      We've received your message. ATANY Support will review your request.
+                    </p>
+                    {cReference ? (
+                      <p style={{ fontSize: 13, color: 'var(--navy)', fontWeight: 700, marginBottom: 12 }}>
+                        Reference: {cReference}
+                      </p>
+                    ) : null}
+                    {!cMailSent ? (
+                      <p style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 12 }}>
+                        Your request was received. Email notification is temporarily delayed — you can also reach us
+                        directly at <a href={`mailto:${SUPPORT_EMAIL}`} style={{ color: 'var(--navy)', fontWeight: 700 }}>{SUPPORT_EMAIL}</a>.
+                      </p>
+                    ) : (
+                      <p style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 12 }}>
+                        For urgent follow-up you can email{' '}
+                        <a href={`mailto:${SUPPORT_EMAIL}`} style={{ color: 'var(--navy)', fontWeight: 700 }}>{SUPPORT_EMAIL}</a>.
+                      </p>
+                    )}
                     <button className="btn btn-outline" onClick={() => setCSent(false)}>Send Another Message</button>
                   </div>
                 ) : (
                   <form onSubmit={handleContactSubmit}>
                     <div className="form-row"><label>Name *</label><input value={cName} onChange={(e) => setCName(e.target.value)} placeholder="Your full name" required /></div>
                     <div className="form-row"><label>Email *</label><input type="email" value={cEmail} onChange={(e) => setCEmail(e.target.value)} placeholder="you@example.com" required /></div>
-                    <div className="form-row"><label>Subject</label>
-                      <select value={cSubject} onChange={(e) => setCSubject(e.target.value)}>
-                        <option>General Inquiry</option><option>Bid Support</option><option>Payout Question</option><option>Account Issue</option><option>Partnership</option>
+                    <div className="form-row"><label>Category</label>
+                      <select value={cSubject} onChange={(e) => setCSubject(e.target.value)} aria-label="Category">
+                        {SUPPORT_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
                       </select>
                     </div>
                     <div className="form-row"><label>Message *</label><textarea value={cMessage} onChange={(e) => setCMessage(e.target.value)} placeholder="How can we help?" required rows={5} /></div>
@@ -588,9 +611,12 @@ export default function LandingPage() {
                 <div style={{ background: 'var(--ivory)', border: '1px solid var(--line)', borderRadius: 14, padding: '24px 22px', marginBottom: 16 }}>
                   <h3 style={{ fontSize: 14, color: 'var(--navy)', fontWeight: 800, marginBottom: 14 }}>Email Us</h3>
                   <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.7 }}>
-                    <div><strong style={{ color: 'var(--navy)' }}>General:</strong> <a href="mailto:hello@atany.ph">hello@atany.ph</a></div>
-                    <div><strong style={{ color: 'var(--navy)' }}>Support:</strong> <a href="mailto:support@atany.ph">support@atany.ph</a></div>
-                    <div><strong style={{ color: 'var(--navy)' }}>Partnerships:</strong> <a href="mailto:partnerships@atany.ph">partnerships@atany.ph</a></div>
+                    <div><strong style={{ color: 'var(--navy)' }}>Support:</strong>{' '}
+                      <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>
+                    </div>
+                    <div style={{ marginTop: 6, fontSize: 12 }}>
+                      The form on the left reaches the same ATANY Support inbox.
+                    </div>
                   </div>
                 </div>
                 <div style={{ background: 'var(--ivory)', border: '1px solid var(--line)', borderRadius: 14, padding: '24px 22px', marginBottom: 16 }}>
@@ -669,8 +695,7 @@ export default function LandingPage() {
 
             <nav className="footer-col" aria-label="Contact">
               <h3>Contact</h3>
-              <a href="mailto:hello@atany.ph"><Mail size={15} aria-hidden="true" />hello@atany.ph</a>
-              <a href="mailto:support@atany.ph"><Mail size={15} aria-hidden="true" />support@atany.ph</a>
+              <a href={`mailto:${SUPPORT_EMAIL}`}><Mail size={15} aria-hidden="true" />{SUPPORT_EMAIL}</a>
               <Link to="/branches"><MapPin size={15} aria-hidden="true" />Branch locations</Link>
             </nav>
           </div>

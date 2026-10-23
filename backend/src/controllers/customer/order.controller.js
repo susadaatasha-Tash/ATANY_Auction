@@ -72,6 +72,10 @@ export const getOrders = async (req, res) => {
 export const payOrder = async (req, res) => {
   // LEGACY: Pay at Branch Counter only. Online payments must use PayMongo checkout via POST /customer/orders/:id/payment
   const { payment_method = 'counter' } = req.body;
+  // DENYLIST (not a selectable list): every online method must go through the
+  // PayMongo checkout, never the counter endpoint. GrabPay / BillEase stay
+  // listed even though the provider no longer offers them — dropping them here
+  // would silently allow an unsupported method through this endpoint.
   const ONLINE_METHODS = ['gcash', 'card', 'paymaya', 'maya', 'grab_pay', 'qrph', 'billease', 'bank', 'bank_transfer'];
   if (ONLINE_METHODS.includes(String(payment_method).toLowerCase())) {
     return res.status(400).json({ message: 'Online payments must use PayMongo checkout. Use POST /customer/orders/:id/payment' });

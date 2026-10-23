@@ -51,31 +51,30 @@ function systemPromptOf(captured) {
 }
 
 describe('chatbot branch context comes from the database', () => {
-  test('A. "What branches does ATANY have?" context lists DB branches, never stale ones', async () => {
+  test('A. "What branches does ATANY have?" rule KB directs to Branch Locator', async () => {
     process.env.GROQ_API_KEY = 'test-key';
     const captured = {};
     mockGroq(captured);
-    await chatbotReply('What branches does ATANY have?', { mode: 'customer', history: [] });
-    const system = systemPromptOf(captured);
-    for (const b of DB_BRANCHES) {
-      expect(system).toContain(b.name);
-      expect(system).toContain(b.address);
-    }
-    for (const stale of STALE_BRANCH_TERMS) expect(system).not.toContain(stale);
+    const res = await chatbotReply('What branches does ATANY have?', { mode: 'customer', history: [] });
+    expect(res.source).toBe('rule');
+    expect(res.reply).toContain('Branch Locator');
+    expect(res.reply).toContain('directions');
+    // Groq should NOT have been called since rule KB matched
+    expect(captured.body).toBeUndefined();
   });
 
-  test('B. Manila question context uses DB branches + Davao scope rule', async () => {
+  test('B. Manila question uses rule KB directing to Branch Locator', async () => {
     process.env.GROQ_API_KEY = 'test-key';
     const captured = {};
     mockGroq(captured);
-    await chatbotReply('Do you have a branch in Manila?', { mode: 'customer', history: [] });
-    const system = systemPromptOf(captured);
-    expect(system).toContain('ATANY operates in Davao City, Philippines');
-    expect(system).toContain('Gmall Branch');
-    for (const stale of STALE_BRANCH_TERMS) expect(system).not.toContain(stale);
+    const res = await chatbotReply('Do you have a branch in Manila?', { mode: 'customer', history: [] });
+    expect(res.source).toBe('rule');
+    expect(res.reply).toContain('Branch Locator');
+    expect(res.reply).toContain('directions');
+    expect(captured.body).toBeUndefined();
   });
 
-  test('C. Davao availability question uses Davao scope + DB branches', async () => {
+  test('C. Davao availability question uses Groq with DB branch context', async () => {
     process.env.GROQ_API_KEY = 'test-key';
     const captured = {};
     mockGroq(captured);
@@ -85,15 +84,15 @@ describe('chatbot branch context comes from the database', () => {
     expect(system).toContain('SM Lanang Branch');
   });
 
-  test('D. nearest-branch question uses DB records, invents nothing', async () => {
+  test('D. nearest-branch question uses rule KB directing to Branch Locator', async () => {
     process.env.GROQ_API_KEY = 'test-key';
     const captured = {};
     mockGroq(captured);
-    await chatbotReply('Where is the nearest branch?', { mode: 'customer', history: [] });
-    const system = systemPromptOf(captured);
-    expect(system).toContain('Abreeza Branch');
-    expect(system).toContain('REAL ATANY BRANCHES FROM DATABASE');
-    for (const stale of STALE_BRANCH_TERMS) expect(system).not.toContain(stale);
+    const res = await chatbotReply('Where is the nearest branch?', { mode: 'customer', history: [] });
+    expect(res.source).toBe('rule');
+    expect(res.reply).toContain('Branch Locator');
+    expect(res.reply).toContain('directions');
+    expect(captured.body).toBeUndefined();
   });
 
   test('E. branch query failure yields graceful fallback, never fabricated branches', async () => {
@@ -104,12 +103,11 @@ describe('chatbot branch context comes from the database', () => {
       if (/FROM branches/i.test(sql)) throw new Error('db down');
       return { rows: [] };
     });
-    await chatbotReply('What branches does ATANY have?', { mode: 'customer', history: [] });
-    const system = systemPromptOf(captured);
-    expect(system).toContain('unable to retrieve the current branch information');
-    expect(system).toContain('Branch Locator');
-    for (const b of DB_BRANCHES) expect(system).not.toContain(b.name);
-    for (const stale of STALE_BRANCH_TERMS) expect(system).not.toContain(stale);
+    const res = await chatbotReply('What branches does ATANY have?', { mode: 'customer', history: [] });
+    expect(res.source).toBe('rule');
+    expect(res.reply).toContain('Branch Locator');
+    expect(res.reply).toContain('directions');
+    expect(captured.body).toBeUndefined();
   });
 
   test('F. normal auction question still works via rule KB', async () => {
@@ -117,9 +115,11 @@ describe('chatbot branch context comes from the database', () => {
     const res = await chatbotReply('How do I place a bid?', { mode: 'customer', history: [] });
     expect(res.source).toBe('rule');
     expect(res.reply).toMatch(/place bid/i);
+    expect(res.conversation_state).toBe('ongoing');
+    expect(res.suggestions.length).toBeGreaterThan(0);
   });
 
-  test('seller prompt also receives DB branch context, never stale list', async () => {
+  test('seller prompt also receives DB branch context via Groq', async () => {
     process.env.GROQ_API_KEY = 'test-key';
     const captured = {};
     mockGroq(captured);

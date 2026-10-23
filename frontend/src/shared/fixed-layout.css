@@ -35,12 +35,12 @@
   top: 0 !important;
   position: sticky !important;
   overflow-y: auto !important;
-  overflow-x: visible !important;
+  overflow-x: hidden !important;
   color: #E6EAF2 !important;
 }
 .app .sidebar,
 .admin-app .sidebar {
-  overflow-x: visible !important;
+  overflow-x: hidden !important;
 }
 .app .sidebar::after,
 .admin-app .sidebar::after {
@@ -104,25 +104,69 @@
   border-radius: 0 !important;
   box-shadow: none !important;
 }
-/* Sidebar — Desktop >=1200 full, Tablet 768-1199 compact 68px, Mobile <768 drawer */
+/* Sidebar — Desktop >=1200 full, Tablet 768-1199 compact 80px icon rail, Mobile <768 drawer */
 @media (min-width: 1200px) {
   .app { grid-template-columns: 260px 1fr !important; }
   .app.sidebar-collapsed,
   .app.customer-app.sidebar-collapsed,
-  .admin-app.sidebar-collapsed { grid-template-columns: 1fr !important; }
+  .admin-app.sidebar-collapsed { grid-template-columns: 80px 1fr !important; }
   .app.sidebar-collapsed .sidebar,
   .app.customer-app.sidebar-collapsed .sidebar,
-  .admin-app.sidebar-collapsed .sidebar { display: none !important; }
+  .admin-app.sidebar-collapsed .sidebar {
+    width: 80px !important;
+    max-width: 80px !important;
+    display: flex !important;
+    left: 0 !important;
+    transition: width .18s var(--ease) !important;
+  }
+  .app.sidebar-collapsed .main,
+  .app.customer-app.sidebar-collapsed .main,
+  .admin-app.sidebar-collapsed .main {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+  .app.sidebar-collapsed .sidebar-brand .brand-name,
+  .app.customer-app.sidebar-collapsed .sidebar-brand .brand-name,
+  .admin-app.sidebar-collapsed .sidebar-brand .brand-name,
+  .app.sidebar-collapsed .sidebar-brand .brand-tag,
+  .app.customer-app.sidebar-collapsed .sidebar-brand .brand-tag,
+  .admin-app.sidebar-collapsed .sidebar-brand .brand-tag,
+  .app.sidebar-collapsed .nav-section-label,
+  .app.customer-app.sidebar-collapsed .nav-section-label,
+  .admin-app.sidebar-collapsed .nav-section-label,
+  .app.sidebar-collapsed .nav-label,
+  .app.customer-app.sidebar-collapsed .nav-label,
+  .admin-app.sidebar-collapsed .nav-label,
+  .app.sidebar-collapsed .nav-badge,
+  .app.customer-app.sidebar-collapsed .nav-badge,
+  .admin-app.sidebar-collapsed .nav-badge { display: none !important; }
+  .app.sidebar-collapsed .sidebar-brand,
+  .app.customer-app.sidebar-collapsed .sidebar-brand,
+  .admin-app.sidebar-collapsed .sidebar-brand { justify-content: center !important; padding: 12px 8px !important; gap: 6px !important; }
+  .app.sidebar-collapsed .nav-item,
+  .app.customer-app.sidebar-collapsed .nav-item,
+  .admin-app.sidebar-collapsed .nav-item { justify-content: center !important; padding: 10px !important; gap: 6px !important; }
+  .app.sidebar-collapsed .nav-item svg,
+  .app.customer-app.sidebar-collapsed .nav-item svg,
+  .admin-app.sidebar-collapsed .nav-item svg { opacity: 1 !important; color: #E6EAF2 !important; }
+  .app.sidebar-collapsed .nav-item.active,
+  .app.customer-app.sidebar-collapsed .nav-item.active,
+  .admin-app.sidebar-collapsed .nav-item.active { background: rgba(200,155,60,0.14) !important; }
+  .app.sidebar-collapsed .nav-item.active svg,
+  .app.customer-app.sidebar-collapsed .nav-item.active svg,
+  .admin-app.sidebar-collapsed .nav-item.active svg { color: #C89B3C !important; }
 }
 @media (min-width: 768px) and (max-width: 1199px) {
   .app { grid-template-columns: 260px 1fr !important; }
   .app.sidebar-collapsed,
   .app.customer-app.sidebar-collapsed,
-  .admin-app.sidebar-collapsed { grid-template-columns: 68px 1fr !important; }
+  .admin-app.sidebar-collapsed { grid-template-columns: 80px 1fr !important; }
   .app.sidebar-collapsed .sidebar,
   .app.customer-app.sidebar-collapsed .sidebar,
   .admin-app.sidebar-collapsed .sidebar {
-    width: 68px !important;
+    width: 80px !important;
+    max-width: 80px !important;
     display: flex !important;
     left: 0 !important;
   }

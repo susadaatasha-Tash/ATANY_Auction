@@ -26,6 +26,10 @@ export function validateProductionEnv(env = process.env) {
     'PAYMONGO_SECRET_KEY',
     'PAYMONGO_WEBHOOK_SECRET',
     'FRONTEND_URL',
+    // Support notifications: without a key + an authorized sender, every
+    // support request is stored but never reaches the ATANY inbox.
+    'RESEND_API_KEY',
+    'RESEND_FROM_EMAIL',
   ];
 
   for (const key of required) {
@@ -77,6 +81,12 @@ export function warnMissingDevEnv(env = process.env) {
   if (!env.DATABASE_URL) warnings.push('DATABASE_URL not set (REST fallback may be used)');
   if (!env.PAYMONGO_WEBHOOK_SECRET) {
     warnings.push('PAYMONGO_WEBHOOK_SECRET not set (webhooks fail closed unless ALLOW_INSECURE_PAYMONGO_WEBHOOKS=true)');
+  }
+  if (!env.RESEND_API_KEY) {
+    warnings.push('RESEND_API_KEY not set (support requests are stored but the notification is not delivered)');
+  }
+  if (!env.RESEND_FROM_EMAIL) {
+    warnings.push('RESEND_FROM_EMAIL not set (support notifications fall back to the Resend test sender)');
   }
   return warnings;
 }

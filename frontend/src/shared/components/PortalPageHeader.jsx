@@ -63,7 +63,8 @@ export function PortalPageHeader({
           <button
             className="sidebar-toggle portal-page-header__collapse"
             onClick={onSidebarToggle}
-            aria-label="Toggle sidebar"
+            aria-expanded={!sidebarCollapsed}
+            aria-label={sidebarCollapsed ? 'Expand navigation' : 'Collapse navigation'}
             title={sidebarCollapsed ? 'Show sidebar' : 'Hide sidebar'}
           >
             <Menu size={18} />

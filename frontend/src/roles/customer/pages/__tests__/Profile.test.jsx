@@ -50,9 +50,9 @@ const ACCOUNT = {
   preferred_branch_name: 'Abreeza Branch',
 };
 
-function renderProfile() {
+function renderProfile(initialEntry = '/customer/account') {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <Profile />
     </MemoryRouter>
   );
@@ -410,7 +410,8 @@ describe('Customer Profile — Help & Support', () => {
     expect(screen.getByText('FAQ')).toBeInTheDocument();
     expect(screen.getByText('Find answers to common questions.')).toBeInTheDocument();
     expect(screen.getByText('Contact Us')).toBeInTheDocument();
-    expect(screen.getByText('Reach our support team.')).toBeInTheDocument();
+    // The official ATANY support address is shown (centralized constant).
+    expect(screen.getByText(/Reach our support team at goldjewelryauction@gmail.com/)).toBeInTheDocument();
   });
 
   it('opens real FAQ content when FAQ is clicked', async () => {
@@ -499,6 +500,52 @@ describe('Customer Profile — Help & Support', () => {
 
     await waitFor(() => expect(screen.getByText('Unable to send your message right now.')).toBeInTheDocument());
     expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('the expired-winner deep link opens the support form with safe context', async () => {
+    const qs = new URLSearchParams({
+      support: 'expired-payment',
+      order: 'TXN-1234',
+      item: 'Rose Gold Bangle',
+      deadline: '2026-09-15T10:00:00.000Z',
+      amount: '55000',
+    }).toString();
+    renderProfile(`/customer/account?${qs}`);
+    await waitForProfile();
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+    expect(screen.getByLabelText('Category')).toHaveValue('Auction / Payment Support');
+    const message = screen.getByLabelText('Message').value;
+    expect(message).toContain('Rose Gold Bangle');
+    expect(message).toContain('TXN-1234');
+    expect(message).toContain('55000');
+    // The next bidder is NEVER part of the support context.
+    expect(message).not.toMatch(/Britz|Maria Santos \(next|Juan/i);
+  });
+
+  it('the expired-winner request carries only whitelisted safe metadata', async () => {
+    const qs = new URLSearchParams({
+      support: 'expired-payment',
+      order: 'TXN-1234',
+      item: 'Rose Gold Bangle',
+      deadline: '2026-09-15T10:00:00.000Z',
+      amount: '55000',
+    }).toString();
+    renderProfile(`/customer/account?${qs}`);
+    await waitForProfile();
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Send Message' }));
+    await waitFor(() => {
+      const call = apiFetch.mock.calls.find(([url, opts]) => url === '/customer/support' && opts?.method === 'POST');
+      expect(call).toBeTruthy();
+      const body = JSON.parse(call[1].body);
+      expect(body.category).toBe('Auction / Payment Support');
+      expect(body.metadata.item).toBe('Rose Gold Bangle');
+      expect(body.metadata.transaction_code).toBe('TXN-1234');
+      expect(body.metadata.winning_amount).toBe('55000');
+      expect(Object.keys(body.metadata).sort()).toEqual(
+        ['expired_payment_deadline', 'item', 'transaction_code', 'winning_amount']
+      );
+    });
   });
 
   it('has no dead chevrons — every support row performs an action', async () => {

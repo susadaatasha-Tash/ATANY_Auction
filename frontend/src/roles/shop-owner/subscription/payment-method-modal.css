@@ -1,0 +1,563 @@
+/* frontend/src/roles/shop-owner/subscription/payment-method-modal.css
+   "Update payment method" — ATANY navy / gold / cream, matching the
+   seller subscription payment-method reference design. */
+
+/* ── modal root ──────────────────────────────────────────────
+   Desktop: the modal fits the viewport — NO horizontal scroll and NO
+   vertical scroll for the initial payment-selection screen.
+   `overflow-x: hidden` is only a safety guard AFTER the real overflow
+   (grid/flex min-width) has been fixed below. */
+.spm-modal.modal-box {
+  width: min(760px, calc(100vw - 48px));
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 80px);
+  box-sizing: border-box;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.spm {
+  --spm-navy: #14243f;
+  --spm-navy-2: #1d3358;
+  --spm-gold: #c4a265;
+  --spm-gold-soft: #f6efe1;
+  --spm-cream: #fbf9f5;
+  --spm-line: #e6e2da;
+  --spm-text: #1e2a3a;
+  --spm-muted: #7b8494;
+  --spm-accent: #2563eb;
+  --spm-accent-soft: #f2f6ff;
+  --spm-danger: #b45252;
+  --spm-danger-soft: #f7eceb;
+  color: var(--spm-text);
+}
+
+/* ── header ─────────────────────────────────────────────────── */
+.spm-modal .modal-box-head {
+  border-bottom: 1px solid var(--spm-line);
+  padding: 16px 22px 14px;
+  margin-bottom: 0;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+.spm-modal .modal-box-head h3 {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--spm-navy);
+  letter-spacing: -.01em;
+}
+.spm-modal .modal-box-subtitle {
+  font-size: 12.5px;
+  color: var(--spm-muted);
+  margin-top: 4px;
+}
+.spm-modal .modal-box-body {
+  padding: 0;
+  /* NOT a scroll container on desktop — the content fits, and making it a
+     scroll container is what produced the visible scrollbars. */
+  overflow: visible;
+  min-width: 0;
+}
+
+/* ── initial split layout ───────────────────────────────────── */
+.spm-split {
+  display: grid;
+  /* Both tracks may shrink below their content — the columns must never
+     push the modal wider than its own box. */
+  grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+  gap: 0;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+.spm-split__left {
+  padding: 18px 20px 20px;
+  background: var(--spm-cream);
+  border-right: 1px solid var(--spm-line);
+  min-width: 0;
+  overflow: hidden;
+}
+.spm-split__right {
+  padding: 18px 20px 16px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* ── plan card ──────────────────────────────────────────────── */
+.spm-plan {
+  display: flex;
+  align-items: flex-start;
+  gap: 11px;
+  background: var(--spm-gold-soft);
+  border: 1px solid rgba(196, 162, 101, .32);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  min-width: 0;
+}
+.spm-plan__crown {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: linear-gradient(145deg, var(--spm-gold), #b8944a);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 17px;
+  flex-shrink: 0;
+}
+.spm-plan__body { flex: 1; min-width: 0; }
+.spm-plan__name {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--spm-navy);
+}
+.spm-plan__interval {
+  font-size: 12px;
+  color: var(--spm-text);
+  margin-top: 2px;
+}
+.spm-plan__desc {
+  font-size: 11.5px;
+  color: var(--spm-muted);
+  margin-top: 6px;
+  line-height: 1.5;
+}
+.spm-plan__chip {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--spm-gold);
+  background: #fff;
+  border: 1px solid rgba(196, 162, 101, .4);
+  border-radius: 999px;
+  padding: 3px 9px;
+  flex-shrink: 0;
+}
+
+/* ── fees + total ──────────────────────────────────────────── */
+.spm-fees { margin-bottom: 6px; }
+.spm-fees__row,
+.spm-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12.5px;
+  color: var(--spm-text);
+  padding: 4px 0;
+  min-width: 0;
+}
+.spm-fees__row strong { font-weight: 700; color: var(--spm-navy); }
+.spm-total {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: var(--spm-navy);
+  border-top: 1px solid var(--spm-line);
+  padding-top: 8px;
+  margin-bottom: 12px;
+}
+.spm-total strong { font-size: 15px; font-weight: 800; color: var(--spm-navy); }
+
+/* ── info box ───────────────────────────────────────────────── */
+.spm-info {
+  background: var(--spm-soft, #f3f0ea);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+.spm-info__row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) minmax(0, auto);
+  align-items: center;
+  gap: 8px;
+  font-size: 11.5px;
+  min-width: 0;
+}
+.spm-info__icon { color: var(--spm-muted); font-size: 12px; text-align: center; }
+.spm-info__label { color: var(--spm-muted); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.spm-info__value {
+  font-weight: 700;
+  color: var(--spm-navy);
+  text-align: right;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── section titles ─────────────────────────────────────────── */
+.spm-section__title {
+  font-size: 14.5px;
+  font-weight: 800;
+  color: var(--spm-navy);
+  margin: 0;
+}
+.spm-section__label {
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--spm-navy);
+}
+.spm-section__sub {
+  font-size: 12px;
+  color: var(--spm-muted);
+  margin: 3px 0 12px;
+}
+
+/* ── option rows ────────────────────────────────────────────── */
+.spm-options { display: grid; gap: 8px; min-width: 0; }
+.spm-row {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  background: #fff;
+  border: 1px solid var(--spm-line);
+  border-radius: 9px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: border-color .16s var(--ease), background .16s var(--ease);
+  text-align: left;
+  /* A row may never exceed its panel. */
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  font: inherit;
+  color: inherit;
+}
+.spm-row:hover { border-color: #cfc9bd; }
+.spm-row.is-selected {
+  border-color: var(--spm-accent);
+  background: var(--spm-accent-soft);
+}
+.spm-row--button { font: inherit; }
+.spm-row__radio {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--spm-accent);
+  flex-shrink: 0;
+  margin: 0;
+}
+.spm-row__mark {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+.spm-row__marks { display: inline-flex; gap: 4px; align-items: center; }
+.spm-row__text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.spm-row__title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--spm-navy);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.spm-row__sub {
+  font-size: 11.5px;
+  color: var(--spm-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A method the provider currently cannot serve — still visible, just not
+   selectable, and it must never widen the row. */
+.spm-row.is-disabled {
+  opacity: .62;
+  cursor: not-allowed;
+  background: var(--spm-cream, #fbf9f5);
+}
+.spm-row.is-disabled .spm-row__radio { cursor: not-allowed; }
+.spm-row__unavailable {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--spm-danger);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The card-network marks must never widen the row: they may shrink and are
+   clipped instead of pushing the panel wider. */
+.spm-row__trailing {
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+.spm-chevron { color: var(--spm-muted); font-size: 18px; line-height: 1; }
+
+/* ── buttons ────────────────────────────────────────────────── */
+.spm-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border: 0;
+  border-radius: 8px;
+  min-height: 44px;
+  padding: 0 18px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .16s var(--ease), opacity .16s var(--ease);
+  text-decoration: none;
+}
+.spm-btn--primary {
+  background: var(--spm-navy);
+  color: #fff;
+  margin-top: 14px;
+}
+.spm-btn--primary:hover:not(:disabled) { background: var(--spm-navy-2); }
+.spm-btn--primary:disabled { opacity: .45; cursor: not-allowed; }
+.spm-btn--ghost {
+  background: transparent;
+  color: var(--spm-navy);
+  border: 1px solid var(--spm-line);
+  margin-top: 10px;
+}
+.spm-btn--ghost:hover { background: var(--spm-soft, #f3f0ea); }
+.spm-btn--block { width: 100%; }
+.spm-btn--block.spm-btn--primary { margin-top: 16px; }
+
+/* ── secure note ────────────────────────────────────────────── */
+.spm-secure {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 10.5px;
+  color: var(--spm-muted);
+  margin: 10px 0 0;
+  text-align: center;
+  line-height: 1.45;
+}
+
+/* ── sub steps ──────────────────────────────────────────────── */
+.spm-step { padding: 18px 22px 20px; min-width: 0; }
+.spm-step--center { text-align: center; }
+.spm-step__head { margin-bottom: 14px; }
+.spm-step__head--plain { text-align: left; }
+.spm-step__sub {
+  font-size: 12.5px;
+  color: var(--spm-muted);
+  margin: 5px 0 0;
+  line-height: 1.5;
+}
+.spm-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--spm-navy);
+  cursor: pointer;
+}
+.spm-back:hover { color: var(--spm-gold); }
+.spm-saved { display: grid; gap: 9px; margin-bottom: 4px; }
+.spm-saved__label {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--spm-navy);
+  margin-bottom: 2px;
+}
+.spm-empty {
+  background: var(--spm-cream);
+  border: 1px dashed var(--spm-line);
+  border-radius: 9px;
+  padding: 14px;
+}
+.spm-empty__title { font-size: 12.5px; font-weight: 700; color: var(--spm-navy); margin: 0; }
+.spm-empty__text { font-size: 11.5px; color: var(--spm-muted); margin: 5px 0 0; line-height: 1.5; }
+
+/* ── secure card screen ─────────────────────────────────────── */
+.spm-secure-card {
+  background: var(--spm-cream);
+  border: 1px solid var(--spm-line);
+  border-radius: 10px;
+  padding: 26px 22px;
+  text-align: center;
+}
+.spm-secure-card__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--spm-gold-soft);
+  color: var(--spm-gold);
+  margin-bottom: 12px;
+}
+.spm-secure-card__title {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--spm-navy);
+  margin: 0 0 6px;
+}
+.spm-secure-card__text {
+  font-size: 12.5px;
+  color: var(--spm-muted);
+  margin: 0 auto;
+  max-width: 380px;
+  line-height: 1.6;
+}
+
+/* ── QR Ph ───────────────────────────────────────────────────── */
+.spm-qr { display: grid; gap: 14px; justify-items: center; }
+.spm-qr__brand { margin-bottom: 2px; }
+.spm-qr__frame {
+  background: #fff;
+  border: 1px solid var(--spm-line);
+  border-radius: 12px;
+  padding: 18px 22px;
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  /* Responsive: the QR must never widen the modal. */
+  min-width: 0;
+  max-width: 100%;
+}
+.spm-qr__frame img,
+.spm-qr__frame svg {
+  max-width: 100%;
+  height: auto;
+}
+.spm-qr__frame--loading { padding: 40px 26px; }
+.spm-qr__hint { font-size: 11.5px; color: var(--spm-muted); margin: 0; text-align: center; }
+.spm-qr__steps {
+  text-align: left;
+  margin: 0;
+  padding-left: 20px;
+  font-size: 12px;
+  color: var(--spm-text);
+  line-height: 1.8;
+  display: grid;
+  gap: 2px;
+}
+.spm-qr__expiry { font-size: 12px; color: var(--spm-muted); margin: 0; }
+.spm-qr__ref { font-size: 11px; color: var(--spm-muted); margin: 0; word-break: break-all; }
+
+/* A QR failure stays inside the QR step. */
+.spm-qr__error {
+  background: var(--spm-danger-soft);
+  border: 1px solid rgba(180, 82, 82, .28);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: grid;
+  gap: 10px;
+  justify-items: center;
+  max-width: 100%;
+}
+.spm-qr__error-text {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--spm-danger);
+  margin: 0;
+  text-align: center;
+}
+.spm-qr__error-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+.spm-qr__error-actions .spm-btn { margin-top: 0; min-height: 38px; }
+
+/* ── review ─────────────────────────────────────────────────── */
+.spm-review__amount {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--spm-navy);
+  margin: -8px 0 16px;
+}
+.spm-review__method { margin-bottom: 16px; }
+.spm-review__method-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.spm-link {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--spm-accent);
+  cursor: pointer;
+  text-decoration: underline;
+}
+.spm-review__method-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: #fff;
+  border: 1px solid var(--spm-line);
+  border-radius: 9px;
+  padding: 12px 14px;
+}
+.spm-review__mark { display: inline-flex; flex-shrink: 0; }
+.spm-review__method-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.spm-review__method-title { font-size: 13px; font-weight: 700; color: var(--spm-navy); }
+.spm-review__method-sub { font-size: 11.5px; color: var(--spm-muted); }
+
+/* ── states ─────────────────────────────────────────────────── */
+.spm-alert {
+  background: var(--spm-danger-soft);
+  border: 1px solid rgba(180, 82, 82, .28);
+  color: var(--spm-danger);
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 9px 12px;
+  margin: 16px 24px 0;
+}
+.spm-loading { font-size: 12px; color: var(--spm-muted); padding: 12px 0; }
+.spm-success__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #eaf3ed;
+  color: #4a7c5c;
+  font-size: 24px;
+  margin-bottom: 12px;
+}
+.spm-success__title { font-size: 16px; font-weight: 800; color: var(--spm-navy); margin: 0 0 6px; }
+.spm-success__text { font-size: 12.5px; color: var(--spm-muted); margin: 0 auto 4px; max-width: 380px; line-height: 1.6; }
+.spm-error__text { font-size: 12.5px; color: var(--spm-muted); margin: 8px auto 16px; max-width: 400px; }
+.spm-error__actions { display: flex; gap: 10px; justify-content: center; }
+
+/* ── responsive ─────────────────────────────────────────────── */
+/* Tablet: the initial two-column layout becomes one column. */
+@media (max-width: 700px) {
+  .spm-split { grid-template-columns: minmax(0, 1fr); }
+  .spm-split__left { border-right: 0; border-bottom: 1px solid var(--spm-line); }
+  .spm-modal.modal-box {
+    width: calc(100vw - 24px);
+    max-width: calc(100vw - 24px);
+    max-height: calc(100vh - 40px);
+  }
+  /* Mobile may scroll vertically when the content genuinely cannot fit —
+     horizontal scrolling is NEVER allowed. */
+  .spm-modal .modal-box-body {
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 480px) {
+  .spm-split__left,
+  .spm-split__right,
+  .spm-step { padding-left: 14px; padding-right: 14px; }
+  .spm-info__row { grid-template-columns: 18px minmax(0, 1fr); }
+  .spm-info__value { grid-column: 2; text-align: left; }
+  .spm-row { gap: 9px; padding: 10px; }
+}

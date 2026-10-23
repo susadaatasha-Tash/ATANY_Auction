@@ -8,6 +8,7 @@ export function NextPaymentCard({
   paying,
   onUpdatePaymentMethod,
   billingInterval,
+  paymentMethodLabel,
 }) {
   if (!nextPayment) {
     return (
@@ -20,12 +21,17 @@ export function NextPaymentCard({
         </div>
         <div className="ssub-empty" style={{ padding: '12px 0 4px' }}>
           <p className="ssub-empty__text">Payment schedule will appear here when billing is generated.</p>
+          {paymentMethodLabel ? (
+            <p className="ssub-empty__text" data-testid="next-payment-method-note">
+              Payment method <strong data-testid="next-payment-method">{paymentMethodLabel}</strong>
+            </p>
+          ) : null}
         </div>
         {onUpdatePaymentMethod && (
           <button
             type="button"
-            className="ssub-btn ssub-btn--ghost"
-            style={{ width: '100%', marginTop: 12 }}
+            className="ssub-btn ssub-btn--light"
+            style={{ width: '100%', marginTop: 12, height: 42 }}
             data-testid="update-payment-method-btn"
             onClick={onUpdatePaymentMethod}
           >
@@ -75,13 +81,46 @@ export function NextPaymentCard({
         </div>
         <div className="ssub-nextpay__row">
           <span className="ssub-nextpay__row-icon" aria-hidden="true">↻</span>
-          <span data-testid="next-payment-method-note">
-            Payment method selected during checkout
+          <span data-testid="next-payment-method-note" className="ssub-nextpay__method">
+            {paymentMethodLabel ? (
+              <>
+                <span className="ssub-nextpay__method-label">Payment method</span>
+                <strong className="ssub-nextpay__method-value" data-testid="next-payment-method">
+                  {paymentMethodLabel}
+                </strong>
+                <span className="ssub-nextpay__hint">
+                  You&rsquo;ll use {paymentMethodLabel} for your next subscription payment.
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="ssub-nextpay__method-label">Payment method</span>
+                <strong className="ssub-nextpay__method-value" data-testid="next-payment-method">
+                  Not selected yet
+                </strong>
+                <span className="ssub-nextpay__hint">
+                  Choose a payment method before paying for your subscription.
+                </span>
+              </>
+            )}
           </span>
         </div>
       </div>
 
-      {isOpenInvoice && onPayNow && (
+      {/* A payable invoice needs a payment method BEFORE it can be paid. */}
+      {isOpenInvoice && !paymentMethodLabel && onUpdatePaymentMethod && (
+        <button
+          type="button"
+          className="ssub-btn ssub-btn--gold"
+          style={{ width: '100%', marginTop: 16 }}
+          data-testid="next-payment-select-method-btn"
+          onClick={onUpdatePaymentMethod}
+        >
+          Select payment method
+        </button>
+      )}
+
+      {isOpenInvoice && paymentMethodLabel && onPayNow && (
         <button
           type="button"
           className="ssub-btn ssub-btn--gold"
@@ -97,8 +136,8 @@ export function NextPaymentCard({
       {onUpdatePaymentMethod && (
         <button
           type="button"
-          className="ssub-btn ssub-btn--ghost"
-          style={{ width: '100%', marginTop: 12 }}
+          className="ssub-btn ssub-btn--light"
+          style={{ width: '100%', marginTop: 12, height: 42 }}
           data-testid="update-payment-method-btn"
           onClick={onUpdatePaymentMethod}
         >

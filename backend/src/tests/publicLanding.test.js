@@ -29,15 +29,17 @@ describe('public landing endpoints (source contract)', () => {
       indexSrc.indexOf(`app.get(${Q}/api/public/stats${Q}`),
       indexSrc.indexOf(`app.post(${Q}/api/public/contact${Q}`)
     );
-    expect(block).toContain("role = 'customer'");
-    expect(block).toContain("status = 'ended'");
-    expect(block).toContain("status = 'Open'");
-    expect(block).toContain('FROM products');
+    // The stats handler itself must not read identities or money.
+    const handler = block.slice(0, block.indexOf('// Public contact form'));
+    expect(handler).toContain("role = 'customer'");
+    expect(handler).toContain("status = 'ended'");
+    expect(handler).toContain("status = 'Open'");
+    expect(handler).toContain('FROM products');
     // Forbidden: emails, revenue, payments, bidder identities
-    expect(block).not.toMatch(/email/i);
-    expect(block).not.toMatch(/revenue/i);
-    expect(block).not.toMatch(/payment/i);
-    expect(block).not.toMatch(/bidder/i);
+    expect(handler).not.toMatch(/email/i);
+    expect(handler).not.toMatch(/revenue/i);
+    expect(handler).not.toMatch(/payment/i);
+    expect(handler).not.toMatch(/bidder/i);
   });
 
   it('POST /api/public/contact validates and is rate limited', () => {
@@ -46,11 +48,27 @@ describe('public landing endpoints (source contract)', () => {
       indexSrc.indexOf(`app.post(${Q}/api/public/contact${Q}`),
       indexSrc.indexOf(`app.post(${Q}/chat${Q}`)
     );
-    expect(block).toContain('INVALID_NAME');
-    expect(block).toContain('INVALID_EMAIL');
-    expect(block).toContain('INVALID_SUBJECT');
-    expect(block).toContain('INVALID_MESSAGE');
-    expect(block).toContain('INSERT INTO support_requests');
+    // The route delegates to the ONE shared support service (validate →
+    // persist → notify). It must not implement its own email sending.
+    expect(block).toContain('validateSupportRequest');
+    expect(block).toContain('sendSupportNotification');
+    expect(block).not.toMatch(/sendNotificationEmail/);
+    expect(block).not.toMatch(/api\.resend\.com/);
+    expect(block).not.toContain('INSERT INTO support_requests');
+  });
+
+  it('the shared support service owns validation, persistence and delivery', () => {
+    const svc = fs.readFileSync(path.join(__dirname, '../services/supportService.js'), 'utf8');
+    expect(svc).toContain('INVALID_NAME');
+    expect(svc).toContain('INVALID_EMAIL');
+    expect(svc).toContain('INVALID_CATEGORY');
+    expect(svc).toContain('INVALID_MESSAGE');
+    expect(svc).toContain('INVALID_ATTACHMENT');
+    expect(svc).toContain('INSERT INTO support_requests');
+    expect(svc).toContain('sendNotificationEmail');
+    // The recipient always comes from the centralized config.
+    expect(svc).toContain('resolveSupportEmail');
+    expect(svc).not.toContain('support@atany.ph');
   });
 
   it('public branches route stays unauthenticated (no role guards)', () => {

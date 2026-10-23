@@ -164,12 +164,20 @@ describe('Landing page — real public data', () => {
     expect(src.startsWith('http')).toBe(true);
   });
 
-  it('contact email addresses are clickable mailto links', async () => {
+  it('shows the official ATANY support address as a clickable mailto link', async () => {
     renderLanding();
-    await waitFor(() => expect(screen.getAllByText('hello@atany.ph').length).toBeGreaterThan(0));
-    expect(screen.getAllByText('hello@atany.ph')[0].closest('a')).toHaveAttribute('href', 'mailto:hello@atany.ph');
-    expect(screen.getAllByText('support@atany.ph')[0].closest('a')).toHaveAttribute('href', 'mailto:support@atany.ph');
-    expect(screen.getAllByText('partnerships@atany.ph')[0].closest('a')).toHaveAttribute('href', 'mailto:partnerships@atany.ph');
+    await waitFor(() => expect(screen.getAllByText('goldjewelryauction@gmail.com').length).toBeGreaterThan(0));
+    for (const el of screen.getAllByText('goldjewelryauction@gmail.com')) {
+      expect(el.closest('a')).toHaveAttribute('href', 'mailto:goldjewelryauction@gmail.com');
+    }
+  });
+
+  it('no outdated official support address remains in the landing page', async () => {
+    renderLanding();
+    await waitFor(() => expect(screen.getAllByText('goldjewelryauction@gmail.com').length).toBeGreaterThan(0));
+    for (const old of ['hello@atany.ph', 'support@atany.ph', 'partnerships@atany.ph']) {
+      expect(screen.queryByText(old)).not.toBeInTheDocument();
+    }
   });
 
   it('response-time copy does not promise a 1-business-day SLA', async () => {

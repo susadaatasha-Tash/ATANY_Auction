@@ -38,7 +38,7 @@ export function AssistantWidget({ mode: propMode, userId }) {
     return 'customer';
   })();
 
-  const { messages, sendMessage, quickReplies, loading, clearHistory } = useChatbot(detectedMode, userId);
+  const { messages, sendMessage, loading, clearHistory } = useChatbot(detectedMode, userId);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -81,55 +81,51 @@ export function AssistantWidget({ mode: propMode, userId }) {
                 ) : (
                   <div className={`atany-msg ${m.who}`}>{m.text}</div>
                 )}
-                {/* Show suggestions under the last bot message */}
+                {/* Show suggestions under the last bot message only */}
                 {m.who === 'bot' && i === messages.length - 1 && (
-                  m.suggestions?.length > 0 ? (
-                    <div className="atany-suggestions">
-                      {m.suggestions.map((s, si) => (
-                        <button key={si} className="atany-suggestion-btn" onClick={() => sendMessage(s)}>{s}</button>
-                      ))}
-                    </div>
-                  ) : messages.length > 1 && (
-                    <div className="atany-suggestions">
-                      {quickReplies.slice(0, 3).map((q) => (
-                        <button key={q} className="atany-suggestion-btn" onClick={() => sendMessage(q)}>{q}</button>
-                      ))}
-                    </div>
-                  )
+                  <div className="atany-suggestions">
+                    {(m.suggestions || []).map((s, si) => (
+                      <button
+                        key={si}
+                        className="atany-suggestion-btn"
+                        onClick={() => sendMessage(s)}
+                        disabled={loading}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                    {(m.suggestions || []).length === 0 && m.conversation_state === 'closed' && (
+                      <span className="atany-suggestion-empty">Conversation closed.</span>
+                    )}
+                  </div>
                 )}
               </div>
             ))}
             {loading && <div className="atany-msg bot" style={{ opacity: 0.7, fontStyle: 'italic' }}>ATANY is typing…</div>}
-            {/* Show initial quick replies only when there's just the greeting */}
-            {messages.length <= 1 && (
-              <div className="atany-quick-replies">
-                {quickReplies.map((q) => <button key={q} onClick={() => sendMessage(q)}>{q}</button>)}
-              </div>
-            )}
           </div>
-          <ChatInput onSend={sendMessage} onClear={clearHistory} hasHistory={hasHistory} />
+          <ChatInput onSend={sendMessage} onClear={clearHistory} hasHistory={hasHistory} loading={loading} />
         </div>
       )}
     </>
   );
 }
 
-function ChatInput({ onSend, onClear, hasHistory }) {
+function ChatInput({ onSend, onClear, hasHistory, loading }) {
   const [val, setVal] = useState('');
-  const submit = () => { if (val.trim()) { onSend(val); setVal(''); } };
+  const submit = () => { if (val.trim() && !loading) { onSend(val); setVal(''); } };
   const handleClear = () => {
-    if (!hasHistory) return;
+    if (!hasHistory || loading) return;
     if (window.confirm('Clear this conversation?')) onClear();
   };
   return (
     <div className="atany-chat-input">
-      <input value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} placeholder="Ask about bids, branches, orders…" />
+      <input value={val} onChange={(e) => setVal(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && submit()} placeholder="Ask about bids, branches, orders…" disabled={loading} />
       {hasHistory && (
-        <button className="atany-chat-trash" onClick={handleClear} aria-label="Clear conversation" title="Clear conversation">
+        <button className="atany-chat-trash" onClick={handleClear} disabled={loading} aria-label="Clear conversation" title="Clear conversation">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/></svg>
         </button>
       )}
-      <button className="atany-chat-send" onClick={submit} aria-label="Send">➤</button>
+      <button className="atany-chat-send" onClick={submit} aria-label="Send" disabled={loading}>➤</button>
     </div>
   );
 }

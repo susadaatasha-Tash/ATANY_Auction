@@ -1,8 +1,11 @@
 // frontend/src/roles/shop-owner/pages/ShopProfile.jsx
 // Fix: controlled single-select bound to shops.home_branch_id via GET /shop-owner/shop + GET /branches
 import { useState, useEffect } from 'react';
+import { Send, X } from 'lucide-react';
 import { apiFetch } from '../../../shared/lib/apiClient';
 import { useToast } from '../../../shared/components/Toast';
+import SupportRequestForm from '../../../shared/components/SupportRequestForm';
+import { SUPPORT_EMAIL, supportMailto } from '../../../shared/config/support';
 
 export default function ShopProfile() {
   const [shop, setShop] = useState(null);
@@ -11,6 +14,7 @@ export default function ShopProfile() {
   const [branchFile, setBranchFile] = useState(null);
   const [branchPreview, setBranchPreview] = useState(null);
   const [uploadingBranch, setUploadingBranch] = useState(false);
+  const [supportOpen, setSupportOpen] = useState(false);
   const showToast = useToast();
 
   useEffect(() => {
@@ -104,7 +108,55 @@ export default function ShopProfile() {
           <button className="btn btn-primary">Update Payout Info</button>
         </div>
       </div>
+      <div className="panel">
+        <div className="panel-head"><div><h2>Contact ATANY Support</h2><p>Questions about payouts, billing or your listings?</p></div></div>
+        <div style={{ padding: 20 }}>
+          <p className="form-hint">
+            Send a request to ATANY Support at <strong>{SUPPORT_EMAIL}</strong>. Your request is recorded and
+            forwarded to the ATANY support team — you can also{' '}
+            <a href={supportMailto('Shop Owner Support', 'Hello ATANY Support,')} style={{ color: 'var(--navy)', fontWeight: 700 }}>
+              email us directly
+            </a>.
+          </p>
+          <button type="button" className="btn btn-primary" onClick={() => setSupportOpen(true)}>
+            <Send size={15} /> Contact ATANY Support
+          </button>
+        </div>
+      </div>
     </div>
+
+    {/* Seller support request — the shared support pipeline. */}
+    {supportOpen && (
+      <div
+        className="profile-modal-overlay"
+        role="presentation"
+        onClick={() => setSupportOpen(false)}
+      >
+        <div
+          className="profile-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="seller-support-title"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="profile-modal__head">
+            <h3 id="seller-support-title"><Send size={17} aria-hidden="true" /> Contact ATANY Support</h3>
+            <button type="button" className="modal-close" onClick={() => setSupportOpen(false)} aria-label="Close support form">
+              <X size={16} aria-hidden="true" />
+            </button>
+          </div>
+          <div className="profile-modal__body">
+            <SupportRequestForm
+              endpoint="/support/account"
+              initialCategory="General Inquiry"
+              initialSubject="Shop Owner Support"
+              initialMessage={'Hello ATANY Support,\n\n'}
+              submitLabel="Send Support Request"
+            />
+          </div>
+        </div>
+      </div>
+    )}
     <BranchImagePanel
       shop={shop}
       branches={branches}

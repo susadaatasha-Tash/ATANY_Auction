@@ -1,5 +1,5 @@
 import { pool } from '../../db/pool.js';
-import { createPayMongoCheckout, getCheckoutSession, checkoutStatus } from '../../services/paymongoService.js';
+import { createPayMongoCheckout, getCheckoutSession, checkoutStatus, normalizePaymentMethod } from '../../services/paymongoService.js';
 import { assertPaymentStillPayable, markStalePayment } from '../../services/paymentRaceGuard.js';
 import { resolveDeadline } from '../../services/winnerNotificationService.js';
 
@@ -9,32 +9,45 @@ export const getOrderDetails = async (req, res) => {
   try {
     const orderId = req.params.id;
     if (!UUID_RE.test(String(orderId || ''))) return res.status(404).json({ message: 'Order not found' });
-    // REST-compatible: separate simple queries instead of JOINs (the pool's
-    // Supabase REST fallback cannot translate JOINs and returns empty rows,
-    // which surfaced as 404 "Order not found" for existing orders).
-    // Semantics preserved: missing order/auction/product still 404s; branch stays optional.
     const { rows: orderRows } = await pool.query(
       'SELECT * FROM orders WHERE id = $1 AND buyer_id = $2',
       [orderId, req.user.id]
     );
     if (!orderRows.length) return res.status(404).json({ message: 'Order not found' });
-    const base = orderRows[0];
-    if (!base.auction_id) return res.status(404).json({ message: 'Order not found' });
-    const { rows: auctionRows } = await pool.query('SELECT * FROM auctions WHERE id = $1', [base.auction_id]);
-    if (!auctionRows.length) return res.status(404).json({ message: 'Order not found' });
-    const auction = auctionRows[0];
-    if (!auction.product_id) return res.status(404).json({ message: 'Order not found' });
-    const { rows: productRows } = await pool.query('SELECT * FROM products WHERE id = $1', [auction.product_id]);
-    if (!productRows.length) return res.status(404).json({ message: 'Order not found' });
-    const product = productRows[0];
+    const orderBase = orderRows[0];
+    if (!orderBase.auction_id) return res.status(404).json({ message: 'Order not found' });
+   const { rows: coAuctionRows } = await pool.query(
+  'SELECT * FROM auctions WHERE id = $1',
+  [orderBase.auction_id]
+);
+
+if (!coAuctionRows.length) {
+  return res.status(404).json({ message: 'Order not found' });
+}
+
+const auction = coAuctionRows[0];
+
+if (!auction.product_id) {
+  return res.status(404).json({ message: 'Order not found' });
+}
+
+const { rows: coProductRows } = await pool.query(
+  'SELECT * FROM products WHERE id = $1',
+  [auction.product_id]
+);
+
+if (!coProductRows.length) {
+  return res.status(404).json({ message: 'Order not found' });
+}
+
+const product = coProductRows[0];
     let branch = {};
-    if (base.branch_id) {
-      const { rows: branchRows } = await pool.query('SELECT * FROM branches WHERE id = $1', [base.branch_id]);
+    if (orderBase.branch_id) {
+      const { rows: branchRows } = await pool.query('SELECT * FROM branches WHERE id = $1', [orderBase.branch_id]);
       branch = branchRows[0] || {};
     }
-    // Rebuild the exact shape the JOIN previously returned (o.* + aliases)
     const order = {
-      ...base,
+      ...orderBase,
       product_name: product.name,
       product_img: product.image_url,
       category: product.category,
@@ -49,43 +62,34 @@ export const getOrderDetails = async (req, res) => {
       auction_end: auction.end_time,
       product_id: product.id,
     };
-    // Calculate 7-day payment deadline from winner_confirmed_at or created_at (backend source of truth)
     const winnerConfirmedAt = order.winner_confirmed_at || order.created_at;
     const paymentDeadline = order.payment_deadline || (winnerConfirmedAt ? new Date(new Date(winnerConfirmedAt).getTime() + 7 * 24 * 60 * 60 * 1000).toISOString() : null);
     order.winner_confirmed_at = winnerConfirmedAt;
     order.payment_deadline = paymentDeadline;
-    // Check if deadline has passed and payment not paid (for display, actual expiration is handled by cron)
     const isExpired = paymentDeadline && new Date() > new Date(paymentDeadline) && order.status === 'pending';
     if (isExpired) {
       order.is_expired = true;
     }
-    // latest payment for this order
     const { rows: payments } = await pool.query(
       `SELECT * FROM payments WHERE order_id = $1 ORDER BY created_at DESC LIMIT 1`,
       [orderId]
     );
     let payment = payments[0] || null;
-
-    // POLLING FALLBACK for localhost: if pending/processing with checkout, verify with PayMongo
-    if (payment && ['pending','processing'].includes(payment.status) && payment.checkout_session_id) {
+    if (payment && ['pending', 'processing'].includes(payment.status) && payment.checkout_session_id) {
       try {
         const checkout = await getCheckoutSession(payment.checkout_session_id);
         const status = checkoutStatus(checkout);
         if (status === 'paid' && payment.status !== 'paid') {
-          // Priority 1 / H3: polling path must also validate order still payable + buyer match
           const raceCheck = await assertPaymentStillPayable(payment);
           if (!raceCheck.ok) {
             await markStalePayment(payment, { reason: raceCheck.reason, eventType: 'checkout_polling' });
             const { rows: updStale } = await pool.query(`SELECT * FROM payments WHERE id=$1`, [payment.id]);
             payment = updStale[0] || payment;
           } else {
-            // H2 money path: atomic claim — never last-write-wins paid on REST fallback.
             const { requireDirectPg } = await import('../../db/dbGuard.js');
             requireDirectPg('payment polling paid transition');
             const { rows: paidClaim } = await pool.query(
-              `UPDATE payments SET status='paid', paid_at=now(), updated_at=now(), metadata=$1
-               WHERE id=$2 AND status IN ('pending','processing','failed','expired')
-               RETURNING id`,
+              `UPDATE payments SET status='paid', paid_at=now(), updated_at=now(), metadata=$1 WHERE id=$2 AND status IN ('pending','processing','failed','expired') RETURNING id`,
               [JSON.stringify({ checkout_sync: true, raw: checkout?.data?.attributes || checkout }), payment.id]
             );
             if (!paidClaim.length) {
@@ -93,22 +97,19 @@ export const getOrderDetails = async (req, res) => {
               payment = already[0] || payment;
             } else {
               try {
-                // One shared implementation (webhook + polling) so a repeated
-                // confirmation can never duplicate the notice.
-                const { rows: paidOrderRows } = await pool.query(
-                  `SELECT id, transaction_code, amount, status FROM orders WHERE id=$1`, [payment.order_id]
+                const msg = `Payment for order ${order.transaction_code || orderId} was unsuccessful. Please try again before your payment deadline.`;
+                const { rows: dup } = await pool.query(
+                  `SELECT id FROM notifications WHERE user_id=$1 AND message=$2 AND created_at > NOW() - INTERVAL '1 hour' LIMIT 1`,
+                  [payment.customer_id, failMsg]
                 );
-                let productName = null;
-                try {
-                  const { rows: pRows } = await pool.query(
-                    `SELECT p.name FROM auctions a JOIN products p ON p.id = a.product_id WHERE a.id=$1`, [order.auction_id]
-                  );
-                  productName = pRows[0]?.name || null;
-                } catch {}
-                const { createPaymentConfirmedNotification } = await import('../../services/winnerNotificationService.js');
-                await createPaymentConfirmedNotification(pool, {
-                  payment, order: paidOrderRows[0] || null, productName, auctionId: order.auction_id || null,
-                });
+                if (!dup.length) {
+                  try {
+                    await pool.query(`INSERT INTO notifications (user_id, type, message, auction_id) VALUES ($1,'payout',$2,$3)`, [payment.customer_id, failMsg, order.auction_id || null]);
+                  } catch (insErr) {
+                    if (insErr.code !== '42703') throw insErr;
+                    await pool.query(`INSERT INTO notifications (user_id, type, message) VALUES ($1,'payout',$2)`, [payment.customer_id, failMsg]);
+                  }
+                }
               } catch {}
               const { rows: upd } = await pool.query(`SELECT * FROM payments WHERE id=$1`, [payment.id]);
               payment = upd[0] || payment;
@@ -116,32 +117,30 @@ export const getOrderDetails = async (req, res) => {
             }
           }
         } else if ((status === 'failed' || status === 'expired') && payment.status !== status) {
-          await pool.query(`UPDATE payments SET status=$1, updated_at=now(), metadata=$2 WHERE id=$3`, [status, JSON.stringify({ checkout_sync: true, raw: checkout?.data?.attributes || checkout }), payment.id]);
-          const { rows: upd } = await pool.query(`SELECT * FROM payments WHERE id=$1`, [payment.id]);
-          payment = upd[0] || payment;
-          // Definitive failure only (not mere checkout-session expiry): notify once per event.
-          // Same message shape as the webhook path so the 1-hour guard dedups across both paths.
-          if (status === 'failed') {
-            try {
-              const failMsg = `Payment for order ${order.transaction_code || orderId} was unsuccessful. Please try again before your payment deadline.`;
-              const { rows: dup } = await pool.query(
-                `SELECT id FROM notifications WHERE user_id=$1 AND message=$2 AND created_at > NOW() - INTERVAL '1 hour' LIMIT 1`,
-                [payment.customer_id, failMsg]
-              );
-              if (!dup.length) {
-                try {
-                  await pool.query(`INSERT INTO notifications (user_id, type, message, auction_id) VALUES ($1,'payout',$2,$3)`, [payment.customer_id, failMsg, order.auction_id || null]);
-                } catch (insErr) {
-                  if (insErr.code !== '42703') throw insErr;
-                  await pool.query(`INSERT INTO notifications (user_id, type, message) VALUES ($1,'payout',$2)`, [payment.customer_id, failMsg]);
+            await pool.query(`UPDATE payments SET status=$1, updated_at=now(), metadata=$2 WHERE id=$3`, [status, JSON.stringify({ checkout_sync: true, raw: checkout?.data?.attributes || checkout }), payment.id]);
+            const { rows: upd } = await pool.query(`SELECT * FROM payments WHERE id=$1`, [payment.id]);
+            payment = upd[0] || payment;
+            if (status === 'failed') {
+              try {
+                const failMsg = `Payment for order ${order.transaction_code || orderId} was unsuccessful. Please try again before your payment deadline.`;
+                const { rows: dup } = await pool.query(
+                  `SELECT id FROM notifications WHERE user_id=$1 AND message=$2 AND created_at > NOW() - INTERVAL '1 hour' LIMIT 1`,
+                  [payment.customer_id, failMsg]
+                );
+                if (!dup.length) {
+                  try {
+                    await pool.query(`INSERT INTO notifications (user_id, type, message, auction_id) VALUES ($1,'payout',$2,$3)`, [payment.customer_id, failMsg, order.auction_id || null]);
+                  } catch (insErr) {
+                    if (insErr.code !== '42703') throw insErr;
+                    await pool.query(`INSERT INTO notifications (user_id, type, message) VALUES ($1,'payout',$2)`, [payment.customer_id, failMsg]);
+                  }
                 }
-              }
-            } catch {}
+              } catch {}
+            }
           }
+        } catch (e) {
+          console.warn(`[payment-sync] Unable to verify checkout session ${payment.checkout_session_id}: ${e.message}`);
         }
-      } catch (e) {
-        console.warn(`[payment-sync] Unable to verify checkout session ${payment.checkout_session_id}: ${e.message}`);
-      }
     }
 
     res.json({ order, payment, product: { name: order.product_name, img: order.product_img, category: order.category, karat_weight: order.karat_weight, desc: order.product_desc, id: order.product_id }, branch: { name: order.branch_name, address: order.branch_address, phone: order.branch_phone, hours: order.branch_hours } });
@@ -149,19 +148,17 @@ export const getOrderDetails = async (req, res) => {
     if (e?.code === 'DB_UNAVAILABLE' || e?.statusCode === 503) {
       return res.status(503).json({ message: 'Payment service temporarily unavailable' });
     }
-    console.error('[customer/getOrderDetails]', e.message);
+    console.error('[customer/getOrderDetails]', e.stack || e);
     res.status(500).json({ message: 'Failed to load order' });
   }
 };
 
 export const createCheckout = async (req, res) => {
   const orderId = req.params.id;
-  if (!UUID_RE.test(String(orderId || ''))) return res.status(404).json({ message: 'Order not found' });
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(orderId || ''))) return res.status(404).json({ message: 'Order not found' });
   let { payment_method } = req.body; // gcash, maya, card etc - optional hint
   if (payment_method === 'maya') payment_method = 'paymaya';
   try {
-    // verify order belongs to customer and is payable
-    // REST-compatible: separate simple queries (JOINs return empty via REST fallback)
     const { rows: orderRows } = await pool.query(
       'SELECT * FROM orders WHERE id = $1 AND buyer_id = $2',
       [orderId, req.user.id]
@@ -186,9 +183,6 @@ export const createCheckout = async (req, res) => {
     };
     if (order.status !== 'pending') return res.status(400).json({ message: 'Order is not payable' });
 
-    // The payment window is closed server-side the moment the authoritative
-    // deadline passes — the customer must not be able to open a NEW checkout
-    // while the expiration cron is still waiting for its next tick.
     const paymentDeadline = resolveDeadline(order);
     if (paymentDeadline && new Date() >= new Date(paymentDeadline)) {
       return res.status(409).json({
@@ -197,53 +191,56 @@ export const createCheckout = async (req, res) => {
       });
     }
 
-    // check existing paid payment
     const { rows: paid } = await pool.query(`SELECT id FROM payments WHERE order_id=$1 AND status='paid' LIMIT 1`, [orderId]);
     if (paid.length) return res.status(400).json({ message: 'Order already paid' });
 
-    // check existing pending/processing checkout that is still active (created < 30min ago) - reuse
+    const normalizedMethod = normalizePaymentMethod(payment_method);
+
     const { rows: existing } = await pool.query(
       `SELECT * FROM payments WHERE order_id=$1 AND status IN ('pending','processing') AND created_at > NOW() - INTERVAL '30 minutes' ORDER BY created_at DESC LIMIT 1`,
       [orderId]
     );
     let payment;
-    if (existing.length && existing[0].checkout_session_id) {
+    if (existing.length && existing[0].checkout_session_id && existing[0].payment_method === normalizedMethod) {
       payment = existing[0];
-      // try to return existing checkout_url if stored in metadata
       if (payment.metadata?.checkout_url) {
         return res.json({ checkout_url: payment.metadata.checkout_url, payment });
       }
     }
 
-    // create pending payment record — amount from DB order, never from frontend
     const amount = Number(order.amount);
     if (!amount) return res.status(400).json({ message: 'Invalid order amount' });
 
-    // if no existing pending, create new
     if (!payment) {
       const { rows: pRows } = await pool.query(
         `INSERT INTO payments (order_id, customer_id, amount, currency, payment_method, status) VALUES ($1,$2,$3,'PHP',$4,'pending') RETURNING *`,
-        [orderId, req.user.id, amount, payment_method || 'gcash']
+        [orderId, req.user.id, amount, normalizedMethod]
       );
       payment = pRows[0];
     }
 
-    // call PayMongo
     try {
-      const { checkoutId, checkoutUrl } = await createPayMongoCheckout({ order, payment, branch: { name: order.branch_name }, product: { name: order.product_name } });
+      const { checkoutId, checkoutUrl } = await createPayMongoCheckout({ order, payment, branch: { name: order.branch_name }, product: { name: order.product_name }, paymentMethod: normalizedMethod });
       await pool.query(
         `UPDATE payments SET checkout_session_id=$1, provider_reference_id=$1, metadata=$2, updated_at=now() WHERE id=$3`,
-        [checkoutId, JSON.stringify({ checkout_url: checkoutUrl, payment_method }), payment.id]
+        [checkoutId, JSON.stringify({ checkout_url: checkoutUrl, payment_method: normalizedMethod }), payment.id]
       );
       const { rows: upd } = await pool.query(`SELECT * FROM payments WHERE id=$1`, [payment.id]);
       return res.json({ checkout_url: checkoutUrl, payment: upd[0] });
     } catch (payErr) {
       await pool.query(`UPDATE payments SET status='failed', metadata=$1, updated_at=now() WHERE id=$2`, [JSON.stringify({ error: payErr.message }), payment.id]);
-      console.error('[paymongo checkout]', payErr.message);
+ console.error('[paymongo checkout]', {
+  message: payErr.message,
+  providerDetail: payErr.providerDetail || 'No provider detail',
+  statusCode: payErr.statusCode
+});
       return res.status(500).json({ message: payErr.message || 'Failed to create checkout' });
     }
   } catch (e) {
     console.error('[customer/createCheckout]', e.message);
+    if (e.statusCode === 400) {
+      return res.status(400).json({ code: 'UNSUPPORTED_PAYMENT_METHOD', message: e.message || 'Unsupported payment method.' });
+    }
     res.status(500).json({ message: 'Failed to create payment' });
   }
 };

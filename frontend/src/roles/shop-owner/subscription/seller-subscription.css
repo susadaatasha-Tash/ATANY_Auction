@@ -188,6 +188,31 @@
   color: #E6C78A;
 }
 
+/* Light-surface action (Next payment card) — the ghost variant above is built
+   for the DARK hero, so on a cream card it rendered near-invisible. */
+.ssub-btn--light {
+  background: #fff;
+  color: #142A4A;
+  border-color: rgba(200, 155, 60, 0.45);
+}
+
+.ssub-btn--light:hover:not(:disabled) {
+  background: #FFFDF6;
+  border-color: #C89B3C;
+  color: #8A6A1F;
+}
+
+.ssub-btn--light:focus-visible {
+  outline: 2px solid #C89B3C;
+  outline-offset: 2px;
+}
+
+.ssub-btn--light:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+  color: #142A4A;
+}
+
 .ssub-btn--outline {
   background: #fff;
   color: #142A4A;
@@ -407,6 +432,36 @@
 
 .ssub-nextpay__row strong {
   color: #142A4A;
+}
+
+.ssub-nextpay__hint {
+  color: #8A919C;
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+
+.ssub-nextpay__method {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.ssub-nextpay__method-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: #8A919C;
+}
+
+.ssub-nextpay__method-value {
+  font-size: 13.5px;
+  font-weight: 800;
+  color: #142A4A;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .ssub-nextpay__row-icon {

@@ -211,7 +211,7 @@ describe('MyPurchases redesign', () => {
     fireEvent.click(hamburger);
     expect(toggleMenu).toHaveBeenCalled();
 
-    const collapse = screen.getByLabelText('Toggle sidebar');
+    const collapse = screen.getByLabelText('Collapse navigation');
     fireEvent.click(collapse);
     expect(toggleSidebar).toHaveBeenCalled();
   });

@@ -90,8 +90,8 @@ describe('Sales & Payouts revenue rule audit', () => {
       expect.objectContaining({
         summary: expect.objectContaining({
           gross_sales_ytd: 100000,
-          net_payout_ytd: 90000,
-          pending_payout: 90000, // paid but not completed → pending
+          net_earnings_ytd: 90000,
+          pending_earnings: 90000, // paid but not completed → pending
         }),
       }),
     );
@@ -145,8 +145,8 @@ describe('Sales & Payouts revenue rule audit', () => {
       expect.objectContaining({
         summary: expect.objectContaining({
           gross_sales_ytd: 0,
-          net_payout_ytd: 0,
-          pending_payout: 0,
+          net_earnings_ytd: 0,
+          pending_earnings: 0,
         }),
       }),
     );
@@ -199,8 +199,8 @@ describe('Sales & Payouts revenue rule audit', () => {
       expect.objectContaining({
         summary: expect.objectContaining({
           gross_sales_ytd: 100000,
-          net_payout_ytd: 90000,
-          pending_payout: 0,
+          net_earnings_ytd: 90000,
+          pending_earnings: 0,
         }),
       }),
     );
@@ -253,8 +253,8 @@ describe('Sales & Payouts revenue rule audit', () => {
       expect.objectContaining({
         summary: expect.objectContaining({
           gross_sales_ytd: 0,
-          net_payout_ytd: 0,
-          pending_payout: 0,
+          net_earnings_ytd: 0,
+          pending_earnings: 0,
         }),
       }),
     );
@@ -342,8 +342,8 @@ describe('Sales & Payouts revenue rule audit', () => {
     const callArg = res.json.mock.calls[0][0];
     expect(callArg.revenue_trend).toHaveLength(12); // all 12 months preserved with zeros
     expect(callArg.summary.gross_sales_ytd).toBe(0);
-    expect(callArg.summary.net_payout_ytd).toBe(0);
+    expect(callArg.summary.net_earnings_ytd).toBe(0);
     expect(callArg.top_categories).toHaveLength(0);
-    expect(callArg.payout_history).toHaveLength(0);
+    expect(callArg.earnings_history).toHaveLength(0);
   });
 });

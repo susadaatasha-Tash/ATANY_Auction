@@ -382,7 +382,9 @@ describe('checkout by plan_code', () => {
 describe('seller checkout ownership', () => {
   test('seller can retry own eligible record', async () => {
     seedBilling([
-      { id: BILLING_ID, seller_id: SELLER, status: 'overdue', amount: 1000, plan_code: 'bronze', paymongo_checkout_session_id: null, updated_at: pastISO(2), created_at: new Date().toISOString() },
+      // The seller already chose a payment method — the checkout is
+      // restricted to that single provider method.
+      { id: BILLING_ID, seller_id: SELLER, status: 'overdue', amount: 1000, plan_code: 'bronze', payment_method_type: 'gcash', paymongo_checkout_session_id: null, updated_at: pastISO(2), created_at: new Date().toISOString() },
     ]);
     // Force new checkout creation path (no reusable session)
     getCheckoutSession.mockRejectedValue(new Error('none'));

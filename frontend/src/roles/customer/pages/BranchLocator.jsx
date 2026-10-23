@@ -1,9 +1,10 @@
 // frontend/src/roles/customer/pages/BranchLocator.jsx
 // Customer-facing GPS locator — extracted from branches.html:231-250
-// Read-only: branches are single source of truth from Admin (spec 4.5). Uses Haversine client-side (spec 4.5).
+// Read-only: branches are single source of truth from Admin (spec 4.5).
+// Uses Haversine client-side (spec 4.5).
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Store, MapPin, Phone, ArrowRight } from 'lucide-react';
+import { Store, MapPin, Phone, ArrowRight, RefreshCw } from 'lucide-react';
 import { Badge } from '../../../shared/components/Badge';
 import { BranchMap } from '../components/BranchMap';
 import { apiFetch } from '../../../shared/lib/apiClient';
@@ -21,17 +22,50 @@ export default function BranchLocator({ branches: propBranches }) {
   const navigate = useNavigate();
   const showToast = useToast();
   const [fetched, setFetched] = useState([]);
+  const [loading, setLoading] = useState(!propBranches);
+  const [error, setError] = useState(null);
   const branches = propBranches ?? fetched;
   const [q, setQ] = useState('');
   const [userLoc, setUserLoc] = useState(null);
   const [selectedBranchId, setSelectedBranchId] = useState(null);
   const [mapReady, setMapReady] = useState(true);
 
+  // ── Load branches from the public endpoint ──────────────────────────────
+  // Public endpoint — must work for anonymous visitors (no session yet).
   useEffect(() => {
     if (propBranches) return;
-    // Public endpoint — must work for anonymous visitors (no session yet).
-    apiFetch('/branches', { public: true }).then(setFetched).catch(() => setFetched([]));
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    apiFetch('/branches', { public: true })
+      .then((rows) => {
+        if (!cancelled) {
+          setFetched(Array.isArray(rows) ? rows : []);
+          setLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setError(err);
+          setLoading(false);
+        }
+      });
+    return () => { cancelled = true; };
   }, [propBranches]);
+
+  const retry = useCallback(() => {
+    setError(null);
+    setLoading(true);
+    apiFetch('/branches', { public: true })
+      .then((rows) => {
+        setFetched(Array.isArray(rows) ? rows : []);
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err);
+        setLoading(false);
+      });
+  }, []);
 
   const locate = useCallback(() => {
     if (!navigator.geolocation) {
@@ -40,7 +74,12 @@ export default function BranchLocator({ branches: propBranches }) {
     }
     navigator.geolocation.getCurrentPosition(
       (pos) => setUserLoc({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      (err) => showToast(err.message || 'Unable to retrieve your location')
+      (err) => {
+        // A denied/dismissed location request must NOT clear the branch list.
+        showToast(err && err.code === 1
+          ? 'Location permission was denied. You can still search for a branch manually.'
+          : err.message || 'Unable to retrieve your location');
+      },
     );
   }, [showToast]);
 
@@ -53,12 +92,34 @@ export default function BranchLocator({ branches: propBranches }) {
   }, []);
   const handleMapReady = useCallback(() => setMapReady(true), []);
 
-  const list = branches
-    .filter((b) => (b.name || '').toLowerCase().includes(q.toLowerCase()) || (b.address || '').toLowerCase().includes(q.toLowerCase()))
+  const isOpen = (b) => String(b.status || '').toLowerCase() === 'open';
+
+  const filtered = branches.filter((b) => {
+    const query = q.trim().toLowerCase();
+    if (!query) return true;
+    return (
+      String(b.name || '').toLowerCase().includes(query) ||
+      String(b.address || '').toLowerCase().includes(query)
+    );
+  });
+
+  const list = filtered
     .map((b) => ({ ...b, dist: userLoc ? distanceKm(userLoc.lat, userLoc.lng, b.lat, b.lng) : null }))
     .sort((a, b) => (a.dist ?? Infinity) - (b.dist ?? Infinity));
 
   const getBranchImage = (b) => b.branch_image_url || b.image_url || null;
+
+  // ── Empty-state resolution ─────────────────────────────────────────────
+  let emptyMessage = null;
+  if (loading) {
+    emptyMessage = 'Loading branches…';
+  } else if (error) {
+    emptyMessage = 'Unable to load branches right now.';
+  } else if (branches.length === 0) {
+    emptyMessage = 'No ATANY branches are currently available.';
+  } else if (q.trim() !== '' && list.length === 0) {
+    emptyMessage = 'No branches match your search.';
+  }
 
   return (
     <main className="locator-page">
@@ -79,16 +140,26 @@ export default function BranchLocator({ branches: propBranches }) {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search by city or branch name…"
+              disabled={loading}
             />
           </div>
-          <button className="btn btn-gold" onClick={locate}>
+          <button className="btn btn-gold" onClick={locate} disabled={loading}>
             <MapPin size={15} /> Use My Location
           </button>
         </div>
 
         <div className="locator-layout">
           <div className="branch-list">
-            {list.length > 0 ? (
+            {emptyMessage ? (
+              <div className="empty-state" style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--muted)' }}>
+                <p>{emptyMessage}</p>
+                {error && !loading && (
+                  <button className="btn btn-outline" onClick={retry} style={{ marginTop: 10 }}>
+                    <RefreshCw size={14} /> Retry
+                  </button>
+                )}
+              </div>
+            ) : (
               list.map((b) => (
                 <div
                   key={b.id}
@@ -106,7 +177,7 @@ export default function BranchLocator({ branches: propBranches }) {
                       )}
                     </div>
                     <div className="branch-card-badge">
-                      <Badge status={b.status === 'Open' ? 'active' : 'suspended'} />
+                      <Badge status={isOpen(b) ? 'active' : 'suspended'} />
                     </div>
                     <div className="branch-card-detail">
                       <MapPin size={13} />
@@ -118,22 +189,20 @@ export default function BranchLocator({ branches: propBranches }) {
                     </div>
                   </div>
                   <ArrowRight size={16} className="branch-card-arrow" />
-                  <a
-                    href={`https://www.google.com/maps?q=${b.lat},${b.lng}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="branch-card-gmaps"
-                    onClick={(e) => e.stopPropagation()}
-                    title="View on Google Maps"
-                  >
-                    <MapPin size={13} />
-                  </a>
+                  {b.lat != null && b.lng != null && Number.isFinite(Number(b.lat)) && Number.isFinite(Number(b.lng)) ? (
+                    <a
+                      href={`https://www.google.com/maps?q=${b.lat},${b.lng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="branch-card-gmaps"
+                      onClick={(e) => e.stopPropagation()}
+                      title="View on Google Maps"
+                    >
+                      <MapPin size={13} />
+                    </a>
+                  ) : null}
                 </div>
               ))
-            ) : (
-              <div className="empty-state" style={{ padding: '32px 20px', textAlign: 'center', color: 'var(--muted)' }}>
-                <p>No branches match your search.</p>
-              </div>
             )}
           </div>
           <div className="map-panel">
@@ -145,8 +214,6 @@ export default function BranchLocator({ branches: propBranches }) {
                 onSelectBranch={handleMapBranchSelect}
                 initialCenter={DAVAO_CENTER}
                 onMapReady={handleMapReady}
-                // The page owns the scroll — the wheel must not be trapped by
-                // the map. + / −, drag and touch still zoom/pan.
                 scrollWheelZoom={false}
               />
             ) : (

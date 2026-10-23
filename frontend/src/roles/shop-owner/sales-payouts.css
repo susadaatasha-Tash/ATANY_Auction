@@ -10,78 +10,6 @@
   width: 100%;
 }
 
-/* ── Header ── */
-.sp-header {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-.sp-header-main {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-.sp-eyebrow {
-  margin: 0;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: #b8923c;
-  line-height: 1.15;
-}
-.sp-title {
-  margin: 0;
-  font-size: 24px;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  color: #1a2744;
-  line-height: 1.2;
-}
-.sp-subtitle {
-  margin: 0;
-  font-size: 13px;
-  color: #848b96;
-  font-weight: 500;
-  line-height: 1.4;
-}
-.sp-header-actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 8px;
-}
-.sp-active-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  height: 34px;
-  padding: 0 12px;
-  border-radius: 999px;
-  background: #fff;
-  border: 1px solid #ebe6dc;
-  color: #1e2a3a;
-  font-size: 12px;
-  font-weight: 600;
-  white-space: nowrap;
-  flex-shrink: 0;
-  box-shadow: 0 1px 1px rgba(26, 42, 74, 0.03);
-}
-.sp-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: #3f9b62;
-  box-shadow: 0 0 0 2px rgba(63, 155, 98, 0.18);
-  flex-shrink: 0;
-}
-.sp-count {
-  font-weight: 800;
-  color: #1a274a;
-  font-variant-numeric: tabular-nums;
-}
 
 /* ── KPI Cards ── */
 .sp-kpi {
@@ -357,12 +285,10 @@
   font-variant-numeric: tabular-nums;
   font-size: 13px;
 }
-.sp-method {
-  font-size: 12.5px;
-  color: #2a3548;
-}
 
 /* ── Status badges ── */
+/* NOTE: the class names below must match the single-dash names emitted by
+   statusTone() in SalesPayouts.jsx (sp-badge-paid / -pending / -failed). */
 .sp-badge {
   display: inline-flex;
   align-items: center;
@@ -375,10 +301,9 @@
   white-space: nowrap;
   line-height: 1.3;
 }
-.sp-badge--paid { color: #3f7a55; background: #e8f3ec; }
-.sp-badge--scheduled { color: #9a742e; background: #faf2e2; }
-.sp-badge--failed { color: #b45252; background: #f7eceb; }
-.sp-badge--pending { color: #6e7784; background: #f0eee8; }
+.sp-badge-paid { color: #3f7a55; background: #e8f3ec; }
+.sp-badge-failed { color: #b45252; background: #f7eceb; }
+.sp-badge-pending { color: #6e7784; background: #f0eee8; }
 .sp-badge-dot {
   width: 6px;
   height: 6px;
@@ -386,6 +311,15 @@
   background: currentColor;
   display: inline-block;
   margin-right: 5px;
+}
+
+/* Fulfillment state, shown SEPARATELY from the earnings state. */
+.sp-order-status {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  color: #8a919c;
+  white-space: nowrap;
 }
 
 /* ── Empty / Loading / Error ── */
@@ -421,13 +355,7 @@
 .sp-btn-retry:hover { background: #fef2f2; border-color: #e8a0a0; }
 
 /* ── Responsive ── */
-@media (max-width: 900px) {
-  .sp-header { align-items: stretch; }
-  .sp-header-actions { margin-top: 10px; justify-content: center; width: 100%; }
-  .sp-active-pill { font-size: 11px; padding: 0 10px; }
-}
 @media (max-width: 580px) {
-  .sp-title { font-size: 20px; }
   .sp-payout-table { font-size: 12px; }
   .sp-payout-table th, .sp-payout-table td { padding: 8px 10px; font-size: 12px; }
   .sp-btn-export { padding: 6px 10px; font-size: 11px; }

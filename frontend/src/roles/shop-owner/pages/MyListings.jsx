@@ -6,6 +6,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Gem, Search, Trash2, Eye, Clock, Loader2, Tag, MapPin, CalendarDays, FileText, Gavel, Trophy, Wallet, ClipboardCopy } from 'lucide-react';
 import { apiFetch } from '../../../shared/lib/apiClient';
+import { resolveDisplayImage } from '../../../shared/lib/defaultProductImage';
 import { useToast } from '../../../shared/components/Toast';
 import { useRealtimeProducts } from '../../../shared/hooks/useRealtimeProducts';
 import { Modal, ConfirmModal } from '../../../shared/components/Modal';
@@ -223,7 +224,9 @@ export default function MyListings({ listings: propListings, onSubmit, onResubmi
     const st = presentationFor(l);
     const price = peso(l.price);
     const karat = l.karat_weight || l.karat || '—';
-    const imageUrl = l.image_url || null;
+    // The resolved display image: the seller's own upload wins; a product
+    // with no photo falls back to the ATANY default photo (never an empty box).
+    const imageUrl = resolveDisplayImage(l);
     const isDeleting = deletingId === l.id;
     const canDelete = l.can_delete !== false; // backend-computed; default true if absent
     const deleteDisabled = !canDelete || isDeleting;
@@ -269,13 +272,8 @@ export default function MyListings({ listings: propListings, onSubmit, onResubmi
   /* ── Page shell ── */
   return (
     <div className="ml-page">
-      {/* Header */}
-      <div className="ml-header">
-        <p className="ml-header__eyebrow">SELLER PORTAL</p>
-        <h1 className="ml-header__title">My Listings</h1>
-      </div>
-
-      {/* Toolbar */}
+      {/* Toolbar — the page title lives in the portal topbar, so the content
+          starts directly with the search + status filter (no duplicate heading). */}
       <div className="ml-toolbar">
         <div className="ml-search">
           <Search size={16} className="ml-search__icon" />
@@ -364,8 +362,8 @@ export default function MyListings({ listings: propListings, onSubmit, onResubmi
               {/* Top Summary: Image (45%) + Info (55%) */}
               <div className="ml-modal-summary">
                 <div className="ml-modal-summary-image">
-                  {hasImage(selected.image_url) ? (
-                    <img className="ml-modal-summary-img" src={selected.image_url} alt={selected.name} loading="lazy" />
+                  {hasImage(resolveDisplayImage(selected)) ? (
+                    <img className="ml-modal-summary-img" src={resolveDisplayImage(selected)} alt={selected.name} loading="lazy" />
                   ) : (
                     <div className="ml-modal-summary-image--fallback"><Gem size={40} /></div>
                   )}

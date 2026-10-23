@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireAuth } from '../middleware/requireAuth.js';
 import { requireRole } from '../middleware/requireRole.js';
+import { requireActiveAccount } from '../middleware/requireActiveAccount.js';
 import {
   listMyBilling,
   getMySubscription,
@@ -18,6 +19,8 @@ import {
   deleteMyPaymentMethod,
   adminRetryBilling,
   listSubscriptionPlans,
+  listSubscriptionPaymentMethods,
+  saveSubscriptionPaymentMethod,
 } from '../controllers/billing.controller.js';
 
 const router = Router();
@@ -74,6 +77,24 @@ router.patch(
   setDefaultMyPaymentMethod
 );
 router.delete('/payment-methods/:id', requireAuth, requireRole('shop_owner'), deleteMyPaymentMethod);
+
+// Subscription payment method flow — QR Ph / Card / GCash / Maya only.
+// A suspended seller is blocked (403 ACCOUNT_SUSPENDED); a customer or an
+// unauthenticated caller never reaches the controller.
+router.get(
+  '/subscription/payment-methods',
+  requireAuth,
+  requireRole('shop_owner'),
+  requireActiveAccount(),
+  listSubscriptionPaymentMethods
+);
+router.post(
+  '/subscription/payment-method',
+  requireAuth,
+  requireRole('shop_owner'),
+  requireActiveAccount(),
+  saveSubscriptionPaymentMethod
+);
 
 // Seller pays/retries own billing record
 router.post('/:id/checkout', requireAuth, requireRole('shop_owner'), createMaintenanceCheckout);

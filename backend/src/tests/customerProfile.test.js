@@ -424,11 +424,11 @@ describe('customer profile — suspended account', () => {
 describe('customer profile — support request', () => {
   it('derives name and email from the session, not the body', async () => {
     poolQuery.mockImplementation(async (sql) => {
-      if (/SELECT name, email FROM users/.test(sql)) {
-        return { rows: [{ name: 'Maria Santos', email: 'maria.santos@email.com' }] };
+      if (/SELECT id, name, email, role FROM users/.test(sql)) {
+        return { rows: [{ id: ME, name: 'Maria Santos', email: 'maria.santos@email.com', role: 'customer' }] };
       }
       if (/INSERT INTO support_requests/.test(sql)) {
-        return { rows: [{ id: 'sr-1', created_at: '2026-01-01T00:00:00.000Z' }] };
+        return { rows: [{ id: 'sr-1', created_at: '2026-01-01T00:00:00.000Z', status: 'new' }] };
       }
       return { rows: [] };
     });
@@ -456,8 +456,8 @@ describe('customer profile — support request', () => {
 
   it('rejects an empty message', async () => {
     poolQuery.mockImplementation(async (sql) => {
-      if (/SELECT name, email FROM users/.test(sql)) {
-        return { rows: [{ name: 'Maria Santos', email: 'maria.santos@email.com' }] };
+      if (/SELECT id, name, email, role FROM users/.test(sql)) {
+        return { rows: [{ id: ME, name: 'Maria Santos', email: 'maria.santos@email.com', role: 'customer' }] };
       }
       return { rows: [] };
     });
@@ -467,25 +467,25 @@ describe('customer profile — support request', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'INVALID_MESSAGE' }));
   });
 
-  it('rejects an unknown subject', async () => {
+  it('rejects an unknown category', async () => {
     poolQuery.mockImplementation(async (sql) => {
-      if (/SELECT name, email FROM users/.test(sql)) {
-        return { rows: [{ name: 'Maria Santos', email: 'maria.santos@email.com' }] };
+      if (/SELECT id, name, email, role FROM users/.test(sql)) {
+        return { rows: [{ id: ME, name: 'Maria Santos', email: 'maria.santos@email.com', role: 'customer' }] };
       }
       return { rows: [] };
     });
     const res = mockRes();
-    await submitSupportRequest({ user: { id: ME }, body: { subject: 'Hacked', message: 'hi' } }, res);
+    await submitSupportRequest({ user: { id: ME }, body: { category: 'Hacked', message: 'hi' } }, res);
     expect(res.status).toHaveBeenCalledWith(400);
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'INVALID_SUBJECT' }));
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'INVALID_CATEGORY' }));
   });
 
   it('writes to the real support_requests table', async () => {
     poolQuery.mockImplementation(async (sql) => {
-      if (/SELECT name, email FROM users/.test(sql)) {
-        return { rows: [{ name: 'Maria Santos', email: 'maria.santos@email.com' }] };
+      if (/SELECT id, name, email, role FROM users/.test(sql)) {
+        return { rows: [{ id: ME, name: 'Maria Santos', email: 'maria.santos@email.com', role: 'customer' }] };
       }
-      if (/INSERT INTO support_requests/.test(sql)) return { rows: [{ id: 'sr-2' }] };
+      if (/INSERT INTO support_requests/.test(sql)) return { rows: [{ id: 'sr-2', created_at: '2026-01-01T00:00:00.000Z', status: 'new' }] };
       return { rows: [] };
     });
     const res = mockRes();
@@ -494,9 +494,17 @@ describe('customer profile — support request', () => {
       res
     );
     const insert = poolQuery.mock.calls.find(([sql]) => /INSERT INTO support_requests/.test(sql));
-    expect(insert[0]).toMatch(/INSERT INTO support_requests \(name, email, subject, message\)/);
+    expect(insert[0]).toMatch(/INSERT INTO support_requests/);
+    expect(insert[0]).toMatch(/name, email, subject, message, status, user_id, requester_role, category, source/);
     expect(insert[1][2]).toBe('Bid Support');
     expect(insert[1][3]).toBe('I was outbid — please check.');
+    // 'status' is the literal 'new' in the SQL; the params are
+    // name, email, subject, message, user_id, requester_role, category, source.
+    expect(insert[1][4]).toBe(ME);
+    expect(insert[1][5]).toBe('customer');
+    expect(insert[1][6]).toBe('Bid Support');
+    expect(insert[1][7]).toBe('Customer Portal');
+    expect(insert[0]).toMatch(/'new'/);
   });
 });
 

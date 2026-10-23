@@ -190,7 +190,6 @@ export default function MyAuctions() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [catFilter, setCatFilter] = useState('all');
   const [q, setQ] = useState('');
-  const [viewMode, setViewMode] = useState('list');
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [createSession, setCreateSession] = useState(0);
@@ -440,10 +439,6 @@ export default function MyAuctions() {
           </div>
         </div>
         <div className="mauc-toolbar__right">
-          <div className="mauc-toggle" role="tablist" aria-label="View mode">
-            <button className={`mauc-toggle__btn ${viewMode === 'list' ? 'is-active' : ''}`} onClick={() => setViewMode('list')} aria-selected={viewMode === 'list'}>☰ List</button>
-            <button className="mauc-toggle__btn" disabled aria-disabled="true" aria-label="Calendar view — coming soon" title="Calendar view — coming soon (not yet available)">📅 Calendar</button>
-          </div>
           <button className="btn btn-primary" onClick={() => { setEditing(null); setCreateSession(n => n + 1); setOpen(true); }}>+ Create Auction</button>
         </div>
       </div>

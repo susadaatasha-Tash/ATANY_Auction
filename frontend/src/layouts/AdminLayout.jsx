@@ -1,23 +1,33 @@
 // frontend/src/layouts/AdminLayout.jsx
 // Shell for admin — premium sidebar + topbar with live badges
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from '../shared/components/Sidebar';
 import { Topbar } from '../shared/components/Topbar';
 import { NotificationBell } from '../shared/components/NotificationBell';
+import {
+  LayoutDashboard,
+  Store,
+  Users,
+  UserCog,
+  ShoppingBag,
+  CreditCard,
+  BarChart3,
+  ShieldAlert,
+} from 'lucide-react';
 import { useAuth } from '../shared/hooks/useAuth';
 
 const sections = [
-  { label: 'OVERVIEW', items: [{ to: '/admin', name: 'Dashboard', end: true }] },
+  { label: 'OVERVIEW', items: [{ to: '/admin', name: 'Dashboard', end: true, icon: <LayoutDashboard size={15} /> }] },
   { label: 'BRANCH OPERATIONS', items: [
-    { to: '/admin/branches', name: 'Branches' },
-    { to: '/admin/users', name: 'Users & Roles' },
-    { to: '/admin/transactions', name: 'Orders' },
+    { to: '/admin/branches', name: 'Branches', icon: <Store size={15} />, matchPrefixes: ['/admin/branches'] },
+    { to: '/admin/users', name: 'Users & Roles', icon: <Users size={15} />, matchPrefixes: ['/admin/users'] },
+    { to: '/admin/transactions', name: 'Orders', icon: <ShoppingBag size={15} />, matchPrefixes: ['/admin/transactions', '/admin/orders'] },
   ]},
   { label: 'PLATFORM MANAGEMENT', items: [
-    { to: '/admin/billing', name: 'Subscriptions' },
-    { to: '/admin/analytics', name: 'Reports' },
-    { to: '/admin/security', name: 'Security Alerts' },
+    { to: '/admin/billing', name: 'Subscriptions', icon: <CreditCard size={15} />, matchPrefixes: ['/admin/billing'] },
+    { to: '/admin/analytics', name: 'Reports', icon: <BarChart3 size={15} />, matchPrefixes: ['/admin/analytics'] },
+    { to: '/admin/security', name: 'Security Alerts', icon: <ShieldAlert size={15} />, matchPrefixes: ['/admin/security'] },
   ]},
 ];
 
@@ -45,10 +55,10 @@ function getUserInitials(name, email) {
   if (!src) return 'AU';
   if (src.includes('@')) {
     const parts = src.split('@')[0].split(/[._-]/);
-    return parts.slice(0, 2).map(p => p.charAt(0).toUpperCase()).join('');
+    return parts.slice(0, 2).map((p) => p.charAt(0).toUpperCase()).join('');
   }
   const parts = src.trim().split(/\s+/);
-  return parts.slice(0, 2).map(p => p.charAt(0).toUpperCase()).join('');
+  return parts.slice(0, 2).map((p) => p.charAt(0).toUpperCase()).join('');
 }
 
 function getDisplayName(user) {
@@ -61,6 +71,8 @@ function getDisplayName(user) {
     || user.email
     || 'Admin';
 }
+
+const COLLAPSED_KEY = 'atany_admin_sidebar_collapsed';
 
 export default function AdminLayout() {
   const [open, setOpen] = useState(false);
@@ -75,9 +87,32 @@ export default function AdminLayout() {
   // Subscriptions page owns its flat portal header (search + platform pill)
   const isBilling = pathname === '/admin/billing';
 
+  // Restore saved collapsed state (role-scoped; never leaks to other roles).
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(COLLAPSED_KEY);
+      if (stored !== null) setSidebarCollapsed(JSON.parse(stored) === true);
+    } catch {}
+  }, []);
+
+  const persistCollapsed = useCallback((next) => {
+    setSidebarCollapsed(next);
+    try {
+      localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next));
+    } catch {}
+  }, []);
+
   return (
     <div className={`app admin-app${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
-      <Sidebar brand="ATANY" tag="ADMIN" sections={sections} open={open} onClose={() => setOpen(false)} onSignOut={signOut} />
+      <Sidebar
+        brand="ATANY"
+        tag="ADMIN"
+        sections={sections}
+        open={open}
+        onClose={() => setOpen(false)}
+        onSignOut={signOut}
+        collapsed={sidebarCollapsed}
+      />
       {open && <div className="sidebar-backdrop" aria-hidden="true" onClick={() => setOpen(false)} />}
       <div className="main">
         {!isBilling && (
@@ -87,7 +122,7 @@ export default function AdminLayout() {
             role="admin"
             onMenuToggle={() => setOpen((v) => !v)}
             sidebarCollapsed={sidebarCollapsed}
-            onSidebarToggle={() => setSidebarCollapsed((v) => !v)}
+            onSidebarToggle={() => persistCollapsed((v) => !v)}
             user={{ initials, name: displayName, role: 'Administrator' }}
             onSignOut={signOut}
             rightExtra={<NotificationBell to="/admin/notifications" apiPath="/admin/notifications/history" />}

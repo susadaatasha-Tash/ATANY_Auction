@@ -8,6 +8,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import '../../index.css';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -97,6 +98,34 @@ describe('Customer sidebar — Settings removed', () => {
     const nav = screen.getByRole('navigation');
     const labels = Array.from(nav.querySelectorAll('.nav-section-label')).map((n) => n.textContent);
     expect(labels).toEqual(['OVERVIEW', 'SHOP', 'ORDERS']);
+  });
+
+  it('every customer nav item renders an icon', async () => {
+    renderLayout();
+    await waitFor(() => expect(screen.getByTestId('profile-page')).toBeInTheDocument());
+    const navItems = screen.getAllByRole('link', { name: /Dashboard|Auctions|My Bids|Favorites|Watchlist|Branch Locator|My Purchases/i });
+    expect(navItems.length).toBeGreaterThan(0);
+    navItems.forEach((item) => {
+      expect(item.querySelector('svg')).toBeTruthy();
+    });
+  });
+
+  it('collapses to icon rail: labels hidden, icons remain', async () => {
+    // Pre-seed the role-scoped persistence key.
+    localStorage.setItem('atany_customer_sidebar_collapsed', 'true');
+    renderLayout();
+    await waitFor(() => expect(screen.getByTestId('profile-page')).toBeInTheDocument());
+    await waitFor(() => {
+      expect(document.querySelector('aside.sidebar.collapsed')).toBeTruthy();
+    });
+    const aside = document.querySelector('aside.sidebar.collapsed');
+    // Icons remain.
+    expect(screen.getAllByRole('link').length).toBeGreaterThan(0);
+    // The collapsed class is present — this hides labels/headings via CSS.
+    expect(aside).toHaveClass('collapsed');
+    // Labels are rendered (present in DOM) but visually hidden; icons stay.
+    expect(aside.querySelectorAll('.nav-label').length).toBeGreaterThan(0);
+    aside.querySelectorAll('svg').forEach((icon) => expect(icon).toBeInTheDocument());
   });
 });
 

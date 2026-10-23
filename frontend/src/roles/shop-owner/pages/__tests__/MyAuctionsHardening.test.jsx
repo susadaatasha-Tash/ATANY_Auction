@@ -53,12 +53,39 @@ test('listeners cleaned on unmount', async () => {
   expect(socket.off).toHaveBeenCalledWith('bid:update', expect.any(Function));
 });
 
-test('calendar button is disabled and accessible', async () => {
+test('the calendar view is completely removed from My Auctions', async () => {
   render(<MyAuctions />);
   await screen.findByText('Live Ring');
-  const cal = screen.getByLabelText('Calendar view — coming soon');
-  expect(cal).toBeDisabled();
-  expect(cal).toHaveAttribute('aria-disabled', 'true');
+  // No Calendar control of any kind.
+  expect(screen.queryByLabelText(/calendar/i)).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /calendar/i })).not.toBeInTheDocument();
+  expect(screen.queryByText(/calendar/i)).not.toBeInTheDocument();
+  // The dead view-mode selector is gone as well.
+  expect(screen.queryByRole('tablist', { name: /view mode/i })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: /list/i })).not.toBeInTheDocument();
+});
+
+test('the toolbar keeps only Create Auction', async () => {
+  render(<MyAuctions />);
+  await screen.findByText('Live Ring');
+  expect(screen.getByRole('button', { name: /\+ Create Auction/i })).toBeInTheDocument();
+  // Search stays.
+  expect(screen.getByLabelText('Search your auctions')).toBeInTheDocument();
+});
+
+test('the list layout stays permanent and functional', async () => {
+  render(<MyAuctions />);
+  await screen.findByText('Live Ring');
+  // Auction cards still render (list layout).
+  expect(screen.getByText('Live Ring')).toBeInTheDocument();
+  expect(screen.getByText('Scheduled Ring')).toBeInTheDocument();
+  // Status filters still work.
+  const liveTab = screen.getAllByRole('tab').find(el => /Live/.test(el.textContent));
+  fireEvent.click(liveTab);
+  await waitFor(() => expect(screen.queryByText('Scheduled Ring')).not.toBeInTheDocument());
+  // Search still works.
+  fireEvent.change(screen.getByLabelText('Search your auctions'), { target: { value: 'Live' } });
+  await waitFor(() => expect(screen.getByText('Live Ring')).toBeInTheDocument());
 });
 
 test('realtime event contract: auction:update patches without full refetch for trivial update', async () => {

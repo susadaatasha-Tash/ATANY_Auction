@@ -4,6 +4,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Modal } from '../../../shared/components/Modal';
 import { apiFetch } from '../../../shared/lib/apiClient';
+import { DEFAULT_PRODUCT_IMAGE_URL } from '../../../shared/lib/defaultProductImage';
 
 export function SubmitListingModal({ open, onClose, onSubmit, initial, mode }) {
   const isEdit = !!initial || mode === 'edit';
@@ -54,8 +55,8 @@ export function SubmitListingModal({ open, onClose, onSubmit, initial, mode }) {
       } catch (err) {
         console.error('Image upload failed', err);
         // Do not fallback to blob: URL — it is not persistable and causes broken ? on Live Auctions.
-        // Keep existing image if editing, otherwise use placeholder
-        if (!imageUrl) imageUrl = 'https://images.unsplash.com/photo-1617038220319-276d3cfab638?auto=format&fit=crop&w=400&q=70';
+        // Keep existing image if editing, otherwise use the ATANY default photo.
+        if (!imageUrl) imageUrl = DEFAULT_PRODUCT_IMAGE_URL;
       }
     }
     let startTime = fd.get('auction_start_time') || startVal || null;

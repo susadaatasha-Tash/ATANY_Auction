@@ -58,8 +58,16 @@ async function findActiveSession(userId, mode) {
 /**
  * Persist one chatbot turn (user message + assistant reply) and return the
  * session id, or null when logging was skipped/failed. Never throws.
+ *
+ * @param {object} opts
+ * @param {string} opts.userId
+ * @param {string} [opts.mode='customer']
+ * @param {string} opts.query
+ * @param {string} opts.reply
+ * @param {string} [opts.conversation_state='ongoing'] — 'ongoing' | 'closed' | 'needs_clarification'
+ * @param {boolean} [opts.escalated=false]
  */
-export async function logChatTurn({ userId, mode = 'customer', query, reply, escalated = false }) {
+export async function logChatTurn({ userId, mode = 'customer', query, reply, conversation_state = 'ongoing', escalated = false }) {
   try {
     const userText = String(query || '').trim();
     const botText = String(reply || '').trim();
@@ -71,7 +79,7 @@ export async function logChatTurn({ userId, mode = 'customer', query, reply, esc
     if (!session) {
       const { rows } = await pool.query(
         'INSERT INTO chatbot_sessions (user_id, mode, topic, resolved) VALUES ($1,$2,$3,$4) RETURNING *',
-        [resolvedUserId, safeMode, topicFor(userText), !escalated]
+        [resolvedUserId, safeMode, topicFor(userText), false]
       );
       session = rows[0];
       if (!session) return null;
@@ -85,15 +93,15 @@ export async function logChatTurn({ userId, mode = 'customer', query, reply, esc
       'INSERT INTO chatbot_messages (session_id, role, message) VALUES ($1,$2,$3)',
       [session.id, 'assistant', botText]
     );
-    // Single param-only UPDATE (pool REST fallback supports col=$N but not NOW()/exprs).
-    // An escalation inside an existing session marks it unresolved (follow-up needed).
+    // resolved: false while ongoing, true when closed, false when escalated.
+    const resolved = conversation_state === 'closed' ? true : false;
     try {
       await pool.query(
         'UPDATE chatbot_sessions SET last_active=$1, message_count=$2, resolved=$3 WHERE id=$4',
         [
           new Date().toISOString(),
           Number(session.message_count || 0) + 2,
-          escalated ? false : session.resolved !== false,
+          resolved,
           session.id,
         ]
       );

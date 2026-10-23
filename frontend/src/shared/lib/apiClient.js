@@ -4,7 +4,9 @@
 // Public endpoints must opt-in via { public: true } or { auth: false }.
 import { supabase } from './supabaseClient';
 
-const BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+const configuredBase = (import.meta.env.VITE_API_URL || 'http://localhost:4000').trim();
+// Remove any trailing slash so ${BASE}${path} never produces a double slash.
+const BASE = configuredBase.replace(/\/+$/, '');
 
 export class ApiError extends Error {
   constructor(message, status = 500, code = null, reason = null) {
@@ -65,7 +67,19 @@ export async function apiFetch(path, opts = {}) {
     delete headers['content-type'];
   }
 
-  let res = await fetch(`${BASE}${path}`, { ...fetchOpts, headers });
+  let res;
+  try {
+    res = await fetch(`${BASE}${path}`, { ...fetchOpts, headers });
+  } catch (networkError) {
+    // A raw browser/network error (TypeError: Load failed, Failed to fetch,
+    // NetworkError) means the backend is unreachable — never surface the raw
+    // browser message; report a clear connection error instead.
+    throw new ApiError(
+      'Cannot connect to the ATANY server. Please try again.',
+      0,
+      'NETWORK_ERROR'
+    );
+  }
 
   // If 401 due to expired token, try refresh once for protected calls
   if (!isPublic && res.status === 401) {
@@ -77,7 +91,15 @@ export async function apiFetch(path, opts = {}) {
         const newToken = refreshed.session?.access_token;
         if (newToken) {
           const retryHeaders = { ...headers, Authorization: `Bearer ${newToken}` };
-          res = await fetch(`${BASE}${path}`, { ...fetchOpts, headers: retryHeaders });
+          try {
+            res = await fetch(`${BASE}${path}`, { ...fetchOpts, headers: retryHeaders });
+          } catch (networkError) {
+            throw new ApiError(
+              'Cannot connect to the ATANY server. Please try again.',
+              0,
+              'NETWORK_ERROR'
+            );
+          }
         }
       } catch {}
     }

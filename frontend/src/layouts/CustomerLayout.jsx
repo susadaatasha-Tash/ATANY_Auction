@@ -1,6 +1,6 @@
 // frontend/src/layouts/CustomerLayout.jsx
 // Shell for customer — BranchProvider + premium sidebar + topbar
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Sidebar } from '../shared/components/Sidebar';
 import { Topbar } from '../shared/components/Topbar';
@@ -12,6 +12,8 @@ import { useAuth } from '../shared/hooks/useAuth';
 import { BranchProvider, useBranch } from '../shared/hooks/useBranch';
 import { Home, Gavel, Tag, Heart, Eye, ShoppingBag, MapPin } from 'lucide-react';
 import '../roles/customer/customer-dashboard.css';
+
+const COLLAPSED_KEY = 'atany_customer_sidebar_collapsed';
 
 const sections = [
   { label: 'OVERVIEW', items: [{ to: '/customer', name: 'Dashboard', end: true, icon: <Home size={16} /> }] },
@@ -133,6 +135,21 @@ function LayoutInner() {
   const displayName = profileName || getDisplayName(user);
   const initials = getUserInitials(displayName, user?.email);
 
+  // Restore saved collapsed state (role-scoped; never leaks to other roles).
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(COLLAPSED_KEY);
+      if (stored !== null) setSidebarCollapsed(JSON.parse(stored) === true);
+    } catch {}
+  }, []);
+
+  const persistCollapsed = useCallback((next) => {
+    setSidebarCollapsed(next);
+    try {
+      localStorage.setItem(COLLAPSED_KEY, JSON.stringify(next));
+    } catch {}
+  }, []);
+
   // Use auth context as primary source (updated immediately by SelectBranch),
   // fall back to BranchProvider fetch (may lag behind)
   const hasBranch = !!(preferredBranchId || branchId);
@@ -157,12 +174,12 @@ function LayoutInner() {
     closeMenu: () => setOpen(false),
     toggleMenu: () => setOpen((v) => !v),
     sidebarCollapsed,
-    toggleSidebar: () => setSidebarCollapsed((v) => !v),
-  }), [open, sidebarCollapsed]);
+    toggleSidebar: () => persistCollapsed((v) => !v),
+  }), [open, sidebarCollapsed, persistCollapsed]);
 
   return (
     <div className={`app customer-app${sidebarCollapsed ? ' sidebar-collapsed' : ''}`}>
-      <Sidebar brand="ATANY" tag="JEWELRY AUCTION" sections={sections} open={open} onClose={() => setOpen(false)} onSignOut={signOut} />
+      <Sidebar brand="ATANY" tag="JEWELRY AUCTION" sections={sections} open={open} onClose={() => setOpen(false)} onSignOut={signOut} collapsed={sidebarCollapsed} />
       {open && <div className="sidebar-backdrop" aria-hidden="true" onClick={() => setOpen(false)} />}
       <div className="main">
         {!isPurchases && (
@@ -171,7 +188,7 @@ function LayoutInner() {
             role="customer"
             onMenuToggle={() => setOpen((v) => !v)}
             sidebarCollapsed={sidebarCollapsed}
-            onSidebarToggle={() => setSidebarCollapsed((v) => !v)}
+            onSidebarToggle={() => persistCollapsed((v) => !v)}
             user={{ initials, name: displayName, role: displayBranchName || 'Customer' }}
             onSignOut={signOut}
             rightExtra={<><BranchSwitcher /><NotificationBell /></>}

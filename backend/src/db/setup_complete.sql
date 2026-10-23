@@ -338,7 +338,12 @@ CREATE TABLE IF NOT EXISTS support_requests (
   subject TEXT NOT NULL DEFAULT 'General Inquiry',
   message TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'in_progress', 'resolved')),
-  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  attachment_path TEXT,
+  user_id UUID,
+  requester_role TEXT,
+  category TEXT DEFAULT 'General Inquiry',
+  source TEXT
 );
 
 -- 3. SEQUENCES (for human-readable codes)
