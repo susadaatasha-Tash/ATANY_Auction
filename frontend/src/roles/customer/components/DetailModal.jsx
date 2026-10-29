@@ -3,6 +3,8 @@
 // Handles live vs scheduled, bidder list, pickup note, and fraud-flag surfacing — now uses BidStepper
 import { useState, useEffect } from 'react';
 import { BidStepper } from './BidStepper';
+import { incrementOf, minimumNextBid } from '../../../shared/lib/bidMinimum';
+import { socket } from '../../../shared/lib/socketClient';
 import { formatCountdown } from '../../../shared/hooks/useAuctionCountdown';
 
 function peso(n) {
@@ -31,9 +33,38 @@ function effectiveStatus(startTime, endTime) {
   return 'live';
 }
 export function DetailModal({ auction, isFavorited, isNotifying, onClose, onToggleFavorite, onToggleNotify, onPlaceBid }) {
-  if (!auction) return null;
   const [nowTick, setNowTick] = useState(() => Date.now());
+  const [watching, setWatching] = useState(() => Number(auction?.watcher_count ?? auction?.watchers ?? 0) || 0);
   useEffect(() => { const id = setInterval(() => setNowTick(Date.now()), 1000); return () => clearInterval(id); }, []);
+  // Active-viewer presence: join on open (live only), leave on close/unmount.
+  // Bidding never affects this count (separate concept).
+  useEffect(() => {
+    const id = auction?.id;
+    if (!id) return undefined;
+    const status = String(auction?.status || '').toLowerCase();
+    const start = auction?.startTime ?? auction?.start_time;
+    const end = auction?.endTime ?? auction?.end_time;
+    const live = status === 'live' && (!start || !end || (new Date(start).getTime() <= Date.now() && Date.now() < new Date(end).getTime()));
+    const onWatchers = (p) => {
+      if (String(p?.auctionId || p?.auction_id || '') === String(id) && Number.isFinite(Number(p?.watcherCount ?? p?.watcher_count))) {
+        setWatching(Number(p.watcherCount ?? p.watcher_count));
+      }
+    };
+    try {
+      socket.emit('join:auction', String(id));
+      if (live) socket.emit('auction:watch', { auctionId: String(id) });
+      socket.on('auction:watchers', onWatchers);
+    } catch {}
+    return () => {
+      try {
+        socket.off('auction:watchers', onWatchers);
+        socket.emit('auction:unwatch', { auctionId: String(id) });
+        socket.emit('leave:auction', String(id));
+      } catch {}
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auction?.id]);
+  if (!auction) return null;
   const startRaw = auction.startTime ?? auction.start_time;
   const endRaw = auction.endTime ?? auction.end_time;
   const hasTimes = !!(startRaw && endRaw && !isNaN(new Date(startRaw).getTime()) && !isNaN(new Date(endRaw).getTime()));
@@ -52,6 +83,9 @@ export function DetailModal({ auction, isFavorited, isNotifying, onClose, onTogg
     return Math.max(0, Math.floor((new Date(startRaw) - now) / 1000));
   })();
   const liveSec = countdownSecRaw;
+  const increment = incrementOf(auction);
+  const currentBidNum = Number(auction.currentBid ?? auction.current_bid ?? auction.startPrice ?? auction.start_price ?? 0) || 0;
+  const minNext = minimumNextBid(currentBidNum, increment);
   const handleClose = (e) => {
     e?.preventDefault();
     e?.stopPropagation();
@@ -67,10 +101,11 @@ export function DetailModal({ auction, isFavorited, isNotifying, onClose, onTogg
         <div className="detail-img-wrap"><img src={auction.img} alt="" /></div>
         <div className="detail-body">
           <h2>{auction.name}</h2>
-          <div className="detail-sub">{isEnded ? `Ended · ${auction.bids} bids total` : isLive ? `Live · ${auction.bids} bids so far` : 'Scheduled · not yet open'} {auction.branch_name ? ` · 📍 Pickup at ${auction.branch_name}` : ''}</div>
+          <div className="detail-sub">{isEnded ? `Ended · ${auction.bids} bids total` : isLive ? `Live · ${auction.bids} bids so far` : 'Scheduled · not yet open'} {auction.branch_name ? ` · 📍 Pickup at ${auction.branch_name}` : ''}{isLive && watching > 0 ? ` · 👀 ${watching} watching` : ''}</div>
           {auction.branch_name && <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>{auction.branch_address}</div>}
           <div className="detail-stats">
             <div className="detail-stat"><b>{peso(auction.currentBid)}</b><span>Current Bid</span></div>
+            <div className="detail-stat"><b>{peso(increment)}</b><span>Minimum Increment</span></div>
             <div className="detail-stat"><b>{auction.bids}</b><span>Bids</span></div>
             <div className="detail-stat"><b>{isEnded ? '---' : formatCountdown(liveSec)}</b><span>{isEnded ? 'Auction Over' : isLive ? 'Time Left' : 'Starts In'}</span></div>
           </div>
@@ -80,9 +115,15 @@ export function DetailModal({ auction, isFavorited, isNotifying, onClose, onTogg
           ) : isLive ? (
             <div className="detail-bidbox" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 8 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', letterSpacing: '.06em', textTransform: 'uppercase' }}>Your Bid</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                Minimum Next Bid: <b style={{ color: 'var(--navy)' }}>{peso(minNext)}</b>
+                <span style={{ display: 'block', fontWeight: 400, marginTop: 2 }}>Enter {peso(minNext)} or higher.</span>
+              </div>
               <BidStepper
                 currentBid={auction.currentBid ?? auction.current_bid}
                 startPrice={auction.start_price ?? auction.startPrice}
+                minIncrement={increment}
+                auction={auction}
                 onPlaceBid={(amount) => onPlaceBid(auction.id, amount)}
                 size="large"
               />

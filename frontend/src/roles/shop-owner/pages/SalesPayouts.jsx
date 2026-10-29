@@ -1,188 +1,316 @@
 // frontend/src/roles/shop-owner/pages/SalesPayouts.jsx
-// GET /shop-owner/sales with fulfillment actions: pending→preparing→ready_pickup→completed (payment gated)
-import { useState, useEffect } from 'react';
+// Sales & Payouts dashboard with time-range filtering + SPR export.
+// Single source per range: GET /shop-owner/sales/summary?range=7d|month|year
+// (seller-scoped, backend-authoritative). Page title lives in the shared
+// Topbar — no duplicate in-page heading.
+import { useState, useEffect, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from 'recharts';
+import { TrendingUp, Wallet, Clock, Hash, Printer } from 'lucide-react';
 import { apiFetch } from '../../../shared/lib/apiClient';
-import { useToast } from '../../../shared/components/Toast';
-import { Modal } from '../../../shared/components/Modal';
+import { buildSPRReport } from './salesSPR';
+import './sales-payouts.css';
 
-function peso(n) { return '₱' + Number(n).toLocaleString(); }
-function formatDate(d) {
-  if (!d) return '—';
-  const date = new Date(d);
-  return isNaN(date) ? d : date.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
+export const SALES_RANGES = [
+  { key: '7d', label: '7 Days' },
+  { key: 'month', label: 'This Month' },
+  { key: 'year', label: 'This Year' },
+];
+
+function peso(n) { return '₱' + Number(n || 0).toLocaleString(); }
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' });
 }
-function mapStatus(s) {
-  if (s === 'pending') return 'processing';
-  if (s === 'preparing') return 'preparing';
-  if (s === 'ready_pickup') return 'ready';
-  if (s === 'completed') return 'completed';
-  return s;
+
+function fmtAxis(v) {
+  const n = Number(v || 0);
+  if (n >= 1000) return `₱${Math.round(n / 1000)}k`;
+  return `₱${n}`;
 }
-function statusLabel(s) {
-  if (s === 'pending') return 'Processing';
-  if (s === 'preparing') return 'Preparing';
-  if (s === 'ready_pickup') return 'Ready for Pickup';
-  if (s === 'completed') return 'Completed';
-  return s;
-}
-function paymentLabel(s) {
-  if (!s) return 'No Payment';
-  if (s === 'paid') return 'Paid';
-  if (s === 'pending') return 'Pending';
-  if (s === 'failed') return 'Failed';
-  if (s === 'expired') return 'Expired';
-  return s;
+
+const PAYOUT_STATUS = {
+  paid: { label: 'Paid', cls: 'paid' },
+  scheduled: { label: 'Scheduled', cls: 'scheduled' },
+  processing: { label: 'Processing', cls: 'scheduled' },
+  failed: { label: 'Failed', cls: 'failed' },
+};
+
+const PAGE_SIZE = 8;
+
+function validRange(v) {
+  return SALES_RANGES.some((r) => r.key === v) ? v : 'month';
 }
 
 export default function SalesPayouts() {
-  const [sales, setSales] = useState([]);
-  const [q, setQ] = useState('');
-  const [statusFilter, setStatusFilter] = useState('');
-  const [confirm, setConfirm] = useState(null); // { id, nextStatus, title, body }
-  const [updating, setUpdating] = useState(null);
-  const showToast = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [selectedRange, setSelectedRange] = useState(() => validRange(searchParams.get('range')));
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadError, setLoadError] = useState(null);
+  const [page, setPage] = useState(0);
+  const [shopName, setShopName] = useState('');
+  const seqRef = useRef(0);
 
-  const refresh = async () => {
+  const refresh = async (range) => {
+    const seq = ++seqRef.current;
+    const first = !data;
+    if (first) setLoading(true);
+    else setRefreshing(true);
     try {
-      const rows = await apiFetch('/shop-owner/sales');
-      setSales(Array.isArray(rows) ? rows : []);
+      setLoadError(null);
+      const res = await apiFetch(`/shop-owner/sales/summary?range=${range}`);
+      if (seqRef.current !== seq) return; // stale response: a newer range won
+      setData(res);
+      setPage(0);
     } catch (e) {
-      showToast(e.message || 'Failed to load sales');
-      setSales([]);
-    }
-  };
-
-  useEffect(() => { refresh(); }, []);
-
-  const handleStatus = async () => {
-    if (!confirm) return;
-    setUpdating(confirm.id);
-    try {
-      await apiFetch(`/shop-owner/orders/${confirm.id}/status`, { method: 'PATCH', body: JSON.stringify({ status: confirm.nextStatus }) });
-      showToast(confirm.nextStatus === 'preparing' ? 'Order is now preparing' : confirm.nextStatus === 'ready_pickup' ? 'Order ready for pickup — customer notified' : 'Pickup confirmed');
-      setConfirm(null);
-      await refresh();
-    } catch (e) {
-      showToast(e.message || 'Unable to update this order. Please try again.');
+      if (seqRef.current !== seq) return;
+      if (first) setLoadError('Unable to load sales and payout data.');
     } finally {
-      setUpdating(null);
+      if (seqRef.current === seq) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   };
 
-  const filtered = sales.filter(s => {
-    const code = (s.transaction_code || s.id || '').toLowerCase();
-    const matchesQ = !q || code.includes(q.toLowerCase()) || s.id.toLowerCase().includes(q.toLowerCase()) || (s.item || '').toLowerCase().includes(q.toLowerCase()) || (s.buyer || '').toLowerCase().includes(q.toLowerCase());
-    const displayStatus = mapStatus(s.status);
-    const matchesStatus = !statusFilter || displayStatus === statusFilter;
-    return matchesQ && matchesStatus;
-  });
+  useEffect(() => {
+    apiFetch('/shop-owner/shop').then((s) => setShopName(s?.shop_name || '')).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const totals = (() => {
-    const totalSales = sales.reduce((s, r) => s + Number(r.amount || 0), 0);
-    const totalCommission = sales.reduce((s, r) => s + Number(r.commission ?? Math.round(Number(r.amount || 0) * 0.10)), 0);
-    const totalPayout = sales.reduce((s, r) => s + Number(r.payout ?? Math.round(Number(r.amount || 0) * 0.9)), 0);
-    return { totalSales, totalCommission, totalPayout };
-  })();
+  useEffect(() => {
+    refresh(selectedRange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRange]);
 
-  const actionFor = (s) => {
-    const pay = s.payment_status;
-    const st = s.status;
-    if (pay !== 'paid') return { label: null, disabled: true, reason: 'Payment Pending' };
-    if (st === 'pending') return { label: 'Start Preparing', next: 'preparing', title: 'Start preparing this order?', body: `Start preparing "${s.item}" for ${s.buyer}?` };
-    if (st === 'preparing') return { label: 'Ready for Pickup', next: 'ready_pickup', title: 'Mark as ready for pickup?', body: `"${s.item}" will be marked ready for pickup at branch and the customer will be notified.` };
-    if (st === 'ready_pickup') return { label: 'Confirm Pickup', next: 'completed', title: 'Confirm pickup?', body: `Confirm that ${s.buyer} has picked up "${s.item}"?` };
-    return { label: null };
+  const pickRange = (key) => {
+    const valid = validRange(key);
+    setSelectedRange(valid);
+    setSearchParams((prev) => {
+      const next = new URLSearchParams(prev);
+      next.set('range', valid);
+      return next;
+    }, { replace: true });
   };
+
+  const summary = data?.summary || {};
+  const trend = data?.revenue_trend || [];
+  const categories = data?.top_categories || [];
+  const history = data?.payout_history || [];
+  const rangeTitle = data?.range_label?.title
+    || SALES_RANGES.find((r) => r.key === selectedRange)?.label
+    || 'This Month';
+  const rangePeriod = data?.range_label?.period || '';
+  const pageCount = Math.max(1, Math.ceil(history.length / PAGE_SIZE));
+  const pageRows = history.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE);
+
+  const chartData = useMemo(() => trend.map((t) => ({
+    label: t.label || t.month, gross: t.gross_sales, net: t.net_payout,
+  })), [trend]);
+
+  const exportSPR = () => {
+    if (!data) return;
+    const html = buildSPRReport({
+      shopName,
+      rangeTitle,
+      rangePeriod,
+      generatedAt: new Date(),
+      summary,
+      trend: chartData,
+      categories,
+      payouts: history,
+    });
+    const w = window.open('', '_blank', 'width=900,height=700');
+    if (!w) return;
+    w.document.write(html);
+    w.document.close();
+    w.focus();
+    setTimeout(() => { try { w.print(); } catch {} }, 300);
+  };
+
+  if (loading) {
+    return (
+      <div className="sp-page" aria-label="Loading sales and payouts">
+        <div className="sp-rangerow">
+          <div className="sp-range" aria-hidden="true" />
+        </div>
+        <div className="sp-kpis">
+          {[0, 1, 2, 3].map((i) => <div key={i} className="sp-card sp-skel" style={{ height: 118 }} />)}
+        </div>
+        <div className="sp-mid">
+          <div className="sp-card sp-skel" style={{ height: 300 }} />
+          <div className="sp-card sp-skel" style={{ height: 300 }} />
+        </div>
+        <div className="sp-card sp-skel" style={{ height: 220 }} />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div className="sp-page">
+        <RangeRow selectedRange={selectedRange} onPick={pickRange} onExport={exportSPR} canExport={false} />
+        <div className="sp-state">
+          <p className="sp-state__title">{loadError}</p>
+          <button type="button" className="sp-btn sp-btn--outline" onClick={() => refresh(selectedRange)}>Retry</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div className="panel">
-      <div className="toolbar">
-        <div className="search-box">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-          <input type="text" value={q} onChange={(e)=>setQ(e.target.value)} placeholder="Search sales..." />
+    <div className="sp-page" aria-busy={refreshing || undefined} style={refreshing ? { opacity: 0.75 } : undefined}>
+      <RangeRow selectedRange={selectedRange} onPick={pickRange} onExport={exportSPR} canExport={history.length > 0} />
+      {refreshing && <div className="sp-updating" role="status">Updating…</div>}
+
+      <div className="sp-kpis">
+        <div className="sp-card sp-kpi">
+          <div className="sp-kpi__top"><span className="sp-kpi__icon"><TrendingUp size={16} /></span><span className="sp-kpi__tag">YTD</span></div>
+          <div className="sp-kpi__label">Gross Sales</div>
+          <div className="sp-kpi__value">{peso(summary.gross_sales)}</div>
+          <div className="sp-kpi__sub">{rangeTitle}</div>
         </div>
-        <select className="filter-select" value={statusFilter} onChange={(e)=>setStatusFilter(e.target.value)}>
-          <option value="">All Status</option>
-          <option value="processing">Processing</option>
-          <option value="preparing">Preparing</option>
-          <option value="ready">Ready for Pickup</option>
-          <option value="completed">Completed</option>
-        </select>
-      </div>
-      <div style={{ display: 'flex', gap: 12, margin: '16px 0', flexWrap: 'wrap' }}>
-        <div style={{ flex: 1, minWidth: 150, background: 'var(--ivory)', border: '1px solid var(--line)', borderRadius: 12, padding: '14px 16px' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--muted)' }}>Total Sales</div>
-          <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--navy)', marginTop: 4 }}>{peso(totals.totalSales)}</div>
-          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>100% — all completed sales</div>
+        <div className="sp-card sp-kpi">
+          <div className="sp-kpi__top"><span className="sp-kpi__icon"><Wallet size={16} /></span><span className="sp-kpi__tag sp-kpi__tag--gold">After fees</span></div>
+          <div className="sp-kpi__label">Net Payout</div>
+          <div className="sp-kpi__value">{peso(summary.net_payout)}</div>
+          <div className="sp-kpi__sub">{rangeTitle}</div>
         </div>
-        <div style={{ flex: 1, minWidth: 150, background: 'var(--ivory)', border: '1px solid var(--line)', borderRadius: 12, padding: '14px 16px' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--muted)' }}>Platform Commission (10%)</div>
-          <div style={{ fontSize: 18, fontWeight: 800, color: '#8a6d2b', marginTop: 4 }}>{peso(totals.totalCommission)}</div>
-          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>ATANY keeps 10%</div>
+        <div className="sp-card sp-kpi">
+          <div className="sp-kpi__top"><span className="sp-kpi__icon"><Clock size={16} /></span></div>
+          <div className="sp-kpi__label">Pending Payout</div>
+          <div className="sp-kpi__value">{peso(summary.pending_payout)}</div>
+          <div className="sp-kpi__sub">Current pending balance</div>
         </div>
-        <div style={{ flex: 1, minWidth: 150, background: 'var(--navy)', borderRadius: 12, padding: '14px 16px', color: '#fff' }}>
-          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', opacity: .8 }}>Your Total Payout (90%)</div>
-          <div style={{ fontSize: 18, fontWeight: 800, marginTop: 4 }}>{peso(totals.totalPayout)}</div>
-          <div style={{ fontSize: 11, opacity: .7, marginTop: 2 }}>You receive 90%</div>
+        <div className="sp-card sp-kpi">
+          <div className="sp-kpi__top"><span className="sp-kpi__icon"><Hash size={16} /></span></div>
+          <div className="sp-kpi__label">Lots Sold</div>
+          <div className="sp-kpi__value">{summary.lots_sold || 0}</div>
+          <div className="sp-kpi__sub">{rangeTitle} · {peso(summary.gross_sales)} sales</div>
         </div>
-      </div>
-      <div className="table-wrap">
-        <table>
-          <thead><tr><th>Order ID</th><th>Item</th><th>Buyer</th><th>Sale Amount</th><th>Commission (10%)</th><th>Your Payout (90%)</th><th>Payment</th><th>Status</th><th>Action</th><th>Date</th></tr></thead>
-          <tbody>{filtered.length ? filtered.map((s) => {
-            const displayStatus = mapStatus(s.status);
-            const act = actionFor(s);
-            const isPayPending = s.payment_status !== 'paid';
-            return (
-              <tr key={s.id}>
-                <td className="cell-main">{s.transaction_code || s.id.slice(0,8).toUpperCase()}</td>
-                <td>{s.item}</td>
-                <td>{s.buyer}</td>
-                <td>{peso(s.amount)}</td>
-                <td>{peso(s.commission ?? Math.round(Number(s.amount) * 0.10))}</td>
-                <td className="cell-main">{peso(s.payout ?? Math.round(Number(s.amount) * 0.9))}</td>
-                <td><span className={`badge ${s.payment_status === 'paid' ? 'paid' : s.payment_status === 'failed' ? 'failed' : 'pending'}`}>{paymentLabel(s.payment_status)}</span></td>
-                <td><span className={`badge ${displayStatus}`}>{statusLabel(s.status)}</span></td>
-                <td>
-                  {act.label ? (
-                    <button
-                      className="btn btn-primary"
-                      style={{ height: 30, padding: '0 10px', fontSize: 11 }}
-                      disabled={!!updating}
-                      onClick={() => setConfirm({ id: s.id, nextStatus: act.next, title: act.title, body: act.body })}
-                    >
-                      {updating === s.id ? '…' : act.label}
-                    </button>
-                  ) : isPayPending ? (
-                    <span className="badge pending">Payment Pending</span>
-                  ) : s.status === 'completed' ? (
-                    <span className="badge completed">Completed</span>
-                  ) : null}
-                </td>
-                <td>{formatDate(s.date || s.created_at)}</td>
-              </tr>
-            );
-          }) : <tr><td colSpan={10}><div className="empty-state"><p>No sales yet.</p></div></td></tr>}</tbody>
-        </table>
-      </div>
-      <div className="pager"><span>{filtered.length} sale{filtered.length===1?'':'s'}</span></div>
-      <div style={{ padding: '12px 20px', borderTop: '1px solid var(--line)', background: 'rgba(199,166,106,.06)', fontSize: 11, color: 'var(--muted)', lineHeight: 1.5 }}>
-        <b style={{ color: 'var(--navy)' }}>Payout note:</b> ATANY keeps <b>10% platform commission</b> from each completed sale. You receive <b>90%</b> of the Sale Amount. Payment must be <b>Paid</b> before <b>Start Preparing</b>. &nbsp; Sale Amount (100%) = Commission (10%) + Payout (90%).
       </div>
 
-      <Modal
-        open={!!confirm}
-        onClose={() => setConfirm(null)}
-        title={confirm?.title}
-        footer={
+      <div className="sp-mid">
+        <div className="sp-card">
+          <div className="sp-card__head">
+            <div>
+              <div className="sp-card__title">Revenue Trend</div>
+              <div className="sp-card__sub">Gross sales vs net payout · {rangeTitle}</div>
+            </div>
+            <div className="sp-legend">
+              <span><i className="sp-dot sp-dot--gold" />Gross sales</span>
+              <span><i className="sp-dot sp-dot--navy" />Net payout</span>
+            </div>
+          </div>
+          {chartData.every((t) => !t.gross && !t.net) ? (
+            <div className="sp-chartempty">No sales data yet.</div>
+          ) : (
+            <div role="img" aria-label={`Revenue trend for ${rangeTitle}, gross ${peso(summary.gross_sales)}, net ${peso(summary.net_payout)}`}>
+              <ResponsiveContainer width="100%" height={260}>
+                <LineChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
+                  <CartesianGrid strokeDasharray="4 4" stroke="#ece5d8" vertical={false} />
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#8a919c' }} axisLine={false} tickLine={false} interval="preserveStartEnd" />
+                  <YAxis tickFormatter={fmtAxis} tick={{ fontSize: 11, fill: '#8a919c' }} axisLine={false} tickLine={false} width={52} />
+                  <Tooltip
+                    formatter={(value, name) => [peso(value), name === 'gross' ? 'Gross Sales' : 'Net Payout']}
+                    labelStyle={{ fontWeight: 700, color: '#142a4a' }}
+                  />
+                  <Line type="monotone" dataKey="gross" stroke="#c4a265" strokeWidth={2.5} dot={false} />
+                  <Line type="monotone" dataKey="net" stroke="#142a4a" strokeWidth={2.5} dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+        <div className="sp-card">
+          <div className="sp-card__title">Top Categories</div>
+          <div className="sp-card__sub">Share of revenue by category · {rangeTitle}</div>
+          {categories.length === 0 ? (
+            <div className="sp-chartempty">No category revenue yet.</div>
+          ) : (
+            <ul className="sp-cats">
+              {categories.map((c) => (
+                <li key={c.name}>
+                  <div className="sp-cats__row"><span>{c.name}</span><b>{peso(c.revenue)}</b></div>
+                  <div className="sp-cats__bar"><i style={{ width: `${Math.min(100, Math.max(0, c.percent))}%` }} /></div>
+                  <div className="sp-cats__pct">{c.percent}% of total</div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      <div className="sp-card">
+        <div className="sp-card__head">
+          <div>
+            <div className="sp-card__title">Payout History</div>
+            <div className="sp-card__sub">Recent releases to your preferred accounts · {rangeTitle}</div>
+          </div>
+        </div>
+        {history.length === 0 ? (
+          <div className="sp-chartempty">No payout history yet.</div>
+        ) : (
           <>
-            <button className="btn btn-outline" onClick={() => setConfirm(null)} disabled={!!updating}>Cancel</button>
-            <button className="btn btn-primary" onClick={handleStatus} disabled={!!updating}>{updating ? 'Updating…' : 'Confirm'}</button>
+            <div className="sp-tablewrap">
+              <table className="sp-table">
+                <thead><tr><th>Payout ID</th><th>Date</th><th>Amount</th><th>Method</th><th>Status</th></tr></thead>
+                <tbody>
+                  {pageRows.map((r) => {
+                    const st = PAYOUT_STATUS[r.status] || { label: r.status, cls: 'scheduled' };
+                    return (
+                      <tr key={r.order_id || r.id}>
+                        <td className="sp-mono">{String(r.id).slice(0, 12).toUpperCase()}</td>
+                        <td>{fmtDate(r.date)}</td>
+                        <td><b>{peso(r.amount)}</b></td>
+                        <td>{r.method}</td>
+                        <td><span className={`sp-pill sp-pill--${st.cls}`}>● {st.label}</span></td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {pageCount > 1 && (
+              <div className="sp-pager">
+                <button type="button" className="sp-btn sp-btn--outline" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>‹ Prev</button>
+                <span>Page {page + 1} of {pageCount}</span>
+                <button type="button" className="sp-btn sp-btn--outline" disabled={page >= pageCount - 1} onClick={() => setPage((p) => p + 1)}>Next ›</button>
+              </div>
+            )}
           </>
-        }
-      >
-        <p style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.5 }}>{confirm?.body}</p>
-      </Modal>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RangeRow({ selectedRange, onPick, onExport, canExport }) {
+  return (
+    <div className="sp-rangerow">
+      <div className="sp-range" role="group" aria-label="Time range">
+        {SALES_RANGES.map((r) => (
+          <button
+            key={r.key}
+            type="button"
+            className={`sp-range__btn ${selectedRange === r.key ? 'is-active' : ''}`}
+            aria-pressed={selectedRange === r.key}
+            onClick={() => onPick(r.key)}
+          >
+            {r.label}
+          </button>
+        ))}
+      </div>
+      <button type="button" className="sp-btn sp-btn--gold" onClick={onExport} disabled={!canExport}>
+        <Printer size={14} /> Export SPR
+      </button>
     </div>
   );
 }

@@ -1,5 +1,6 @@
 import { pool } from '../../db/pool.js';
 import { listAuctions as listAuctionsService } from '../../services/auctionService.js';
+import { validateBidIncrement, DEFAULT_MIN_INCREMENT } from '../../services/bidLogic.js';
 
 const VALID_CATEGORIES = ['Rings', 'Necklaces', 'Bracelets', 'Earrings', 'Pendants', 'Chains', 'Watches', 'Other'];
 
@@ -23,7 +24,7 @@ export const createAuction = async (req, res) => {
   const shop = (await pool.query('SELECT id FROM shops WHERE user_id=$1', [req.user.id])).rows[0];
   if (!shop) return res.status(404).json({ message: 'Shop not found' });
 
-  const { name, category, karat, price, desc, description, image_url, start_price, startPrice, start_time, end_time, duration } = req.body;
+  const { name, category, karat, price, desc, description, image_url, start_price, startPrice, start_time, end_time, duration, minimum_bid_increment } = req.body;
   // Input validation
   if (!name || typeof name !== 'string' || !name.trim()) return res.status(400).json({ message: 'Item name is required' });
   if (name.length > 200) return res.status(400).json({ message: 'Item name must be at most 200 characters' });
@@ -33,6 +34,14 @@ export const createAuction = async (req, res) => {
   // One "Starting Price" drives both the product price and the auction opening bid.
   const startBid = Math.round(Number(start_price ?? startPrice ?? price));
   if (!startBid || startBid <= 0) return res.status(400).json({ message: 'Starting price required' });
+  // Seller-defined minimum bid increment — independently validated server-side
+  // (never trusted from frontend display). Missing → platform default (legacy).
+  let minIncrement = DEFAULT_MIN_INCREMENT;
+  if (minimum_bid_increment !== undefined && minimum_bid_increment !== null && minimum_bid_increment !== '') {
+    const incCheck = validateBidIncrement(minimum_bid_increment);
+    if (!incCheck.ok) return res.status(400).json({ message: incCheck.message, code: incCheck.code });
+    minIncrement = incCheck.value;
+  }
 
   // Derive schedule — mirror listing.controller: explicit start/end preferred, duration (hours) as fallback.
   const start = start_time ? new Date(start_time) : new Date();
@@ -53,8 +62,8 @@ export const createAuction = async (req, res) => {
       [shop.id, name, category || 'Rings', karat || null, startBid, (desc ?? description) || null, image_url || null]
     );
     const { rows: auc } = await client.query(
-      'INSERT INTO auctions (product_id, start_price, current_bid, status, start_time, end_time) VALUES ($1,$2,$2,$3,$4,$5) RETURNING *',
-      [prod[0].id, startBid, status, start, end]
+      'INSERT INTO auctions (product_id, start_price, current_bid, status, start_time, end_time, minimum_bid_increment) VALUES ($1,$2,$2,$3,$4,$5,$6) RETURNING *',
+      [prod[0].id, startBid, status, start, end, minIncrement]
     );
     await client.query('COMMIT');
 
@@ -163,6 +172,7 @@ export const createAuction = async (req, res) => {
       currentBid: auc[0].current_bid,
       startTime: auc[0].start_time,
       endTime: auc[0].end_time,
+      minimum_bid_increment: Number(auc[0].minimum_bid_increment) || minIncrement,
       bids: 0,
     });
   } catch (e) {

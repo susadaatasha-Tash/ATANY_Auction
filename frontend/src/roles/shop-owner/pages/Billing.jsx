@@ -2,6 +2,7 @@
 // Seller Subscription — premium portal (current plan, usage, next payment, compare, history)
 // Change plan / Manage billing open the Manage Billing modal (not page redesign).
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { apiFetch } from '../../../shared/lib/apiClient';
 import { useToast } from '../../../shared/components/Toast';
 import { CurrentPlanHero } from '../subscription/CurrentPlanHero';
@@ -25,14 +26,35 @@ import {
   getPlanForPlanCode,
   planPriceLabel,
 } from '../../../shared/lib/subscriptionPlans';
+import { SubscriptionPageSkeleton, NextPaymentCardSkeleton } from '../subscription/SubscriptionPageSkeleton';
 import '../subscription/seller-subscription.css';
+
+// Exported for unit tests. Maps structured backend error codes to friendly
+// UI messages; unknown errors fall back to the server message (never SQL).
+export function billingErrorText(e, fallback) {
+  switch (e?.code) {
+    case 'SUBSCRIPTION_NOT_FOUND': return 'Subscription information could not be found.';
+    case 'INVALID_PLAN': return 'Selected plan is unavailable.';
+    case 'INVALID_INTERVAL':
+    case 'INVALID_BILLING_INTERVAL': return 'Selected billing interval is invalid.';
+    case 'MIGRATION_MISSING': return 'Billing configuration is unavailable.';
+    case 'BILLING_UNAVAILABLE': return 'Billing service is temporarily unavailable.';
+    default: return e?.message || fallback;
+  }
+}
 
 export default function Billing() {
   const [records, setRecords] = useState([]);
   const [listings, setListings] = useState([]);
   const [auctions, setAuctions] = useState([]);
   const [shop, setShop] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [paymentMethods, setPaymentMethods] = useState([]);
+  // Request-state model. `initialLoading` is driven ONLY by the primary
+  // subscription request; secondary requests (usage inputs, payment methods,
+  // scheduled/pending change) never block the page.
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [secondaryLoading, setSecondaryLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
   const [payingId, setPayingId] = useState(null);
   const [planNotice, setPlanNotice] = useState('');
@@ -49,34 +71,84 @@ export default function Billing() {
   const [modalError, setModalError] = useState('');
   const [busyPlanCode, setBusyPlanCode] = useState(null);
   const [scheduledChange, setScheduledChange] = useState(null);
+  const [pendingChange, setPendingChange] = useState(null);
+  const [subscriptionSummary, setSubscriptionSummary] = useState(null);
 
-  const refresh = useCallback(async () => {
-    setLoading(true);
+  // `silent` skips the page-level loading gate: payment-method changes refresh
+  // in the background so an open modal never unmounts/resets mid-action.
+  // `silent` keeps the already-rendered page visible while refreshing in the
+  // background (payment-method changes, plan actions) so an open modal never
+  // unmounts and the page never flashes a skeleton it does not need.
+  const refresh = useCallback(async ({ silent = false } = {}) => {
+    if (silent) setRefreshing(true);
+    else { setInitialLoading(true); setSecondaryLoading(true); }
+
+    // PRIMARY: the subscription records themselves. This alone gates the page.
+    let billingRows = null;
     try {
-      const [billingRows, listingRows, auctionRows, shopRow, subRes] = await Promise.all([
-        apiFetch('/billing/me'),
+      billingRows = await apiFetch('/billing/me');
+      setRecords(Array.isArray(billingRows) ? billingRows : []);
+      setError(null);
+      setInitialLoading(false);
+    } catch (e) {
+      setError(billingErrorText(e, 'Failed to load subscription data'));
+      setRecords([]);
+      setInitialLoading(false);
+      setSecondaryLoading(false);
+      return;
+    } finally {
+      if (!silent) setRefreshing(false);
+    }
+
+    // SECONDARY: independent, never block the page, each already has its own
+    // fallback so one slow endpoint cannot take the whole screen down.
+    try {
+      const [listingRows, auctionRows, shopRow, subRes, pmRes] = await Promise.all([
         apiFetch('/shop-owner/listings').catch(() => []),
         apiFetch('/shop-owner/auctions').catch(() => []),
         apiFetch('/shop-owner/shop').catch(() => null),
         apiFetch('/billing/me/subscription').catch(() => null),
+        apiFetch('/billing/payment-methods').catch(() => ({ payment_methods: [] })),
       ]);
-      setRecords(Array.isArray(billingRows) ? billingRows : []);
       setListings(Array.isArray(listingRows) ? listingRows : []);
       setAuctions(Array.isArray(auctionRows) ? auctionRows : []);
       setShop(shopRow || null);
-      setScheduledChange(subRes?.scheduled_change || subRes?.active_change || null);
-      setError(null);
-    } catch (e) {
-      setError(e.message || 'Failed to load subscription data');
-      setRecords([]);
+      setPaymentMethods(
+        Array.isArray(pmRes?.payment_methods)
+          ? pmRes.payment_methods
+          : Array.isArray(pmRes)
+            ? pmRes
+            : []
+      );
+      // Scheduled banner shows REAL scheduled downgrades only — a pending
+      // upgrade is surfaced separately via pendingChange (never conflated).
+      setSubscriptionSummary(subRes || null);
+      setScheduledChange(subRes?.scheduled_change || null);
+      const pending = subRes?.pending_change
+        || (subRes?.active_change?.status === 'pending_payment' ? subRes.active_change : null);
+      setPendingChange(pending);
     } finally {
-      setLoading(false);
+      setSecondaryLoading(false);
+      setRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // PayMongo cancel return: /shop/billing?payment=cancelled — payment state is
+  // unchanged server-side; show a safe notice and clean the URL.
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    if (searchParams.get('payment') === 'cancelled') {
+      showToast('Payment was cancelled.');
+      const next = new URLSearchParams(searchParams);
+      next.delete('payment');
+      setSearchParams(next, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const state = useMemo(() => buildSellerSubscriptionState(records), [records]);
   const usageMetrics = useMemo(
@@ -85,6 +157,10 @@ export default function Billing() {
   );
   const comparePlans = useMemo(() => buildComparePlans(state.plan), [state.plan]);
   const historyRows = useMemo(() => billingHistoryRows(records), [records]);
+  const defaultMethod = useMemo(
+    () => paymentMethods.find((m) => m.is_default) || paymentMethods[0] || null,
+    [paymentMethods]
+  );
 
   const activeListings = usageMetrics?.activeListings ?? usageMetrics?.active_listings ?? listings.length;
   const billingInterval = normalizeBillingInterval(state.record?.billing_interval || 'monthly');
@@ -92,6 +168,9 @@ export default function Billing() {
   const scrollTo = (ref) => {
     ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
+
+  // Structured backend error codes → friendly messages (never raw SQL).
+  const billingErrorMessage = (e, fallback) => billingErrorText(e, fallback);
 
   const handleChangePlan = () => {
     setPlanNotice('');
@@ -168,7 +247,7 @@ export default function Billing() {
         setModalError(preview?.message || 'Unable to preview plan change');
       }
     } catch (e) {
-      const msg = e.message || 'Failed to preview plan change';
+      const msg = billingErrorMessage(e, 'Failed to preview plan change');
       setModalError(msg);
       showToast(msg);
     } finally {
@@ -226,7 +305,7 @@ export default function Billing() {
       setUpgradePreview(null);
       await refresh();
     } catch (e) {
-      setModalError(e.message || 'Failed to confirm upgrade');
+      setModalError(billingErrorMessage(e, 'Failed to confirm upgrade'));
     } finally {
       setConfirming(false);
     }
@@ -253,7 +332,7 @@ export default function Billing() {
         setModalError(res?.message || 'Unexpected response');
       }
     } catch (e) {
-      const msg = e.message || 'Failed to schedule downgrade';
+      const msg = billingErrorMessage(e, 'Failed to schedule downgrade');
       setModalError(msg);
       showToast(msg);
     } finally {
@@ -264,12 +343,60 @@ export default function Billing() {
   const cancelScheduled = async () => {
     setConfirming(true);
     try {
-      await apiFetch('/billing/subscription/change/cancel', { method: 'POST' });
-      showToast('Scheduled downgrade canceled');
+      const res = await apiFetch('/billing/subscription/change/cancel', { method: 'POST' });
+      showToast(res?.kind === 'pending' ? 'Pending upgrade canceled.' : 'Scheduled downgrade canceled');
       setScheduledChange(null);
+      setPendingChange(null);
       await refresh();
     } catch (e) {
       showToast(e.message || 'Failed to cancel scheduled change');
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  // Resume a pending upgrade: re-confirm the SAME target (server reuses the
+  // existing checkout — never a duplicate charge).
+  const resumePending = async () => {
+    if (!pendingChange) return;
+    setConfirming(true);
+    setModalError('');
+    try {
+      const res = await apiFetch('/billing/subscription/change/confirm', {
+        method: 'POST',
+        body: JSON.stringify({
+          plan_code: pendingChange.target_plan_code,
+          billing_interval: pendingChange.target_billing_interval || billingInterval,
+        }),
+      });
+      if (res?.checkout_url) {
+        window.location.href = res.checkout_url;
+        return;
+      }
+      showToast('Upgrade payment resumed');
+      await refresh();
+    } catch (e) {
+      const msg = billingErrorMessage(e, 'Failed to resume payment');
+      setModalError(msg);
+      showToast(msg);
+    } finally {
+      setConfirming(false);
+    }
+  };
+
+  const cancelPending = async () => {
+    setConfirming(true);
+    try {
+      const res = await apiFetch('/billing/subscription/change/cancel', { method: 'POST' });
+      if (res?.kind === 'reconciled') {
+        showToast('Payment already resolved — refreshing.');
+      } else {
+        showToast('Pending upgrade canceled.');
+      }
+      setPendingChange(null);
+      await refresh();
+    } catch (e) {
+      showToast(e.message || 'Failed to cancel pending upgrade');
     } finally {
       setConfirming(false);
     }
@@ -282,10 +409,11 @@ export default function Billing() {
         ? state.renewalLabel
         : formatDate(state.record?.current_period_end || state.record?.due_date);
 
-  if (loading) {
+  // Real request state only: the primary subscription record has not resolved.
+  if (initialLoading) {
     return (
-      <div className="ssub-page">
-        <div className="ssub-loading" data-testid="subscription-loading">Loading subscription…</div>
+      <div className="ssub-page" data-testid="seller-subscription-loading-page">
+        <SubscriptionPageSkeleton />
       </div>
     );
   }
@@ -294,7 +422,15 @@ export default function Billing() {
     <div className="ssub-page" data-testid="seller-subscription-page">
       {error && (
         <div className="ssub-error" data-testid="subscription-error">
-          {error}
+          <span>{error}</span>
+          <button
+            type="button"
+            className="ssub-btn ssub-btn--ghost ssub-btn--sm"
+            onClick={() => refresh()}
+            disabled={refreshing}
+          >
+            {refreshing ? 'Retrying…' : 'Retry'}
+          </button>
         </div>
       )}
 
@@ -312,18 +448,19 @@ export default function Billing() {
       <div className="ssub-midrow">
         <SubscriptionUsage metrics={usageMetrics} resetLabel={resetLabel} />
         <div ref={historyRef} style={{ display: 'contents' }}>
-          <NextPaymentCard
+          {secondaryLoading ? <NextPaymentCardSkeleton /> : <NextPaymentCard
             nextPayment={state.nextPayment}
             currentPlanName={state.planName}
             billingInterval={billingInterval}
             paying={!!payingId && state.nextPayment?.record?.id === payingId}
+            defaultMethod={defaultMethod}
             onPayNow={
               state.nextPayment?.mode === 'open_invoice' && state.nextPayment?.record
                 ? () => handleRetryOrPay(state.nextPayment.record)
                 : null
             }
             onUpdatePaymentMethod={() => setPayMethodOpen(true)}
-          />
+          />}
         </div>
       </div>
 
@@ -339,7 +476,7 @@ export default function Billing() {
         rows={historyRows}
         onPay={handleRetryOrPay}
         payingId={payingId}
-        loading={loading}
+        loading={refreshing}
         error={null}
       />
 
@@ -354,6 +491,7 @@ export default function Billing() {
         onPlanAction={handlePlanAction}
         busyPlanCode={busyPlanCode}
         scheduledChange={scheduledChange}
+        pendingChange={pendingChange}
         activeListings={activeListings}
         error={modalError}
       />
@@ -385,11 +523,49 @@ export default function Billing() {
         open={payMethodOpen}
         onClose={() => setPayMethodOpen(false)}
         showToast={showToast}
+        payableRecord={
+          state.nextPayment?.mode === 'open_invoice' && state.nextPayment?.record
+            ? state.nextPayment.record
+            : null
+        }
+        subscriptionSummary={subscriptionSummary}
+        onChanged={() => refresh({ silent: true })}
       />
+
+      {pendingChange && (
+        <div className="ssub-hero__notice" data-testid="pending-upgrade-banner" style={{ marginTop: 16 }}>
+          <strong>{(getPlanForPlanCode(pendingChange.target_plan_code)?.name) || pendingChange.target_plan_code} upgrade pending</strong>
+          {Number(pendingChange.proration_amount) > 0 && (
+            <span> — Amount: <strong>₱{Number(pendingChange.proration_amount).toLocaleString()}</strong></span>
+          )}
+          <span> — Started: <strong>{pendingChange.created_at ? new Date(pendingChange.created_at).toLocaleDateString() : 'recently'}</strong></span>
+          <span style={{ marginLeft: 12 }}>
+            <button
+              type="button"
+              className="ssub-btn ssub-btn--gold ssub-btn--sm"
+              data-testid="resume-pending-upgrade"
+              disabled={confirming}
+              onClick={resumePending}
+            >
+              Resume payment
+            </button>
+            <button
+              type="button"
+              className="ssub-btn ssub-btn--outline ssub-btn--sm"
+              style={{ marginLeft: 8 }}
+              data-testid="cancel-pending-upgrade"
+              disabled={confirming}
+              onClick={cancelPending}
+            >
+              Cancel upgrade
+            </button>
+          </span>
+        </div>
+      )}
 
       {scheduledChange && (
         <div className="ssub-hero__notice" data-testid="scheduled-downgrade-banner" style={{ marginTop: 16 }}>
-          Scheduled change to <strong>{scheduledChange.target_plan_code}</strong> on{' '}
+          Scheduled change to <strong>{(getPlanForPlanCode(scheduledChange.target_plan_code)?.name) || scheduledChange.target_plan_code}</strong> on{' '}
           <strong>{scheduledChange.effective_at}</strong>
           <button
             type="button"

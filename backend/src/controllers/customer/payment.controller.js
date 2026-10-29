@@ -1,6 +1,7 @@
 import { pool } from '../../db/pool.js';
 import { createPayMongoCheckout, getCheckoutSession, checkoutStatus } from '../../services/paymongoService.js';
-import { assertPaymentStillPayable, markStalePayment } from '../../services/paymentRaceGuard.js';
+import { assertPaymentStillPayable, markStalePayment, settlePaidPaymentWithOrderLock } from '../../services/paymentRaceGuard.js';
+import { isPastDeadline, PAYMENT_WINDOW_EXPIRED } from '../../services/winnerRules.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -78,18 +79,19 @@ export const getOrderDetails = async (req, res) => {
             const { rows: updStale } = await pool.query(`SELECT * FROM payments WHERE id=$1`, [payment.id]);
             payment = updStale[0] || payment;
           } else {
-            // H2 money path: atomic claim — never last-write-wins paid on REST fallback.
-            const { requireDirectPg } = await import('../../db/dbGuard.js');
-            requireDirectPg('payment polling paid transition');
-            const { rows: paidClaim } = await pool.query(
-              `UPDATE payments SET status='paid', paid_at=now(), updated_at=now(), metadata=$1
-               WHERE id=$2 AND status IN ('pending','processing','failed','expired')
-               RETURNING id`,
-              [JSON.stringify({ checkout_sync: true, raw: checkout?.data?.attributes || checkout }), payment.id]
-            );
-            if (!paidClaim.length) {
-              const { rows: already } = await pool.query(`SELECT * FROM payments WHERE id=$1`, [payment.id]);
-              payment = already[0] || payment;
+            // H2 money path + race serialization: settle while holding the SAME
+            // order row lock winnerExpiration uses, so a payment and a rotation
+            // can never interleave.
+            const settled = await settlePaidPaymentWithOrderLock({
+              paymentId: payment.id,
+              orderId: payment.order_id,
+              customerId: payment.customer_id,
+              eventType: 'checkout_sync',
+              metadata: { checkout_sync: true, raw: checkout?.data?.attributes || checkout },
+            });
+            if (!settled.ok) {
+              const { rows: st } = await pool.query(`SELECT * FROM payments WHERE id=$1`, [payment.id]);
+              payment = st[0] || payment;
             } else {
               try {
                 const msg = `Payment confirmed for order ${payment.order_id} — we are preparing your jewelry.`;
@@ -175,6 +177,16 @@ export const createCheckout = async (req, res) => {
       branch_name: coBranch.name,
     };
     if (order.status !== 'pending') return res.status(400).json({ message: 'Order is not payable' });
+    // 7-day window gate on INITIATION. Same helper the counter path uses, so a
+    // customer cannot start a brand-new payment after their deadline passed.
+    if (isPastDeadline(order)) {
+      return res.status(410).json({
+        message: 'Your payment window has expired. This item may now be offered to the next eligible bidder.',
+        error: { code: PAYMENT_WINDOW_EXPIRED },
+        reason: PAYMENT_WINDOW_EXPIRED,
+        payment_deadline: order.payment_deadline || null,
+      });
+    }
 
     // check existing paid payment
     const { rows: paid } = await pool.query(`SELECT id FROM payments WHERE order_id=$1 AND status='paid' LIMIT 1`, [orderId]);

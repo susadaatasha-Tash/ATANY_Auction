@@ -12,26 +12,26 @@ export function resolveFromEmail() {
   return 'ATANY Test <onboarding@resend.dev>';
 }
 
-export async function sendNotificationEmail({ to, subject, html }) {
-  const key = process.env.RESEND_API_KEY;
-  if (!key) { console.warn('RESEND_API_KEY missing — skip email to', to); return; }
-  const from = resolveFromEmail();
-  if (!from) {
-    console.error('RESEND_FROM_EMAIL missing in production — email not sent to', to);
-    return;
-  }
-  // Best-effort notification: bound the wait so a stalled email provider can
-  // never wedge a cron job (which would hold its pool client + onceAtATime flag
-  // forever and slowly exhaust the pg pool).
-  try {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from, to, subject, html }),
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!res.ok) console.error('Resend error', await res.text());
-  } catch (e) {
-    console.error('Resend send failed (best-effort, skipped):', e?.name || e?.message || e);
-  }
+/**
+ * Send a notification email.
+ *
+ * @param {object}   opts
+ * @param {string}   opts.to       recipient(s)
+ * @param {string}   opts.subject
+ * @param {string}   opts.html
+ * @param {string?}  opts.replyTo  optional Reply-To address, so the recipient can
+ *                                 reply straight to the person who asked for help.
+ *                                 Sanitised by the caller/config helper.
+ *
+ * NOTE ON THE SENDER: `from` stays the existing verified ATANY sender. The
+ * destination mailbox is only ever a RECIPIENT — it is never used as a FROM
+ * address, because doing so would require the provider to trust a mailbox we do
+ * not control.
+ */
+export async function sendNotificationEmail({ to, subject, html, replyTo }) {
+  // Provider-agnostic. EMAIL_PROVIDER selects Gmail SMTP or the original Resend
+  // implementation; both honour the same { to, subject, html, replyTo } contract,
+  // so callers (contact + support notifications) are unaware of the transport.
+  const { deliver } = await import('./emailTransport.js');
+  return deliver({ to, subject, html, replyTo, from: resolveFromEmail() });
 }

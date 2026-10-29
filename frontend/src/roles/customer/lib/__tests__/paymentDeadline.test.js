@@ -1,5 +1,6 @@
 // frontend/src/roles/customer/lib/__tests__/paymentDeadline.test.js
-import { describe, expect, it } from 'vitest';
+import {
+  formatDeadlineDateTime, describe, expect, it } from 'vitest';
 import {
   formatLongDate,
   getPaymentDeadlinePolicyText,

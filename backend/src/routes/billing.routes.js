@@ -16,6 +16,7 @@ import {
   attachMyPaymentMethod,
   setDefaultMyPaymentMethod,
   deleteMyPaymentMethod,
+  getPaymongoClientConfig,
   adminRetryBilling,
   listSubscriptionPlans,
 } from '../controllers/billing.controller.js';
@@ -24,6 +25,10 @@ const router = Router();
 
 // Plan catalog (backend source of truth) — authenticated users only
 router.get('/plans', requireAuth, listSubscriptionPlans);
+
+// PayMongo client config (publishable key only — never the secret) —
+// powers PayMongo.js Elements secure card entry in the payment-method modal
+router.get('/paymongo-config', requireAuth, getPaymongoClientConfig);
 
 // Seller — own subscription/billing only
 router.get('/me/subscription', requireAuth, requireRole('shop_owner'), getMySubscription);

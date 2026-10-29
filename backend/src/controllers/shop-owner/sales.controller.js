@@ -2,6 +2,21 @@
 // Spec 4.4/4.7: sales are orders where product's shop_id matches. Payout = 90% per original mock
 // REST-compatible: decomposes JOINs into simple queries for Supabase REST fallback
 import { pool } from '../../db/pool.js';
+import { calculatePlatformCommission, calculateSellerPayout } from '../../services/commission.js';
+import { getSellerSalesDashboard, isValidSalesRange } from '../../services/sellerSales.js';
+export const getSalesSummary = async (req, res) => {
+  try {
+    const range = req.query?.range ?? 'month';
+    if (!isValidSalesRange(range)) {
+      return res.status(400).json({ message: 'Invalid range. Use 7d, month, or year.', code: 'INVALID_RANGE' });
+    }
+    const data = await getSellerSalesDashboard(req.user.id, new Date(), range);
+    res.json(data);
+  } catch (e) {
+    console.error('[shop-owner/sales/summary]', e.message);
+    res.status(500).json({ message: 'Failed to load sales summary' });
+  }
+};
 export const listSales = async (req, res) => {
   try {
     const shop = (await pool.query('SELECT id FROM shops WHERE user_id=$1', [req.user.id])).rows[0];
@@ -17,14 +32,14 @@ export const listSales = async (req, res) => {
     const auctionMap = Object.fromEntries(auctions.map(a => [a.id, a.product_id]));
     const auctionIds = auctions.map(a => a.id);
     const { rows: orders } = await pool.query(
-      `SELECT id, auction_id, buyer_id, amount, status, created_at, transaction_code FROM orders WHERE auction_id IN (${auctionIds.map((_, i) => `$${i + 1}`).join(',')}) ORDER BY created_at DESC`,
+      `SELECT id, auction_id, buyer_id, amount, status, branch_id, payment_method, created_at, transaction_code, winner_confirmed_at, payment_deadline, winner_rank FROM orders WHERE auction_id IN (${auctionIds.map((_, i) => `$${i + 1}`).join(',')}) ORDER BY created_at DESC`,
       auctionIds
     );
     if (!orders.length) return res.json([]);
 
     // fetch product names + images (for dashboard thumbnails)
     const { rows: prodDetails } = await pool.query(
-      `SELECT id, name, image_url FROM products WHERE id IN (${productIds.map((_, i) => `$${i + 1}`).join(',')})`,
+      `SELECT id, name, image_url, category FROM products WHERE id IN (${productIds.map((_, i) => `$${i + 1}`).join(',')})`,
       productIds
     );
     const prodMap = Object.fromEntries(prodDetails.map(p => [p.id, p]));
@@ -40,29 +55,68 @@ export const listSales = async (req, res) => {
       buyerMap = Object.fromEntries(buyers.map(u => [u.id, u.name]));
     }
 
-    // attach payment_status per order (simple, REST-compatible)
+    // Latest payment per order — ONE batched query (this used to run one query
+    // per order = N+1). Semantics match services/sellerSales.js: a 'paid'
+    // payment always wins over a newer failed/retry row, so the list and the
+    // KPI totals can never disagree about the same order.
+    const orderIds = orders.map(o => o.id);
+    let paymentByOrder = {};
+    try {
+      const { rows: payments } = await pool.query(
+        `SELECT order_id, status, payment_method, paid_at, created_at FROM payments WHERE order_id IN (${orderIds.map((_, i) => `$${i + 1}`).join(',')}) ORDER BY created_at DESC`,
+        orderIds
+      );
+      for (const pay of payments) {
+        if (!paymentByOrder[pay.order_id]) paymentByOrder[pay.order_id] = pay;
+      }
+      for (const pay of payments) {
+        if (paymentByOrder[pay.order_id]?.status !== 'paid' && pay.status === 'paid') {
+          paymentByOrder[pay.order_id] = pay; // paid wins
+        }
+      }
+    } catch { paymentByOrder = {}; }
+
+    // Branch name for pickup details (batched, shop branch scope).
+    const branchIds = [...new Set(orders.map(o => o.branch_id).filter(Boolean))];
+    let branchMap = {};
+    if (branchIds.length) {
+      try {
+        const { rows: branches } = await pool.query(
+          `SELECT id, name FROM branches WHERE id IN (${branchIds.map((_, i) => `$${i + 1}`).join(',')})`,
+          branchIds
+        );
+        branchMap = Object.fromEntries(branches.map(b => [b.id, b.name]));
+      } catch { branchMap = {}; }
+    }
+
     const rows = [];
     for (const o of orders) {
-      let payment_status = null;
-      try {
-        const { rows: pay } = await pool.query(`SELECT status FROM payments WHERE order_id=$1 ORDER BY created_at DESC LIMIT 1`, [o.id]);
-        payment_status = pay[0]?.status || null;
-      } catch { payment_status = null; }
+      const payment = paymentByOrder[o.id] || null;
       const productId = auctionMap[o.auction_id];
       const product = prodMap[productId] || {};
-      const commission = Math.round(o.amount * 0.10);
+      const commission = calculatePlatformCommission(o.amount);
       rows.push({
         id: o.id,
         transaction_code: o.transaction_code,
         item: product.name || 'Jewelry Item',
         item_image: product.image_url || null,
+        category: product.category || null,
         buyer: buyerMap[o.buyer_id] || 'Customer',
         amount: o.amount,
         commission,
-        payout: Math.round(o.amount * 0.9),
+        payout: calculateSellerPayout(o.amount),
         status: o.status,
-        payment_status,
+        payment_status: payment?.status || null,
+        payment_method: o.payment_method || payment?.payment_method || null,
+        paid_at: payment?.paid_at || null,
+        branch_name: o.branch_id ? branchMap[o.branch_id] || null : null,
         date: o.created_at,
+        // Current eligible-winner state (7-day fallback). The seller always sees
+        // the CURRENT holder — never a stale expired winner.
+        buyer_id: o.buyer_id,
+        winner_confirmed_at: o.winner_confirmed_at || null,
+        payment_deadline: o.payment_deadline || null,
+        winner_rank: o.winner_rank ?? 1,
       });
     }
     res.json(rows);
@@ -106,7 +160,16 @@ export const updateOrderStatus = async (req, res) => {
       const { rows: pay } = await pool.query(`SELECT status FROM payments WHERE order_id=$1 AND status='paid' LIMIT 1`, [req.params.id]);
       if (!pay.length) return res.status(400).json({ message: 'Order cannot be prepared until payment is confirmed.' });
     }
-    const { rows } = await pool.query('UPDATE orders SET status=$1 WHERE id=$2 RETURNING *', [status, req.params.id]);
+    // Ownership is enforced INSIDE the write, not only by the pre-check SELECTs
+    // above, so a foreign order id can never be mutated.
+    const { rows } = await pool.query(
+      `UPDATE orders o SET status=$1
+       WHERE o.id=$2
+         AND o.auction_id IN (SELECT a.id FROM auctions a JOIN products p ON p.id = a.product_id WHERE p.shop_id = $3)
+       RETURNING o.*`,
+      [status, req.params.id, shop.id]
+    );
+    if (!rows[0]) return res.status(404).json({ message: 'Order not found' });
     // Audit log (best-effort — never blocks the response)
     try {
       const statusAction = { preparing: 'order_preparing', ready_pickup: 'order_ready_pickup', completed: 'order_completed' }[status];

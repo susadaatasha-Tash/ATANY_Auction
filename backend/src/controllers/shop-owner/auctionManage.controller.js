@@ -6,6 +6,7 @@ import { ensureDirectPgAvailable, acquireTxClient, ServiceUnavailableError } fro
 import { isConnFailure } from '../../db/connectionInfo.js';
 import { effectiveStatus } from '../../services/auctionService.js';
 import { closeSingleAuction } from '../../services/auctionClosingService.js';
+import { watcherCount as liveWatcherCount } from '../../services/auctionPresence.js';
 
 // Structured 503 for direct-only auction mutations. Only true connection
 // failures map here — SQL/business errors keep their 500/409/400 responses.
@@ -65,6 +66,7 @@ async function enrichAuctions(rawAuctions) {
   let bidCounts = {};
   let bidsByAuction = {};
   let watcherCounts = {};
+  let savedCounts = {};
   if (auctionIds.length) {
     // Bids batch
     try {
@@ -75,16 +77,20 @@ async function enrichAuctions(rawAuctions) {
         bidsByAuction[aId] = list;
       }
     } catch { /* fallback */ }
-    // Watchers: canonical source is watchlists(product_id) — not favorites.
-    // favorites is buyer-side "heart" for product listings; watchlists is auction watch intent.
-    // Documented watcher_count = COUNT(DISTINCT user_id) in watchlists for the lot's product_id.
+    // WATCHERS = live presence (customers currently viewing the auction),
+    // NOT watchlists. saved_count keeps the historical watchlist saves.
+    for (const a of rawAuctions) {
+      try {
+        watcherCounts[a.id] = liveWatcherCount(a.id);
+      } catch { watcherCounts[a.id] = 0; }
+    }
     if (productIds.length) {
       try {
         const { rows: allWatches } = await pool.query(`SELECT user_id, product_id FROM watchlists WHERE product_id IN (${productIds.map((_, i) => `$${i + 1}`).join(',')})`, productIds);
         const watchCountByProduct = {};
         for (const w of allWatches) watchCountByProduct[w.product_id] = (watchCountByProduct[w.product_id] || 0) + 1;
         for (const a of rawAuctions) {
-          watcherCounts[a.id] = watchCountByProduct[a.product_id] || 0;
+          savedCounts[a.id] = watchCountByProduct[a.product_id] || 0;
         }
       } catch { /* ignore */ }
     }
@@ -144,6 +150,7 @@ async function enrichAuctions(rawAuctions) {
       title: p.name || 'Untitled',
       name: p.name,
       category: p.category || 'Other',
+      description: p.description || null,
       karat_weight: p.karat_weight,
       image_url: p.image_url,
       img: p.image_url,
@@ -162,10 +169,12 @@ async function enrichAuctions(rawAuctions) {
       startPrice: a.start_price,
       current_bid: a.current_bid,
       currentBid: a.current_bid,
+      minimum_bid_increment: Number(a.minimum_bid_increment) > 0 ? Number(a.minimum_bid_increment) : 1000,
       bid_count,
       bids: bid_count,
       watcher_count,
       watchers: watcher_count,
+      saved_count: savedCounts[a.id] || 0,
       leaderboard: ranked,
       paused_at: a.paused_at || null,
       participants: new Set(bids.map(bb => String(bb.user_id))).size,
@@ -487,7 +496,12 @@ export const relistAuction = async (req, res) => {
   let end = end_time ? new Date(end_time) : null;
   if (!end && duration) end = new Date(start.getTime() + Number(duration) * 3600 * 1000);
   if (!end) end = new Date(start.getTime() + 7 * 86400000);
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return res.status(400).json({ message: 'Invalid schedule' });
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return res.status(400).json({ message: 'Invalid schedule', code: 'INVALID_SCHEDULE' });
+  // A relist must open in the future — an explicitly past start is rejected
+  // (omitted start still defaults to tomorrow above).
+  if (start_time && start.getTime() <= Date.now()) {
+    return res.status(400).json({ message: 'New start must be in the future.', code: 'INVALID_SCHEDULE' });
+  }
   const { rows: prodRows } = await pool.query('SELECT * FROM products WHERE id=$1', [auction.product_id]);
   const prod = prodRows[0];
   if (!prod) return res.status(404).json({ message: 'Product not found' });
@@ -497,9 +511,14 @@ export const relistAuction = async (req, res) => {
     // Create new product copy? Spec: create NEW auction based on product, preserve history.
     // We keep same product but create new auction. Product stays approved.
     const status = start <= new Date() ? 'live' : 'scheduled';
+    // Relist preserves the source auction's increment (never silently reverts
+    // to the platform default).
+    const relistIncrement = Number(auction.minimum_bid_increment) > 0
+      ? Number(auction.minimum_bid_increment)
+      : 1000;
     const { rows: newAuc } = await client.query(
-      'INSERT INTO auctions (product_id, start_price, current_bid, status, start_time, end_time) VALUES ($1,$2,$2,$3,$4,$5) RETURNING *',
-      [prod.id, auction.start_price, status, start.toISOString(), end.toISOString()]
+      'INSERT INTO auctions (product_id, start_price, current_bid, status, start_time, end_time, minimum_bid_increment) VALUES ($1,$2,$2,$3,$4,$5,$6) RETURNING *',
+      [prod.id, auction.start_price, status, start.toISOString(), end.toISOString(), relistIncrement]
     );
     await client.query('COMMIT');
     const enriched = await enrichAuctions(newAuc);

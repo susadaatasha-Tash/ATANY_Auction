@@ -1,8 +1,8 @@
 // backend/src/routes/shop-owner.routes.js
 import { Router } from 'express';
-import { listListings, createListing, resubmitListing, updateListing } from '../controllers/shop-owner/listing.controller.js';
+import { listListings, createListing, resubmitListing, updateListing, deleteListing } from '../controllers/shop-owner/listing.controller.js';
 import { listAuctions, createAuction, updateAuction, deleteAuction } from '../controllers/shop-owner/auction.controller.js';
-import { listSales, updateOrderStatus } from '../controllers/shop-owner/sales.controller.js';
+import { listSales, updateOrderStatus, getSalesSummary } from '../controllers/shop-owner/sales.controller.js';
 import { getShop, updateShop, branchImageUploadUrl, updateBranchImage } from '../controllers/shop-owner/shop.controller.js';
 import { listNotifications as listShopNotifications, markAllRead as markShopRead, markOneRead as markShopOneRead } from '../controllers/shop-owner/notification.controller.js';
 import { listActivity } from '../controllers/shop-owner/activity.controller.js';
@@ -31,6 +31,7 @@ router.get('/listings', listListings);
 router.post('/listings', createListing); // products.status = pending (spec 4.3)
 router.put('/listings/:id', updateListing); // edit rejected -> pending (Edit & Resubmit with changes)
 router.patch('/listings/:id/resubmit', resubmitListing); // rejected -> pending (legacy direct resubmit)
+router.delete('/listings/:id', deleteListing); // own product with NO attached auction (auction-backed deletes go through DELETE /auctions/:id)
 router.post('/upload-url', async (req, res) => {
   const { filename } = req.body;
   if (!filename) return res.status(400).json({ message: 'filename required' });
@@ -50,6 +51,7 @@ router.post('/auctions', createAuction); // create item + auction together (spec
 router.put('/auctions/:id', updateAuction); // edit own scheduled auction (no bids yet)
 router.delete('/auctions/:id', deleteAuction); // cancel own scheduled auction (no bids yet)
 router.get('/sales', listSales);
+router.get('/sales/summary', getSalesSummary);
 router.patch('/orders/:id/status', updateOrderStatus);
 router.get('/shop', getShop);
 router.put('/shop', updateShop);

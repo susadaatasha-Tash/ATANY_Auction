@@ -4,6 +4,9 @@ import { apiFetch } from '../../../shared/lib/apiClient';
 import { useToast } from '../../../shared/components/Toast';
 import { CreateAuctionModal } from '../components/CreateAuctionModal';
 import { CreateAuctionWizard } from '../components/CreateAuctionWizard';
+import { RelistWizard } from '../components/RelistWizard';
+import { Modal } from '../../../shared/components/Modal';
+import SellerAuctionCalendar from '../components/SellerAuctionCalendar';
 import { socket } from '../../../shared/lib/socketClient';
 import { formatOpensIn } from '../../../shared/hooks/useAuctionCountdown';
 import '../my-auctions.css';
@@ -186,7 +189,10 @@ export default function MyAuctions() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [statusFilter, setStatusFilter] = useState('all');
-  const [catFilter, setCatFilter] = useState('all');
+  // Category filter: null = all categories (no "All categories" pill).
+  const [selectedCategory, setSelectedCategory] = useState(null);
+  const [catOpen, setCatOpen] = useState(false);
+  const catWrapRef = useRef(null);
   const [q, setQ] = useState('');
   const [viewMode, setViewMode] = useState('list');
   const [open, setOpen] = useState(false);
@@ -195,11 +201,28 @@ export default function MyAuctions() {
   const [confirmEnd, setConfirmEnd] = useState(null);
   const [resultAuction, setResultAuction] = useState(null);
   const [relistTarget, setRelistTarget] = useState(null);
-  const [relistStart, setRelistStart] = useState('');
-  const [relistEnd, setRelistEnd] = useState('');
   const [busyKey, setBusyKey] = useState(null);
   const [endingBusy, setEndingBusy] = useState(false);
-  const [relistBusy, setRelistBusy] = useState(false);
+  // Calendar → List focus: timeline click returns to List and flashes the card.
+  const [focusId, setFocusId] = useState(null);
+  const handleSelectCalendarAuction = useCallback((auction) => {
+    if (!auction?.id) return;
+    setStatusFilter('all');
+    setSelectedCategory(null);
+    setQ('');
+    setViewMode('list');
+    setFocusId(String(auction.id));
+  }, []);
+  useEffect(() => {
+    if (!focusId) return;
+    const t = setTimeout(() => {
+      try {
+        document.querySelector(`[data-testid="auction-card-${focusId}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      } catch {}
+    }, 60);
+    const c = setTimeout(() => setFocusId(null), 2600);
+    return () => { clearTimeout(t); clearTimeout(c); };
+  }, [focusId, viewMode]);
   const showToast = useToast();
 
   const fetchAll = useCallback(async () => {
@@ -234,10 +257,37 @@ export default function MyAuctions() {
   const categories = data?.categories || [];
   const allAuctions = data?.auctions || [];
 
+  function normalizeCategory(v) { return String(v || '').trim().toLowerCase(); }
+
+  // Category options from real seller data (backend categories with counts),
+  // case-normalized and sorted. Falls back to deriving from loaded auctions.
+  const categoryOptions = useMemo(() => {
+    const map = new Map();
+    for (const c of categories) {
+      const key = normalizeCategory(c.name);
+      if (!key) continue;
+      if (!map.has(key)) map.set(key, { key, label: c.name, count: 0 });
+      map.get(key).count += Number(c.count) || 0;
+    }
+    if (!map.size) {
+      for (const a of allAuctions) {
+        const key = normalizeCategory(a.category);
+        if (!key) continue;
+        if (!map.has(key)) map.set(key, { key, label: a.category, count: 0 });
+        map.get(key).count += 1;
+      }
+    }
+    return [...map.values()].sort((x, y) => x.label.localeCompare(y.label));
+  }, [categories, allAuctions]);
+
+  const selectedCategoryLabel = selectedCategory
+    ? (categoryOptions.find(o => o.key === selectedCategory)?.label || selectedCategory)
+    : null;
+
   const filtered = useMemo(() => {
     let list = allAuctions;
     if (statusFilter !== 'all') list = list.filter(a => a.status === statusFilter);
-    if (catFilter !== 'all') list = list.filter(a => String(a.category).toLowerCase() === String(catFilter).toLowerCase());
+    if (selectedCategory) list = list.filter(a => normalizeCategory(a.category) === selectedCategory);
     if (q.trim()) {
       const term = q.toLowerCase();
       list = list.filter(a =>
@@ -248,7 +298,19 @@ export default function MyAuctions() {
       );
     }
     return list;
-  }, [allAuctions, statusFilter, catFilter, q]);
+  }, [allAuctions, statusFilter, selectedCategory, q]);
+
+  // Category dropdown: close on outside click / Escape.
+  useEffect(() => {
+    if (!catOpen) return;
+    const onDown = (e) => {
+      if (catWrapRef.current && !catWrapRef.current.contains(e.target)) setCatOpen(false);
+    };
+    const onKey = (e) => { if (e.key === 'Escape') setCatOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => { document.removeEventListener('mousedown', onDown); document.removeEventListener('keydown', onKey); };
+  }, [catOpen]);
 
   const groups = useMemo(() => {
     const g = { live: [], scheduled: [], paused: [], ended: [] };
@@ -327,11 +389,27 @@ export default function MyAuctions() {
       });
     }
     function onBidUpdate() { fetchAll(); }
+    // Live-viewer presence: patch watcher counts in place (no refetch).
+    function onWatchers(payload) {
+      const aid = String(payload?.auctionId || payload?.auction_id || '');
+      const count = Number(payload?.watcherCount ?? payload?.watcher_count);
+      if (!aid || !Number.isFinite(count)) return;
+      setData((prev) => {
+        if (!prev?.auctions) return prev;
+        const idx = prev.auctions.findIndex(a => String(a.id) === aid);
+        if (idx === -1) return prev;
+        const next = [...prev.auctions];
+        next[idx] = { ...next[idx], watcher_count: count, watchers: count };
+        return { ...prev, auctions: next };
+      });
+    }
     socket.on('auction:update', onAuctionUpdate);
     socket.on('bid:update', onBidUpdate);
+    socket.on('auction:watchers', onWatchers);
     return () => {
       socket.off('auction:update', onAuctionUpdate);
       socket.off('bid:update', onBidUpdate);
+      socket.off('auction:watchers', onWatchers);
     };
   }, [fetchAll]);
 
@@ -354,14 +432,7 @@ export default function MyAuctions() {
   const handleAction = async (type, auction) => {
     try {
       if (type === 'edit') { setEditing(auction); setOpen(true); return; }
-      if (type === 'relist') {
-        const d = new Date(Date.now() + 24 * 3600 * 1000);
-        d.setHours(10, 0, 0, 0);
-        const e2 = new Date(d.getTime() + 7 * 86400000);
-        const pad = (n) => String(n).padStart(2, '0');
-        const toLocal = (dt) => `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
-        setRelistStart(toLocal(d)); setRelistEnd(toLocal(e2)); setRelistTarget(auction); return;
-      }
+      if (type === 'relist') { setRelistTarget(auction); return; }
       if (type === 'end') { setConfirmEnd(auction); return; }
       setBusyKey(`${type}:${auction.id}`);
       const map = { start: `/shop-owner/auctions/${auction.id}/start`, extend: `/shop-owner/auctions/${auction.id}/extend`, pause: `/shop-owner/auctions/${auction.id}/pause`, resume: `/shop-owner/auctions/${auction.id}/resume` };
@@ -397,17 +468,34 @@ export default function MyAuctions() {
     } catch (e) { showToast(e.message || 'End failed'); } finally { setEndingBusy(false); }
   };
 
-  const doRelist = async () => {
-    if (!relistTarget) return;
-    setRelistBusy(true);
+  // Relist submit (called by RelistWizard with a validated schedule).
+  // Success: auto-close, toast, immediate patch + authoritative refetch,
+  // Scheduled filter activates so the new lot is visible at once. The wizard
+  // clears its own namespaced draft on truthy return; failures keep it open.
+  const handleRelistSubmit = async ({ start_time, end_time }) => {
+    if (!relistTarget) return false;
     try {
-      const start = relistStart ? new Date(relistStart).toISOString() : undefined;
-      const end = relistEnd ? new Date(relistEnd).toISOString() : undefined;
-      await apiFetch(`/shop-owner/auctions/${relistTarget.id}/relist`, { method: 'POST', body: JSON.stringify({ start_time: start, end_time: end }) });
-      showToast('Auction relisted');
+      const created = await apiFetch(`/shop-owner/auctions/${relistTarget.id}/relist`, { method: 'POST', body: JSON.stringify({ start_time, end_time }) });
+      showToast('Auction relisted successfully.');
+      const newAuction = created && typeof created === 'object' ? created : null;
       setRelistTarget(null);
+      if (newAuction?.id) {
+        setData((prev) => {
+          if (!prev?.auctions) return prev;
+          if (prev.auctions.some((a) => String(a.id) === String(newAuction.id))) return prev;
+          return { ...prev, auctions: [newAuction, ...prev.auctions] };
+        });
+        setFocusId(String(newAuction.id));
+      }
+      setStatusFilter('scheduled');
+      setSelectedCategory(null);
+      setQ('');
       await fetchAll();
-    } catch (e) { showToast(e.message || 'Relist failed'); } finally { setRelistBusy(false); }
+      return created;
+    } catch (e2) {
+      showToast(e2.message || 'Unable to relist auction. Please try again.');
+      return false;
+    }
   };
 
   // Modal: Escape closes, focus first button
@@ -442,8 +530,8 @@ export default function MyAuctions() {
         </div>
         <div className="mauc-toolbar__right">
           <div className="mauc-toggle" role="tablist" aria-label="View mode">
-            <button className={`mauc-toggle__btn ${viewMode === 'list' ? 'is-active' : ''}`} onClick={() => setViewMode('list')} aria-selected={viewMode === 'list'}>☰ List</button>
-            <button className="mauc-toggle__btn" disabled aria-disabled="true" aria-label="Calendar view — coming soon" title="Calendar view — coming soon (not yet available)">📅 Calendar</button>
+            <button className={`mauc-toggle__btn ${viewMode === 'list' ? 'is-active' : ''}`} onClick={() => setViewMode('list')} aria-selected={viewMode === 'list'} aria-pressed={viewMode === 'list'}>☰ List</button>
+            <button className={`mauc-toggle__btn ${viewMode === 'calendar' ? 'is-active' : ''}`} onClick={() => setViewMode('calendar')} aria-selected={viewMode === 'calendar'} aria-pressed={viewMode === 'calendar'} aria-label="Calendar view">📅 Calendar</button>
           </div>
           <button className="btn btn-primary" onClick={() => { setEditing(null); setCreateSession(n => n + 1); setOpen(true); }}>+ Create Auction</button>
         </div>
@@ -451,30 +539,68 @@ export default function MyAuctions() {
 
       <div className="mauc-summary">Your lots <b style={{ background: '#f3f0ea', padding: '2px 8px', borderRadius: 999, marginLeft: 6 }}>{totalLots} lot{totalLots === 1 ? '' : 's'}</b></div>
 
-      {/* Status pills */}
-      <div className="mauc-pillbar" role="tablist" aria-label="Auction status">
-        {[
-          ['all', 'All status', summary.total],
-          ['live', 'Live', summary.live],
-          ['scheduled', 'Scheduled', summary.scheduled],
-          ...(showPausedTab ? [['paused', 'Paused', summary.paused]] : []),
-          ['ended', 'Ended', summary.ended],
-        ].map(([key, label, count]) => (
-          <button key={key} className={`mauc-pill ${statusFilter === key ? 'is-active' : ''}`} onClick={() => setStatusFilter(key)} role="tab" aria-selected={statusFilter === key}>
-            {label} <span className="mauc-pill__count">{count}</span>
+      {viewMode === 'calendar' ? (
+        <SellerAuctionCalendar auctions={allAuctions} onSelectAuction={handleSelectCalendarAuction} />
+      ) : (
+      <>
+      {/* Status + category filter row: pills left, Category trigger far right */}
+      <div className="mauc-filterbar">
+        <div className="mauc-statusgroup" role="tablist" aria-label="Auction status">
+          {[
+            ['all', 'All status', summary.total],
+            ['live', 'Live', summary.live],
+            ['scheduled', 'Scheduled', summary.scheduled],
+            ...(showPausedTab ? [['paused', 'Paused', summary.paused]] : []),
+            ['ended', 'Ended', summary.ended],
+          ].map(([key, label, count]) => (
+            <button key={key} className={`mauc-pill ${statusFilter === key ? 'is-active' : ''}`} onClick={() => setStatusFilter(key)} role="tab" aria-selected={statusFilter === key}>
+              {label} <span className="mauc-pill__count">{count}</span>
+            </button>
+          ))}
+        </div>
+        <div className="mauc-catwrap" ref={catWrapRef}>
+          <button
+            type="button"
+            className="mauc-cattrigger"
+            aria-haspopup="listbox"
+            aria-expanded={catOpen}
+            aria-label={selectedCategoryLabel ? `Category filter: ${selectedCategoryLabel}` : 'Filter by category'}
+            onClick={() => setCatOpen(v => !v)}
+          >
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              <line x1="4" y1="6" x2="11" y2="6" />
+              <line x1="4" y1="12" x2="15" y2="12" />
+              <line x1="4" y1="18" x2="20" y2="18" />
+            </svg>
+            <span>Category{selectedCategoryLabel ? `: ${selectedCategoryLabel}` : ''}</span>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="m6 9 6 6 6-6" />
+            </svg>
           </button>
-        ))}
-      </div>
-
-      {/* Category */}
-      <div className="mauc-categorybar">
-        <span className="mauc-catlabel">Category</span>
-        <button className={`mauc-catpill ${catFilter === 'all' ? 'is-active' : ''}`} onClick={() => setCatFilter('all')}>All categories</button>
-        {categories.map(c => (
-          <button key={c.name} className={`mauc-catpill ${catFilter === c.name ? 'is-active' : ''}`} onClick={() => setCatFilter(c.name)}>
-            {c.name} <span style={{ fontSize: 11, color: '#8a919c' }}>{c.count}</span>
-          </button>
-        ))}
+          {catOpen && (
+            <ul className="mauc-catmenu" role="listbox" aria-label="Category options">
+              {categoryOptions.map(o => (
+                <li key={o.key} role="option" aria-selected={selectedCategory === o.key}>
+                  <button
+                    type="button"
+                    className={`mauc-catopt ${selectedCategory === o.key ? 'is-active' : ''}`}
+                    onClick={() => { setSelectedCategory(o.key); setCatOpen(false); }}
+                  >
+                    <span>{o.label}</span>
+                    <span className="mauc-catopt__count">{o.count}</span>
+                  </button>
+                </li>
+              ))}
+              {selectedCategory && (
+                <li>
+                  <button type="button" className="mauc-catopt mauc-catopt--clear" onClick={() => { setSelectedCategory(null); setCatOpen(false); }}>
+                    Clear filter
+                  </button>
+                </li>
+              )}
+            </ul>
+          )}
+        </div>
       </div>
 
       <div className="mauc-layout">
@@ -490,25 +616,25 @@ export default function MyAuctions() {
               {groups.live.length > 0 && (
                 <div className="mauc-section">
                   <div className="mauc-section__head"><span className="dot" style={{ background: '#2e9a55' }} aria-hidden="true" /> Live now <span className="count">{groups.live.length}</span></div>
-                  {groups.live.map(a => <AuctionCard key={a.id} auction={a} onAction={handleAction} onViewResult={setResultAuction} busyKey={busyKey} onScheduledEnd={handleScheduledEnd} />)}
+                  {groups.live.map(a => <div key={a.id} className={focusId === String(a.id) ? 'mauc-flash' : undefined}><AuctionCard auction={a} onAction={handleAction} onViewResult={setResultAuction} busyKey={busyKey} onScheduledEnd={handleScheduledEnd} /></div>)}
                 </div>
               )}
               {groups.paused.length > 0 && (
                 <div className="mauc-section">
                   <div className="mauc-section__head"><span className="dot" style={{ background: '#8a919c' }} aria-hidden="true" /> Paused <span className="count">{groups.paused.length}</span></div>
-                  {groups.paused.map(a => <AuctionCard key={a.id} auction={a} onAction={handleAction} onViewResult={setResultAuction} busyKey={busyKey} onScheduledEnd={handleScheduledEnd} />)}
+                  {groups.paused.map(a => <div key={a.id} className={focusId === String(a.id) ? 'mauc-flash' : undefined}><AuctionCard auction={a} onAction={handleAction} onViewResult={setResultAuction} busyKey={busyKey} onScheduledEnd={handleScheduledEnd} /></div>)}
                 </div>
               )}
               {groups.scheduled.length > 0 && (
                 <div className="mauc-section">
                   <div className="mauc-section__head"><span className="dot" style={{ background: '#c4a265' }} aria-hidden="true" /> Scheduled <span className="count">{groups.scheduled.length}</span></div>
-                  {groups.scheduled.map(a => <AuctionCard key={a.id} auction={a} onAction={handleAction} onViewResult={setResultAuction} busyKey={busyKey} onScheduledEnd={handleScheduledEnd} />)}
+                  {groups.scheduled.map(a => <div key={a.id} className={focusId === String(a.id) ? 'mauc-flash' : undefined}><AuctionCard auction={a} onAction={handleAction} onViewResult={setResultAuction} busyKey={busyKey} onScheduledEnd={handleScheduledEnd} /></div>)}
                 </div>
               )}
               {groups.ended.length > 0 && (
                 <div className="mauc-section">
                   <div className="mauc-section__head"><span className="dot" style={{ background: '#142a4a' }} aria-hidden="true" /> Ended <span className="count">{groups.ended.length}</span></div>
-                  {groups.ended.map(a => <AuctionCard key={a.id} auction={a} onAction={handleAction} onViewResult={setResultAuction} busyKey={busyKey} onScheduledEnd={handleScheduledEnd} />)}
+                  {groups.ended.map(a => <div key={a.id} className={focusId === String(a.id) ? 'mauc-flash' : undefined}><AuctionCard auction={a} onAction={handleAction} onViewResult={setResultAuction} busyKey={busyKey} onScheduledEnd={handleScheduledEnd} /></div>)}
                 </div>
               )}
               <div style={{ fontSize: 11, color: '#8a919c', padding: '4px 2px' }}>Showing {filtered.length} of {totalLots} lot{totalLots === 1 ? '' : 's'}</div>
@@ -544,6 +670,8 @@ export default function MyAuctions() {
           </div>
         </div>
       </div>
+      </>
+      )}
 
       {/* Create/Edit modals */}
       {editing?.id ? (
@@ -552,59 +680,84 @@ export default function MyAuctions() {
         <CreateAuctionWizard key={createSession} open={open} onClose={() => { setOpen(false); setEditing(null); }} onSubmit={handleSave} />
       )}
 
-      {/* Confirm End — destructive, focus trap, Esc closes */}
-      {confirmEnd && (
-        <div className="modal-overlay show" onClick={() => !endingBusy && setConfirmEnd(null)} role="dialog" aria-modal="true" aria-labelledby="confirm-end-title">
-          <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 440 }}>
-            <div className="modal-box-head"><h3 id="confirm-end-title">End auction now?</h3></div>
-            <div className="modal-box-body"><p style={{ fontSize: 13, color: '#5c6674' }}>This will stop bidding immediately and determine the auction result using the current valid bids.</p></div>
-            <div className="modal-box-foot">
-              <button className="btn btn-outline" onClick={() => setConfirmEnd(null)} disabled={endingBusy}>Cancel</button>
-              <button className="btn btn-primary" onClick={confirmEndNow} disabled={endingBusy} aria-busy={endingBusy ? 'true' : undefined} style={{ background: '#b45252', borderColor: '#b45252' }}>{endingBusy ? 'Ending…' : 'End auction'}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Confirm End — shared modal system (Esc/focus-trap/overlay from Modal) */}
+      <Modal
+        open={!!confirmEnd}
+        onClose={() => { if (!endingBusy) setConfirmEnd(null); }}
+        title="End auction now?"
+        footer={(
+          <>
+            <button className="btn btn-outline" onClick={() => setConfirmEnd(null)} disabled={endingBusy}>Cancel</button>
+            <button className="btn btn-primary" onClick={confirmEndNow} disabled={endingBusy} aria-busy={endingBusy ? 'true' : undefined} style={{ background: '#b45252', borderColor: '#b45252' }}>{endingBusy ? 'Ending…' : 'End auction'}</button>
+          </>
+        )}
+      >
+        <p style={{ fontSize: 13, color: '#5c6674', margin: 0 }}>This will stop bidding immediately and determine the auction result using the current valid bids.</p>
+      </Modal>
 
-      {/* View Result — Esc closes */}
-      {resultAuction && (
-        <div className="modal-overlay show" onClick={() => setResultAuction(null)} role="dialog" aria-modal="true" aria-labelledby="result-title">
-          <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 520 }}>
-            <div className="modal-box-head"><h3 id="result-title">Auction result — {resultAuction.title}</h3><button className="modal-close" onClick={() => setResultAuction(null)} aria-label="Close">×</button></div>
-            <div className="modal-box-body" style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
-              <div><b>Status:</b> {resultAuction.status} · {(resultAuction.leaderboard?.[0]?.is_winner ? 'Winner confirmed' : 'Ended — No winning bid')}</div>
-              <div><b>Winning bid:</b> {resultAuction.leaderboard?.[0] ? `${peso(resultAuction.leaderboard[0].amount)} — ${resultAuction.leaderboard[0].bidder_name}` : 'No winner'}</div>
-              <div><b>Period:</b> {resultAuction.start_time ? new Date(resultAuction.start_time).toLocaleString() : '—'} → {resultAuction.end_time ? new Date(resultAuction.end_time).toLocaleString() : '—'}</div>
-              <div><b>Bids:</b> {resultAuction.bid_count} · <b>Watchers:</b> {resultAuction.watcher_count}</div>
-              {resultAuction.leaderboard?.length > 0 && (
-                <div>
-                  <b>Top bidders:</b>
-                  <ul style={{ margin: '6px 0 0 16px' }}>{resultAuction.leaderboard.map(r => <li key={r.bidder_id}>{r.rank}. {r.bidder_name} — {peso(r.amount)} {r.is_winner ? '(Winner)' : ''}</li>)}</ul>
+      {/* View Result — shared modal system */}
+      <Modal
+        open={!!resultAuction}
+        onClose={() => setResultAuction(null)}
+        title={resultAuction ? (<><span className="modal-eyebrow">Auction result</span>{resultAuction.title}</>) : ''}
+        className="result-modal"
+        footer={(
+          <button className="btn btn-outline" onClick={() => setResultAuction(null)}>Close</button>
+        )}
+      >
+        {resultAuction && (
+          <div className="result-wrap">
+            <div className="result-statusrow">
+              <span className={`mauc-badge mauc-badge--ended`}>{resultAuction.status}</span>
+              <span className="result-statusnote">{resultAuction.leaderboard?.[0]?.is_winner ? 'Winner confirmed' : 'Ended — No winning bid'}</span>
+            </div>
+            <div className="result-winner">
+              <div className="result-winner__label">Winner</div>
+              {resultAuction.leaderboard?.[0]?.is_winner ? (
+                <div className="result-winner__row">
+                  <span className="result-winner__avatar">{initials(resultAuction.leaderboard[0].bidder_name)}</span>
+                  <span className="result-winner__name">{resultAuction.leaderboard[0].bidder_name}</span>
                 </div>
+              ) : (
+                <div className="result-winner__none">No winning bidder</div>
               )}
+              <div className="result-winner__label">Winning bid</div>
+              <div className="result-winner__amount">{resultAuction.leaderboard?.[0] ? peso(resultAuction.leaderboard[0].amount) : '—'}</div>
             </div>
-            <div className="modal-box-foot"><button className="btn btn-outline" onClick={() => setResultAuction(null)}>Close</button></div>
+            <div className="result-grid">
+              <div><span>Status</span><b>{resultAuction.status}</b></div>
+              <div><span>Winning bid</span><b>{resultAuction.leaderboard?.[0] ? peso(resultAuction.leaderboard[0].amount) : '—'}</b></div>
+              <div><span>Minimum Bid Increment</span><b>{peso(resultAuction.minimum_bid_increment ?? 1000)}</b></div>
+              <div><span>Started</span><b>{resultAuction.start_time ? new Date(resultAuction.start_time).toLocaleString() : '—'}</b></div>
+              <div><span>Ended</span><b>{resultAuction.end_time ? new Date(resultAuction.end_time).toLocaleString() : '—'}</b></div>
+              <div><span>Bids</span><b>{resultAuction.bid_count ?? 0}</b></div>
+              <div><span>Watchers</span><b>{resultAuction.watcher_count ?? 0}</b></div>
+            </div>
+            {resultAuction.leaderboard?.length > 0 && (
+              <div className="result-board">
+                <div className="result-board__title">Top bidders</div>
+                <ul>{resultAuction.leaderboard.map(r => (
+                  <li key={r.bidder_id} className={r.is_winner ? 'is-winner' : ''}>
+                    <span className="result-board__rank">{r.rank}</span>
+                    <span className="result-board__avatar">{initials(r.bidder_name)}</span>
+                    <span className="result-board__name">{r.bidder_name}</span>
+                    <span className="result-board__amt">{peso(r.amount)}</span>
+                    {r.is_winner && <span className="result-board__tag">Winner</span>}
+                  </li>
+                ))}</ul>
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
-      {/* Relist — Esc closes, prevents double submit */}
-      {relistTarget && (
-        <div className="modal-overlay show" onClick={() => !relistBusy && setRelistTarget(null)} role="dialog" aria-modal="true" aria-labelledby="relist-title">
-          <div className="modal-box" onClick={e => e.stopPropagation()} style={{ maxWidth: 460 }}>
-            <div className="modal-box-head"><h3 id="relist-title">Relist — {relistTarget.title}</h3><button className="modal-close" onClick={() => setRelistTarget(null)} aria-label="Close" disabled={relistBusy}>×</button></div>
-            <div className="modal-box-body" style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <p style={{ fontSize: 12, color: '#5c6674' }}>Creates a new auction from this lot. Original ended auction is preserved.</p>
-              <div className="form-row"><label>New start</label><input type="datetime-local" value={relistStart} onChange={e => setRelistStart(e.target.value)} /></div>
-              <div className="form-row"><label>New end</label><input type="datetime-local" value={relistEnd} onChange={e => setRelistEnd(e.target.value)} /></div>
-            </div>
-            <div className="modal-box-foot">
-              <button className="btn btn-outline" onClick={() => setRelistTarget(null)} disabled={relistBusy}>Cancel</button>
-              <button className="btn btn-primary" onClick={doRelist} disabled={relistBusy} aria-busy={relistBusy ? 'true' : undefined}>{relistBusy ? 'Relisting…' : 'Relist'}</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Relist — 2-step wizard (Schedule → Review), shared modal system */}
+      <RelistWizard
+        open={!!relistTarget}
+        sourceAuction={relistTarget}
+        onClose={() => setRelistTarget(null)}
+        onSubmit={handleRelistSubmit}
+      />
     </div>
   );
 }

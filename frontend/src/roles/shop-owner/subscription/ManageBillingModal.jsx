@@ -19,6 +19,7 @@ export function ManageBillingModal({
   onPlanAction,
   busyPlanCode,
   scheduledChange,
+  pendingChange,
   activeListings,
   error,
 }) {
@@ -89,6 +90,11 @@ export function ManageBillingModal({
             const kind = planActionKind(currentPlan, plan, currentInterval, interval);
             const isCurrent = kind === 'current';
             const busy = busyPlanCode === plan.code;
+            // A pending upgrade blocks OTHER upgrades (same-target resumes via
+            // preview reuse). Downgrades/scheduled paths keep existing rules.
+            const blockedByPending = !!pendingChange
+              && kind === 'upgrade'
+              && plan.code !== pendingChange.target_plan_code;
             return (
               <li
                 key={plan.code}
@@ -126,7 +132,8 @@ export function ManageBillingModal({
                       className={`ssub-btn ${kind === 'upgrade' ? 'ssub-btn--gold' : 'ssub-btn--outline'}`}
                       data-testid={`manage-plan-action-${plan.code}`}
                       data-action={kind}
-                      disabled={!!busy}
+                      disabled={!!busy || blockedByPending}
+                      title={blockedByPending ? `Complete or cancel your pending ${pendingChange.target_plan_code} upgrade first.` : undefined}
                       onClick={() => handleAction(plan, kind)}
                     >
                       {busy

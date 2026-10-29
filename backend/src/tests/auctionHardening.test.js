@@ -288,7 +288,7 @@ describe('double close is idempotent (one ended auction, one order)', () => {
           }
           return { rows: [], rowCount: 0 };
         }
-        if (/FROM bids WHERE auction_id=\$1/.test(sql)) {
+        if (/FROM bids[\s\S]*auction_id\s*=\s*\$1/.test(sql)) {
           return { rows: [{ user_id: 'user-1', amount: 1000, created_at: new Date().toISOString() }] };
         }
         if (/FROM orders WHERE auction_id=\$1/.test(sql)) return { rows: [] };

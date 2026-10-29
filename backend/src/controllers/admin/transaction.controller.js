@@ -1,4 +1,8 @@
 import { pool } from '../../db/pool.js';
+import {
+  MANUAL_PROVIDER, ALLOWED_TRANSITIONS, PAYMENT_GATED_STATUSES,
+  recordManualPayment, applyOrderTransition, PAYMENT_WINDOW_EXPIRED,
+} from '../../services/manualPayment.js';
 export const listTransactions = async (_req, res) => {
   try {
     const { rows: orders } = await pool.query('SELECT * FROM orders ORDER BY created_at DESC');
@@ -16,6 +20,17 @@ export const listTransactions = async (_req, res) => {
       const { rows: branches } = await pool.query(`SELECT * FROM branches WHERE id IN (${branchIds.map((_,i)=>`$${i+1}`).join(',')})`, branchIds);
       branchMap = Object.fromEntries(branches.map(b => [b.id, b.name]));
     }
+    // Payment truth for the winner label: an unpaid winner is an ELIGIBLE
+    // winner, not a settled one. Single query, no per-row cost.
+    let paymentByOrder = {};
+    try {
+      const { rows: pays } = await pool.query(
+        `SELECT order_id, status, paid_at FROM payments WHERE order_id = ANY($1::uuid[]) AND status = 'paid'`,
+        [orders.map((o) => o.id)]
+      );
+      paymentByOrder = Object.fromEntries(pays.map((p) => [p.order_id, p]));
+    } catch { /* label falls back to order status */ }
+
     let productMap = {};
     if (auctionIds.length) {
       const { rows: auctions } = await pool.query(`SELECT id, product_id FROM auctions WHERE id IN (${auctionIds.map((_,i)=>`$${i+1}`).join(',')})`, auctionIds);
@@ -43,6 +58,14 @@ export const listTransactions = async (_req, res) => {
           branch: branchMap[o.branch_id] || null,
           status: o.status,
           date: o.created_at,
+          // Current eligible-winner state for the 7-day rule. An unpaid winner is
+          // "Eligible Winner", not a settled winner.
+          buyer_id: o.buyer_id,
+          payment_deadline: o.payment_deadline || null,
+          winner_confirmed_at: o.winner_confirmed_at || null,
+          winner_rank: o.winner_rank ?? 1,
+          payment_status: paymentByOrder[o.id]?.status || null,
+          paid_at: paymentByOrder[o.id]?.paid_at || null,
         };
       });
       return res.json(result);
@@ -57,6 +80,12 @@ export const listTransactions = async (_req, res) => {
       branch: branchMap[o.branch_id] || null,
       status: o.status,
       date: o.created_at,
+      buyer_id: o.buyer_id,
+      payment_deadline: o.payment_deadline || null,
+      winner_confirmed_at: o.winner_confirmed_at || null,
+      winner_rank: o.winner_rank ?? 1,
+      payment_status: paymentByOrder[o.id]?.status || null,
+      paid_at: paymentByOrder[o.id]?.paid_at || null,
     }));
     res.json(result);
   } catch (e) {
@@ -64,23 +93,70 @@ export const listTransactions = async (_req, res) => {
     res.status(500).json({ message: 'Failed to load transactions' });
   }
 };
+/**
+ * PATCH /admin/transactions/:id/pay — "Mark Paid".
+ *
+ * This endpoint is RETAINED (the Admin Orders screen uses it) but no longer
+ * performs a blind write. An order status is not evidence of money:
+ *   - the amount is read from the SERVER order row, never the request;
+ *   - a manual payment record is established/claimed first, exactly like a
+ *     counter payment, so the sale becomes recognizable by services/revenueRule.js
+ *     and stops being eligible for unpaid-winner rotation;
+ *   - fulfillment then advances through the SHARED transition model
+ *     (services/manualPayment.js) instead of jumping straight to ready_pickup;
+ *   - re-confirming is idempotent: the existing 'paid' payment is returned and
+ *     never rewritten, and no second paid row can be created
+ *     (idx_payments_one_paid_per_order).
+ *
+ * The response still ends at ready_pickup so the Admin UI contract is unchanged.
+ */
 export const markPaid = async (req, res) => {
   try {
-    const { rows } = await pool.query("UPDATE orders SET status='ready_pickup' WHERE id=$1 RETURNING *", [req.params.id]);
-    if (!rows.length) return res.status(404).json({ message: 'Order not found' });
-    res.json(rows[0]);
+    const { rows: orderRows } = await pool.query('SELECT * FROM orders WHERE id=$1', [req.params.id]);
+    const order = orderRows[0];
+    if (!order) return res.status(404).json({ message: 'Order not found' });
+
+    const recorded = await recordManualPayment({
+      orderId: req.params.id,
+      actorId: req.user?.id || null,
+      paymentMethod: String(req.body?.payment_method || 'manual'),
+      provider: MANUAL_PROVIDER,
+      source: 'admin_mark_paid',
+      note: 'Confirmed by administrator',
+    });
+    if (!recorded.ok) {
+      const status = recorded.reason === 'ORDER_NOT_FOUND' ? 404 : 400;
+      return res.status(status).json({ message: 'Order cannot be marked paid', reason: recorded.reason });
+    }
+
+    // Fulfillment: advance AT MOST ONE legal step, and only from 'pending'.
+    // This endpoint records money; it is not a shortcut through the fulfillment
+    // state machine. If the order is already past pending, payment is still
+    // recorded and the fulfillment state is left exactly as it is.
+    if (String(order.status || '').toLowerCase() === 'pending') {
+      const step = await applyOrderTransition(req.params.id, nextStatusFor(order.status));
+      if (!step.ok) {
+        return res.status(400).json({ message: 'Payment recorded but fulfillment could not advance', reason: step.reason });
+      }
+    }
+
+    const { rows: finalRows } = await pool.query('SELECT * FROM orders WHERE id=$1', [req.params.id]);
+    res.json({
+      ...finalRows[0],
+      payment_status: 'paid',
+      paid_at: recorded.payment?.paid_at || null,
+      payment_provider: recorded.payment?.provider || MANUAL_PROVIDER,
+    });
   } catch (e) {
     console.error('[admin/transactions:pay]', e.message);
     res.status(500).json({ message: 'Failed to update transaction' });
   }
 };
 
-const ALLOWED_TRANSITIONS = {
-  pending: ['preparing'],
-  preparing: ['ready_pickup'],
-  ready_pickup: ['completed'],
-  completed: [],
-};
+/** The single legal next fulfillment step for an order, or null when terminal. */
+function nextStatusFor(currentStatus) {
+  return (ALLOWED_TRANSITIONS[String(currentStatus || '').toLowerCase()] || [])[0] || null;
+}
 
 export const updateOrderStatus = async (req, res) => {
   const { status } = req.body;
@@ -95,7 +171,7 @@ export const updateOrderStatus = async (req, res) => {
       return res.status(400).json({ message: `Invalid transition ${current} → ${status}` });
     }
     // ensure payment paid before moving to preparing (unless already preparing etc)
-    if (['preparing','ready_pickup','completed'].includes(status)) {
+    if (PAYMENT_GATED_STATUSES.includes(status)) {
       const { rows: pay } = await pool.query(`SELECT status FROM payments WHERE order_id=$1 AND status='paid' LIMIT 1`, [req.params.id]);
       if (!pay.length) return res.status(400).json({ message: 'Cannot fulfill: payment not confirmed' });
     }

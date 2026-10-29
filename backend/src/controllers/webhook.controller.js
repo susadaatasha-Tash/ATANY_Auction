@@ -6,7 +6,7 @@ import {
   notifyPaymentFailed,
   writeAuditLog,
 } from '../services/subscriptionService.js';
-import { assertPaymentStillPayable, markStalePayment } from '../services/paymentRaceGuard.js';
+import { assertPaymentStillPayable, markStalePayment, settlePaidPaymentWithOrderLock } from '../services/paymentRaceGuard.js';
 
 export const paymongoWebhook = async (req, res) => {
   const rawBody = req.rawBody || JSON.stringify(req.body);
@@ -125,19 +125,26 @@ export const paymongoWebhook = async (req, res) => {
         await markStalePayment(payment, { reason: raceCheck.reason, eventType });
         return res.json({ received: true, stale: true, reason: raceCheck.reason });
       }
-      // H2 money path: atomic claim — only pending/processing/failed/expired can become paid.
-      // Concurrent duplicate webhooks cannot last-write-wins a second paid transition.
-      // Direct pg required for reliable multi-predicate claim under load (fail closed otherwise).
-      const { requireDirectPg } = await import('../db/dbGuard.js');
-      requireDirectPg('webhook paid transition');
-      const { rows: paidRows } = await pool.query(
-        `UPDATE payments SET status='paid', paid_at=now(), updated_at=now(), metadata=$1
-         WHERE id=$2 AND status IN ('pending','processing','failed','expired')
-         RETURNING id`,
-        [JSON.stringify({ webhook_type: eventType, raw: attrs }), payment.id]
-      );
-      if (!paidRows.length) {
-        return res.json({ received: true, already_paid: true });
+      // H2 money path + race serialization: settle under `SELECT … FROM orders
+      // FOR UPDATE` — the SAME lock services/winnerExpiration.js holds before
+      // rotating an expired winner.
+      //   · this webhook settles first  -> paid; expiration later skips it
+      //   · expiration rotates first  -> BUYER_MISMATCH above; captured money is
+      //     recorded as a stale payment instead of becoming evidence for the
+      //     new winner.
+      const settled = await settlePaidPaymentWithOrderLock({
+        paymentId: payment.id,
+        orderId: payment.order_id,
+        customerId: payment.customer_id,
+        eventType,
+        metadata: { webhook_type: eventType, raw: attrs },
+      });
+      if (!settled.ok) {
+        if (settled.reason === 'BUYER_MISMATCH' || settled.reason === 'ORDER_NOT_PAYABLE') {
+          await markStalePayment(payment, { reason: settled.reason, eventType });
+          return res.json({ received: true, stale: true, reason: settled.reason });
+        }
+        return res.json({ received: true, settle_failed: settled.reason });
       }
       try {
         const { rows: oAuc } = await pool.query(`SELECT auction_id FROM orders WHERE id=$1`, [

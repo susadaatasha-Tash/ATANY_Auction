@@ -1,6 +1,7 @@
 // backend/src/controllers/shop-owner/listing.controller.js
 // Thin handlers — DB via pool. Spec 4.3: pending -> approved/rejected, resubmit rejected -> pending
 import { pool } from '../../db/pool.js';
+import { acquireTxClient } from '../../db/dbGuard.js';
 import { effectiveStatus } from '../../services/auctionService.js';
 
 const VALID_CATEGORIES = ['Rings', 'Necklaces', 'Bracelets', 'Earrings', 'Pendants', 'Chains', 'Watches', 'Other'];
@@ -15,25 +16,105 @@ export const listListings = async (req, res) => {
       shop = (await pool.query('SELECT id FROM shops WHERE user_id=$1', [req.user.id])).rows[0];
     } catch {}
   }
-  // REST-compatible: two simple queries + JS compose (JOIN fails on REST fallback)
+  // REST-compatible: simple queries + JS compose (JOIN fails on REST fallback).
+  // One auction per product is NOT assumed: relists create several auction rows
+  // for the same product, so pick the most relevant (live > paused > scheduled
+  // > most recently ended). All batch queries — no N+1 per listing.
   const { rows: products } = await pool.query('SELECT * FROM products WHERE shop_id=$1 ORDER BY created_at DESC', [shop?.id]);
   const productIds = products.map(p => p.id);
   let auctionMap = {};
+  let bidCountByAuction = {};
+  let bidCountByProduct = {};
+  let watcherCountByProduct = {};
   if (productIds.length) {
-    const { rows: auctions } = await pool.query(`SELECT id, product_id, start_time, end_time FROM auctions WHERE product_id IN (${productIds.map((_,i)=>`$${i+1}`).join(',')})`, productIds);
-    auctionMap = Object.fromEntries(auctions.map(a => [a.product_id, a]));
+    const { rows: auctions } = await pool.query(
+      `SELECT id, product_id, status, start_time, end_time, start_price, current_bid FROM auctions WHERE product_id IN (${productIds.map((_,i)=>`$${i+1}`).join(',')})`,
+      productIds
+    );
+    // Most relevant auction per product: live > paused > scheduled > latest ended.
+    const rank = (s) => (s === 'live' ? 0 : s === 'paused' ? 1 : s === 'scheduled' ? 2 : 3);
+    for (const a of auctions) {
+      const cur = auctionMap[a.product_id];
+      if (!cur) { auctionMap[a.product_id] = a; continue; }
+      const rCur = rank(String(cur.status).toLowerCase());
+      const rNew = rank(String(a.status).toLowerCase());
+      if (rNew < rCur) { auctionMap[a.product_id] = a; continue; }
+      if (rNew === rCur && rNew === 3 && new Date(a.end_time) > new Date(cur.end_time)) {
+        auctionMap[a.product_id] = a;
+      }
+    }
+    // Bid counts are needed for EVERY auction of each product, not just the one
+    // shown on the card: deleteListing blocks on the SUM across all auctions,
+    // so can_delete must use the same total or the grid would advertise a
+    // deletable listing that DELETE then rejects with LISTING_HAS_BIDS.
+    const allAuctionIds = auctions.map(a => a.id);
+    if (allAuctionIds.length) {
+      try {
+        const { rows: bidRows } = await pool.query(
+          `SELECT auction_id, user_id FROM bids WHERE auction_id IN (${allAuctionIds.map((_,i)=>`$${i+1}`).join(',')})`,
+          allAuctionIds
+        );
+        for (const b of bidRows) {
+          bidCountByAuction[b.auction_id] = (bidCountByAuction[b.auction_id] || 0) + 1;
+          const productId = auctions.find((a) => a.id === b.auction_id)?.product_id;
+          if (productId) bidCountByProduct[productId] = (bidCountByProduct[productId] || 0) + 1;
+        }
+      } catch {}
+    }
+    try {
+      const { rows: watchRows } = await pool.query(
+        `SELECT user_id, product_id FROM watchlists WHERE product_id IN (${productIds.map((_,i)=>`$${i+1}`).join(',')})`,
+        productIds
+      );
+      const seen = new Set();
+      for (const w of watchRows) {
+        const k = `${w.product_id}:${w.user_id}`;
+        if (!seen.has(k)) { seen.add(k); watcherCountByProduct[w.product_id] = (watcherCountByProduct[w.product_id] || 0) + 1; }
+      }
+    } catch {}
   }
-  const rows = products.filter(p => p.status === 'pending' || auctionMap[p.id]).map(p => ({
-    ...p,
-    auction_start_time: auctionMap[p.id]?.start_time || null,
-    auction_end_time: auctionMap[p.id]?.end_time || null,
-    auction_id: auctionMap[p.id]?.id || null,
-  }));
-  // Compute effective status from auction timestamps when available
+  // Branch is shop-level (shops.home_branch_id) — two queries total, not per row.
+  let branchName = null;
+  try {
+    const sRow = (await pool.query('SELECT home_branch_id FROM shops WHERE id=$1', [shop?.id])).rows[0];
+    if (sRow?.home_branch_id) {
+      branchName = (await pool.query('SELECT name FROM branches WHERE id=$1', [sRow.home_branch_id])).rows[0]?.name || null;
+    }
+  } catch {}
+  const rows = products.filter(p => p.status === 'pending' || auctionMap[p.id]).map(p => {
+    const a = auctionMap[p.id] || null;
+    // Server-authoritative deletability — the deciding rule is BID COUNT,
+    // never auction status: no attached auction at all → deletable; otherwise
+    // deletable only when ZERO bids exist across ALL auctions of the product
+    // (exactly what deleteListing re-checks inside its transaction).
+    const canDelete = (bidCountByProduct[p.id] || 0) === 0;
+    return {
+      ...p,
+      auction_start_time: a?.start_time || null,
+      auction_end_time: a?.end_time || null,
+      auction_id: a?.id || null,
+      auction_status: a ? String(a.status).toLowerCase() : null,
+      branch_name: branchName,
+      can_delete: canDelete,
+      auction: a ? {
+        id: a.id,
+        status: String(a.status).toLowerCase(),
+        start_time: a.start_time,
+        end_time: a.end_time,
+        start_price: a.start_price,
+        current_bid: a.current_bid,
+        bid_count: bidCountByAuction[a.id] || 0,
+        watcher_count: watcherCountByProduct[p.id] || 0,
+      } : null,
+    };
+  });
+  // Effective status: auction-backed rows use stored status + times (stored
+  // 'ended'/'paused' are terminal/authoritative — never time-resurrected);
+  // bare products keep the legacy product-state mapping.
   const result = rows.map(p => {
     let computedStatus = p.status;
-    if (p.auction_start_time && p.auction_end_time) {
-      computedStatus = effectiveStatus(p.auction_start_time, p.auction_end_time);
+    if (p.auction) {
+      computedStatus = effectiveStatus(p.auction.start_time, p.auction.end_time, p.auction.status);
     } else if (p.status === 'approved') {
       computedStatus = 'live';
     } else if (p.status === 'pending') {
@@ -79,6 +160,112 @@ export const createListing = async (req, res) => {
     console.warn('[audit log] failed:', logErr.message);
   }
   res.status(201).json(rows[0]);
+};
+
+// Delete own listing (product) + its attached auction(s) atomically.
+// THE deciding rule is BID COUNT, never auction status:
+//   no attached auction → deletable
+//   attached auction(s) + zero bids (any status) → deletable
+//   one or more bids → 409 LISTING_HAS_BIDS (auction AND listing preserved)
+//   linked order/sale → 409 LISTING_HAS_ORDER (financial records never deleted)
+// Ownership: shop resolved server-side from req.user; foreign ids → 404
+// (never reveal another seller's listing exists). No shop_id trust.
+// Race safety: the bid recount happens INSIDE the transaction after row-locking
+// the product's auctions (SELECT ... FOR UPDATE), so a bid landing between the
+// frontend check and COMMIT aborts the delete instead of slipping through.
+// Dependent rows: bids (none by check), auction_reminders CASCADE, notifications
+// SET NULL, messages SET NULL per schema — no manual deletes needed, and orders
+// (NO ACTION) are pre-checked so the FK can never fire mid-delete.
+export const deleteListing = async (req, res) => {
+  const shop = (await pool.query('SELECT id FROM shops WHERE user_id=$1', [req.user.id])).rows[0];
+  if (!shop) return res.status(404).json({ message: 'Shop not found' });
+  const prod = (await pool.query('SELECT * FROM products WHERE id=$1', [req.params.id])).rows[0];
+  if (!prod || String(prod.shop_id) !== String(shop.id)) {
+    return res.status(404).json({ message: 'Listing not found' });
+  }
+  const attached = (await pool.query('SELECT id FROM auctions WHERE product_id=$1', [req.params.id])).rows;
+  if (!attached.length) {
+    // Bare listing: single REST-compatible DELETE, same as before.
+    try {
+      await pool.query('DELETE FROM products WHERE id=$1', [req.params.id]);
+      try {
+        await pool.query(
+          'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details) VALUES ($1, $2, $3, $4, $5)',
+          [req.user.id, 'listing_deleted', 'product', req.params.id, JSON.stringify({ name: prod.name })]
+        );
+      } catch (logErr) {
+        console.warn('[audit log] failed:', logErr.message);
+      }
+      return res.json({ success: true, id: req.params.id });
+    } catch (e) {
+      console.error('[shop-owner/deleteListing]', e.message);
+      return res.status(500).json({ message: 'Failed to delete listing' });
+    }
+  }
+  // Auction-backed: transactional path needs a real direct client (row locks).
+  // Never REST: a mock client cannot lock or roll back atomically.
+  let tx;
+  try {
+    tx = await acquireTxClient('deleteListing');
+  } catch (acqErr) {
+    return res.status(503).json({ code: 'AUCTION_OPERATION_UNAVAILABLE', message: 'Auction action temporarily unavailable.' });
+  }
+  const client = tx.client;
+  try {
+    if (client.__restFallback) {
+      return res.status(503).json({ code: 'AUCTION_OPERATION_UNAVAILABLE', message: 'Auction action temporarily unavailable.' });
+    }
+    await client.query('BEGIN');
+    // Lock every auction row for this product first — concurrent bid INSERTs
+    // (FK key-share on the parent row) block here until we COMMIT/ROLLBACK.
+    const { rows: locked } = await client.query('SELECT id FROM auctions WHERE product_id=$1 FOR UPDATE', [req.params.id]);
+    // Authoritative recount INSIDE the transaction (frontend counts ignored).
+    let bidTotal = 0;
+    for (const a of locked) {
+      const { rows: cnt } = await client.query('SELECT COUNT(*)::int AS cnt FROM bids WHERE auction_id=$1', [a.id]);
+      bidTotal += Number(cnt[0]?.cnt || 0);
+    }
+    if (bidTotal > 0) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({
+        code: 'LISTING_HAS_BIDS',
+        message: 'This listing cannot be deleted because it already has bids.',
+      });
+    }
+    // Financial records are never deleted: any linked order blocks the delete.
+    const auctionIds = locked.map(a => a.id);
+    if (auctionIds.length) {
+      const { rows: linkedOrders } = await client.query(
+        `SELECT id FROM orders WHERE auction_id IN (${auctionIds.map((_, i) => `$${i + 1}`).join(',')}) LIMIT 1`,
+        auctionIds
+      );
+      if (linkedOrders.length) {
+        await client.query('ROLLBACK');
+        return res.status(409).json({
+          code: 'LISTING_HAS_ORDER',
+          message: 'This listing cannot be deleted because it is linked to an order.',
+        });
+      }
+      await client.query('DELETE FROM auctions WHERE product_id=$1', [req.params.id]);
+    }
+    await client.query('DELETE FROM products WHERE id=$1', [req.params.id]);
+    await client.query('COMMIT');
+    try {
+      await pool.query(
+        'INSERT INTO audit_logs (user_id, action, entity_type, entity_id, details) VALUES ($1, $2, $3, $4, $5)',
+        [req.user.id, 'listing_deleted', 'product', req.params.id, JSON.stringify({ name: prod.name, auctions: auctionIds.length })]
+      );
+    } catch (logErr) {
+      console.warn('[audit log] failed:', logErr.message);
+    }
+    return res.json({ success: true, id: req.params.id });
+  } catch (e) {
+    try { await client.query('ROLLBACK'); } catch {}
+    console.error('[shop-owner/deleteListing]', e.message);
+    return res.status(500).json({ message: 'Failed to delete listing' });
+  } finally {
+    tx.release();
+  }
 };
 
 export const resubmitListing = async (req, res) => {
@@ -141,7 +328,15 @@ export const updateListing = async (req, res) => {
   fields.push(`status='pending'`);
   if (fields.length === 0) return res.status(400).json({ message: 'No fields to update' });
   params.push(req.params.id);
-  const { rows } = await pool.query(`UPDATE products SET ${fields.join(', ')} WHERE id=$${idx} RETURNING *`, params);
+  // Ownership is enforced IN the write itself, not only by the pre-check above:
+  // a foreign listing id can never be updated even if this statement is ever
+  // reached by another path.
+  params.push(shop.id);
+  const { rows } = await pool.query(
+    `UPDATE products SET ${fields.join(', ')} WHERE id=$${idx} AND shop_id=$${idx + 1} RETURNING *`,
+    params
+  );
+  if (!rows[0]) return res.status(404).json({ message: 'Listing not found' });
   // Audit log (best-effort — never blocks the response)
   try {
     if (rows[0]) {

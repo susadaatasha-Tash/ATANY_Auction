@@ -1,5 +1,6 @@
 import { pool } from '../../db/pool.js';
 import { listAuctions as listAuctionsService, effectiveStatus } from '../../services/auctionService.js';
+import { watcherCount as liveWatcherCount } from '../../services/auctionPresence.js';
 
 async function resolveCustomerBranch(req, requestedBranchId) {
   const { rows } = await pool.query(
@@ -71,8 +72,12 @@ export const getAuction = async (req, res) => {
   const now = new Date();
   const startsInSec = Math.max(0, Math.floor((new Date(a.start_time) - now) / 1000));
   const endsInSec = Math.max(0, Math.floor((new Date(a.end_time) - now) / 1000));
+  let watcher_count = 0;
+  try { watcher_count = liveWatcherCount(a.id); } catch {}
   res.json({
     id: a.id, auction_code: a.auction_code, productId: a.product_id, startPrice: a.start_price, currentBid: a.current_bid,
+    minimum_bid_increment: Number(a.minimum_bid_increment) > 0 ? Number(a.minimum_bid_increment) : 1000,
+    watcher_count, watchers: watcher_count,
     bids, status: computedStatus, startTime: a.start_time, endTime: a.end_time,
     name: p.name, img: p.image_url, category: p.category, desc: p.description,
     branch_id: b.id, branch_name: b.name, branch_address: b.address,

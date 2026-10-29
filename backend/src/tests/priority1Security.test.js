@@ -802,9 +802,12 @@ describe('H4 auction bid window validation', () => {
       query: vi.fn(async () => ({ rows: [] })),
       release: vi.fn(),
     });
+    // No reachable direct pg in this env: the dedicated-client fallback also
+    // fails, so the bid fails closed with 503 — never a REST write.
+    // (When pg IS reachable, acquireTxClient recovers via dedicated client.)
     await expect(
       placeBid({ auctionId: AUCTION_ID, userId: BUYER_A, amount: 20000, now })
-    ).rejects.toMatchObject({ code: 'BIDDING_UNAVAILABLE' });
+    ).rejects.toMatchObject({ code: 'DB_UNAVAILABLE', statusCode: 503 });
   });
 
   it('placeBid accepts valid live auction bid', async () => {
@@ -968,13 +971,27 @@ describe('H3 stale winner payment race', () => {
       status: 'pending',
       checkout_session_id: 'cs_valid',
     };
+    // settlePaidPaymentWithOrderLock opens its own transaction client.
+    poolConnect.mockResolvedValue({
+      query: (...args) => poolQuery(...args),
+      release: vi.fn(),
+    });
     poolQuery.mockImplementation(async (sql) => {
       if (sql.includes('FROM payments WHERE checkout_session_id')) return { rows: [paymentRow] };
       if (sql.includes('SELECT * FROM orders WHERE id=$1')) {
         return { rows: [{ id: ORDER_ID, buyer_id: BUYER_B, status: 'pending' }] };
       }
-      if (sql.includes('UPDATE payments SET status=\'paid\'')) {
-        return { rows: [], rowCount: 1 };
+      // Shared settlement (services/paymentRaceGuard.js): lock the order row,
+      // then claim the payment inside the same transaction.
+      if (/BEGIN|COMMIT|ROLLBACK/i.test(String(sql).trim())) return { rows: [], rowCount: 0 };
+      if (sql.includes('FROM public.orders WHERE id = $1 FOR UPDATE')) {
+        return { rows: [{ id: ORDER_ID, buyer_id: BUYER_B, status: 'pending', amount: 5000 }], rowCount: 1 };
+      }
+      if (sql.includes("FROM public.payments WHERE order_id = $1 AND status = 'paid'")) {
+        return { rows: [], rowCount: 0 };
+      }
+      if (sql.includes('UPDATE public.payments')) {
+        return { rows: [{ id: PAYMENT_ID }], rowCount: 1 };
       }
       return { rows: [], rowCount: 0 };
     });
@@ -989,8 +1006,12 @@ describe('H3 stale winner payment race', () => {
     );
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ received: true }));
     expect(res.json).not.toHaveBeenCalledWith(expect.objectContaining({ stale: true }));
-    const paidUpdates = poolQuery.mock.calls.filter(([sql]) => /UPDATE payments SET status='paid'/.test(sql));
-    expect(paidUpdates.length).toBe(1);
+    // The paid transition now happens inside the shared order-locked settlement
+    // (services/paymentRaceGuard.js), in the same transaction that locked the
+    // order row — so a concurrent winner rotation cannot interleave.
+    const settledUpdates = poolQuery.mock.calls.filter(([sql]) => /UPDATE public\.payments/.test(String(sql)));
+    expect(settledUpdates.length).toBe(1);
+    expect(poolQuery.mock.calls.some(([sql]) => /FROM public\.orders WHERE id = \$1 FOR UPDATE/.test(String(sql)))).toBe(true);
   });
 });
 

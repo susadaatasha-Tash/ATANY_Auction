@@ -1,14 +1,14 @@
 // frontend/src/roles/customer/components/BidBox.jsx
-// Reusable bid input — now delegates to BidStepper (kept for backward compat)
+// Reusable bid input — delegates to BidStepper (kept for backward compat)
 import { BidStepper } from './BidStepper';
 
-export function BidBox({ minBid, currentBid, startPrice, onBid }) {
-  // Prefer explicit currentBid/startPrice over legacy minBid
-  const baseBid = currentBid ?? (minBid != null ? minBid - 1000 : undefined) ?? startPrice;
+export function BidBox({ minBid, currentBid, startPrice, minIncrement, auction, onBid }) {
   return (
     <BidStepper
-      currentBid={baseBid}
+      currentBid={currentBid ?? minBid ?? startPrice}
       startPrice={startPrice}
+      minIncrement={minIncrement}
+      auction={auction}
       onPlaceBid={onBid}
       size="large"
     />

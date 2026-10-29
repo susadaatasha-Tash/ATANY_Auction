@@ -4,7 +4,7 @@
 // QA b: ARIA + focus trap + Escape + aria-modal per a11y audit
 import React, { useEffect, useRef } from 'react';
 
-export function Modal({ open, onClose, title, children, footer, className }) {
+export function Modal({ open, onClose, title, subtitle, children, footer, className }) {
   const boxRef = useRef(null);
   useEffect(() => {
     if (!open) return;
@@ -31,7 +31,10 @@ export function Modal({ open, onClose, title, children, footer, className }) {
       <div ref={boxRef} tabIndex={-1} className={className ? `modal-box ${className}` : 'modal-box'} role="dialog" aria-modal="true" aria-labelledby={title ? 'modal-title' : undefined}>
         {title && (
           <div className="modal-box-head">
-            <h3 id="modal-title">{title}</h3>
+            <div className="modal-box-head__text">
+              <h3 id="modal-title">{title}</h3>
+              {subtitle && <p className="modal-box-subtitle">{subtitle}</p>}
+            </div>
             <button className="modal-close" onClick={onClose} aria-label="Close dialog">×</button>
           </div>
         )}

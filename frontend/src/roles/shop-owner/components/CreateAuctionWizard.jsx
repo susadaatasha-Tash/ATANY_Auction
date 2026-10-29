@@ -6,7 +6,7 @@
 // Image upload reuses signed-URL flow (POST /shop-owner/upload-url → PUT signedUrl).
 // Lot reference (auction_code) is assigned by the DB on insert — never hardcoded here.
 // Min bid increment ₱1,000 is server-enforced (backend bidLogic.js) — displayed, not editable.
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, Fragment } from 'react';
 import { Modal } from '../../../shared/components/Modal';
 import { apiFetch } from '../../../shared/lib/apiClient';
 import { useToast } from '../../../shared/components/Toast';
@@ -15,7 +15,34 @@ import { durationText, formatTimeFromLocal, parseLocal, scheduleValidation } fro
 
 const DRAFT_KEY = 'atany_auction_lot_draft';
 const CATEGORIES = ['Rings', 'Necklaces', 'Bracelets', 'Earrings', 'Pendants', 'Chains', 'Watches', 'Other'];
-const MIN_INCREMENT = 1000; // mirrors backend bidLogic.js — display only
+// Default increment for genuinely new drafts (mirrors backend DEFAULT_MIN_INCREMENT).
+// Restored drafts keep their saved value — never reset to default.
+const DEFAULT_MIN_INCREMENT = 1000;
+const MAX_INCREMENT = 2147483647;
+
+function normalizeIncrement(raw) {
+  if (raw === undefined || raw === null || raw === '') return DEFAULT_MIN_INCREMENT;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0 || n > MAX_INCREMENT) return DEFAULT_MIN_INCREMENT;
+  return n;
+}
+
+function incrementError(raw) {
+  if (raw === undefined || raw === null || String(raw).trim() === '') {
+    return 'Enter a minimum bid increment.';
+  }
+  const n = Number(raw);
+  if (!Number.isFinite(n) || !Number.isInteger(n)) {
+    return 'Enter a valid amount.';
+  }
+  if (n <= 0) {
+    return 'Minimum bid increment must be greater than ₱0.';
+  }
+  if (n > MAX_INCREMENT) {
+    return 'Enter a valid amount.';
+  }
+  return null;
+}
 const STEPS = [
   { key: 'details', label: 'Lot Details' },
   { key: 'schedule', label: 'Schedule' },
@@ -45,6 +72,7 @@ function defaultDraft() {
     start,
     end,
     startPrice: '',
+    minIncrement: DEFAULT_MIN_INCREMENT,
     step: 0,
     imageFileName: '',
   };
@@ -57,11 +85,18 @@ function loadDraft() {
     const parsed = JSON.parse(raw);
     if (!parsed || typeof parsed !== 'object') return null;
     const base = defaultDraft();
-    return {
+    const merged = {
       ...base,
       ...parsed,
       step: Number.isInteger(parsed.step) ? Math.min(Math.max(parsed.step, 0), 3) : 0,
     };
+    // Restored drafts keep their saved increment verbatim (even if invalid —
+    // validation, not silent reset, handles it). Only a genuinely missing
+    // value falls back to the default.
+    if (parsed.minIncrement === undefined || parsed.minIncrement === null || parsed.minIncrement === '') {
+      merged.minIncrement = DEFAULT_MIN_INCREMENT;
+    }
+    return merged;
   } catch {
     return null;
   }
@@ -81,7 +116,9 @@ function clearDraft() {
 }
 
 function draftHasContent(d) {
-  return !!(d.name || d.karat || d.desc || d.startPrice || d.imageFileName);
+  const customIncrement = String(d.minIncrement ?? '') !== ''
+    && Number(d.minIncrement) !== DEFAULT_MIN_INCREMENT;
+  return !!(d.name || d.karat || d.desc || d.startPrice || d.imageFileName || customIncrement);
 }
 
 function formatDateTime(iso) {
@@ -210,6 +247,8 @@ export function CreateAuctionWizard({ open, onClose, onSubmit }) {
     if (idx === 2) {
       if (!draft.startPrice || draft.startPrice === '') next.startPrice = 'Starting price is required';
       else if (!Number.isFinite(startPriceNum) || startPriceNum <= 0) next.startPrice = 'Starting price must be greater than 0';
+      const incErr = incrementError(draft.minIncrement);
+      if (incErr) next.minIncrement = incErr;
     }
     setErrors(next);
     return Object.keys(next).length === 0;
@@ -278,6 +317,7 @@ export function CreateAuctionWizard({ open, onClose, onSubmit }) {
         category: draft.category,
         karat: draft.karat || undefined,
         startPrice: Math.round(startPriceNum),
+        minimum_bid_increment: normalizeIncrement(draft.minIncrement),
         desc: draft.desc || undefined,
         image_url: imageUrl || undefined,
         start_time: submitStart,
@@ -339,10 +379,10 @@ export function CreateAuctionWizard({ open, onClose, onSubmit }) {
   );
 
   return (
-    <Modal
+      <Modal
       open={open}
       onClose={onClose}
-      title="Create Auction Lot"
+      title={<><span className="modal-eyebrow">New auction</span>Create an auction lot</>}
       className="auction-wizard-modal"
       footer={footer}
     >
@@ -351,12 +391,20 @@ export function CreateAuctionWizard({ open, onClose, onSubmit }) {
           {STEPS.map((s, i) => {
             const state = i < step ? 'done' : i === step ? 'active' : 'todo';
             return (
-              <li key={s.key} className={`wizard-step ${state}`}>
-                <button type="button" className="wizard-step-btn" onClick={() => i < step && jumpTo(i)} disabled={i > step || publishing} aria-current={i === step ? 'step' : undefined}>
-                  <span className="wizard-step-num">{state === 'done' ? '✓' : i + 1}</span>
-                  <span className="wizard-step-name">{s.label}</span>
-                </button>
-              </li>
+              <Fragment key={s.key}>
+                {i > 0 && (
+                  <span className={`step-connector${i <= step ? ' is-done' : ''}`} aria-hidden="true" />
+                )}
+                <li className={`wizard-step ${state}`}>
+                  <button type="button" className="wizard-step-btn" onClick={() => i < step && jumpTo(i)} disabled={i > step || publishing} aria-current={i === step ? 'step' : undefined}>
+                    <span className="wizard-step-num">{state === 'done' ? '✓' : i + 1}</span>
+                    <span className="wizard-step-copy">
+                      <span className="wizard-step-eyebrow">Step {i + 1}</span>
+                      <span className="wizard-step-name">{s.label}</span>
+                    </span>
+                  </button>
+                </li>
+              </Fragment>
             );
           })}
         </ol>
@@ -442,12 +490,22 @@ export function CreateAuctionWizard({ open, onClose, onSubmit }) {
               />
               {errors.startPrice && <p className="wizard-field-error">{errors.startPrice}</p>}
             </div>
+            <div className="form-row">
+              <label htmlFor="wizard-min-increment">Minimum Bid Increment (₱)</label>
+              <input
+                id="wizard-min-increment"
+                name="minIncrement"
+                type="number"
+                min="1"
+                step="1"
+                value={draft.minIncrement}
+                onChange={(e) => patch({ minIncrement: e.target.value })}
+                placeholder="1000"
+              />
+              {errors.minIncrement && <p className="wizard-field-error">{errors.minIncrement}</p>}
+              <span className="form-hint">Set the minimum amount each new bid must increase.</span>
+            </div>
             <div className="wizard-rules">
-              <div className="wizard-rule">
-                <span className="wizard-rule-label">Minimum bid increment</span>
-                <span className="wizard-rule-value">₱{MIN_INCREMENT.toLocaleString()}</span>
-                <span className="form-hint">Enforced by the platform on every bid — not editable per lot.</span>
-              </div>
               <div className="wizard-rule">
                 <span className="wizard-rule-label">Bidding opens</span>
                 <span className="wizard-rule-value">At scheduled start</span>
@@ -483,8 +541,8 @@ export function CreateAuctionWizard({ open, onClose, onSubmit }) {
                   <span className="wizard-review-value">₱{Number.isFinite(startPriceNum) && startPriceNum > 0 ? startPriceNum.toLocaleString() : '—'}</span>
                 </div>
                 <div className="wizard-review-cell">
-                  <span className="wizard-review-label">Min increment</span>
-                  <span className="wizard-review-value">₱{MIN_INCREMENT.toLocaleString()}</span>
+                  <span className="wizard-review-label">Minimum Bid Increment</span>
+                  <span className="wizard-review-value">₱{(Number.isInteger(Number(draft.minIncrement)) && Number(draft.minIncrement) > 0 ? Number(draft.minIncrement) : DEFAULT_MIN_INCREMENT).toLocaleString()}</span>
                 </div>
                 <div className="wizard-review-cell">
                   <span className="wizard-review-label">Start</span>

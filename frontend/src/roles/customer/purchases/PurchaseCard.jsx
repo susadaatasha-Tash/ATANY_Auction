@@ -103,6 +103,19 @@ export function PurchaseCard({ order }) {
                   </button>
                 );
               }
+              if (a.disabled) {
+                return (
+                  <button
+                    key={a.key}
+                    type="button"
+                    className={`mp-btn mp-btn-${a.variant} is-disabled`}
+                    disabled
+                    title={a.note}
+                  >
+                    {a.label}
+                  </button>
+                );
+              }
               return (
                 <button
                   key={a.key}

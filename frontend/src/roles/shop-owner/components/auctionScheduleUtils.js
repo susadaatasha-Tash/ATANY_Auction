@@ -14,6 +14,17 @@ export function toDateKey(d) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
+/** Local current date (browser timezone — never UTC-shifted). */
+export function getLocalToday() {
+  const n = new Date();
+  return {
+    year: n.getFullYear(),
+    month: n.getMonth(),
+    day: n.getDate(),
+    dateKey: toDateKey(n),
+  };
+}
+
 export function fromDateKey(key) {
   const [y, m, d] = String(key).split('-').map(Number);
   return new Date(y, m - 1, d);

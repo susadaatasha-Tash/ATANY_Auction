@@ -14,9 +14,28 @@ export async function placeBidController(req, res) {
     res.json(result);
   } catch (e) {
     const code = e.code || null;
-    // H4 business errors → 409; validation/unavailable → 400
-    const status = code === 'AUCTION_NOT_LIVE' || code === 'AUCTION_NOT_FOUND' ? 409 : 400;
-    res.status(status).json({ message: e.message, code });
+    // H4 business errors -> 409; infrastructure unavailability -> 503;
+    // genuine validation errors -> 400.
+    // DB_UNAVAILABLE must NOT be 400: bidding fails closed when direct Postgres
+    // is unreachable (SERIALIZABLE + FOR UPDATE cannot run over REST), which is a
+    // transient server-side condition, not a malformed request. Reporting 400 told
+    // the client its payload was wrong and is not retryable. 503 matches the
+    // convention already asserted in tests/priority1Security.test.js.
+    const UNAVAILABLE = new Set(['DB_UNAVAILABLE', 'BIDDING_UNAVAILABLE']);
+    const status = UNAVAILABLE.has(code)
+      ? 503
+      : code === 'AUCTION_NOT_LIVE' || code === 'AUCTION_NOT_FOUND'
+        ? 409
+        : 400;
+    const body = { message: e.message, code };
+    // BID_TOO_LOW carries authoritative recalculation for the UI to display
+    // (never trust client-computed minimums).
+    if (code === 'BID_TOO_LOW') {
+      if (Number.isFinite(Number(e.current_bid))) body.current_bid = Number(e.current_bid);
+      if (Number.isFinite(Number(e.minimum_bid_increment))) body.minimum_bid_increment = Number(e.minimum_bid_increment);
+      if (Number.isFinite(Number(e.minimum_bid))) body.minimum_bid = Number(e.minimum_bid);
+    }
+    res.status(status).json(body);
   }
 }
 
@@ -33,12 +52,17 @@ export async function listBids(req, res) {
     const { rows: products } = await pool.query(`SELECT * FROM products WHERE id IN (${productIds.map((_,i)=>`$${i+1}`).join(',')})`, productIds);
     productMap = Object.fromEntries(products.map(p => [p.id, p]));
   }
-  // Count bids per auction
+  // Count bids per auction. Single scan instead of one COUNT(*) per auction (N+1
+  // round trips). It also drops the `COUNT(` keyword deliberately: pool.js flags
+  // COUNT/JOIN/GROUP BY as "complex", and under the Supabase REST fallback those
+  // return NO ROWS, so every bidsCount silently came back 0 whenever direct
+  // Postgres was unreachable. This simple form works on both paths and yields
+  // identical numbers.
   const bidCounts = {};
-  const auctionMapForCount = {};
-  for (const aid of auctionIds) {
-    const { rows } = await pool.query('SELECT COUNT(*)::int as cnt FROM bids WHERE auction_id=$1', [aid]);
-    bidCounts[aid] = rows[0]?.cnt || 0;
+  const { rows: allBidRows } = await pool.query('SELECT auction_id FROM bids');
+  for (const row of allBidRows) {
+    const k = String(row.auction_id);
+    bidCounts[k] = (bidCounts[k] || 0) + 1;
   }
   const now = new Date();
   const rows = bids.map(b => {
@@ -48,7 +72,7 @@ export async function listBids(req, res) {
       id: b.id,
       yourBid: b.amount,
       currentBid: a.current_bid,
-      bidsCount: bidCounts[a.id] || 0,
+      bidsCount: bidCounts[String(a.id)] || 0,
       endsInSec: a.end_time ? Math.max(0, Math.floor((new Date(a.end_time) - now)/1000)) : 0,
       flagged: b.flagged,
       flagReason: b.flag_reason,

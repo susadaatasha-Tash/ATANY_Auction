@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { KpiCard } from '../../../shared/ui/Card';
+import { Skeleton, SkeletonCircle, SkeletonKpiRow, SkeletonList, SkeletonRegion } from '../../../shared/ui/Skeleton';
 import { ActivityText } from '../../../shared/components/SafeHtml';
 import { apiFetch } from '../../../shared/lib/apiClient';
 import { useBranch } from '../../../shared/hooks/useBranch';
@@ -11,14 +12,6 @@ import bannerRing from '../../../assests/customer-banner-ring.jpg';
 import { Gavel, Trophy, Wallet, Heart } from 'lucide-react';
 
 function peso(n) { return '₱' + Number(n || 0).toLocaleString(); }
-
-const sampleActivity = [
-  { text: 'You placed a bid on <b>Diamond Halo Ring</b>', time: '₱118,000 · 1h ago' },
-  { text: 'You won the auction for <b>Pearl Necklace</b>', time: '₱62,000 · 3h ago' },
-  { text: 'Order <b>#ATN-2026-0041</b> confirmed', time: 'Pearl Necklace · 5h ago' },
-  { text: 'You added <b>Sapphire Bracelet</b> to watchlist', time: '6h ago' },
-  { text: 'Your wallet was topped up', time: '₱5,000 · 1 day ago' },
-];
 
 export default function Dashboard({ stats: propStats, activeBids: propBids, recentOrders: propOrders, activity: propActivity }) {
   const { branchName, branches: contextBranches } = useBranch();
@@ -46,8 +39,10 @@ export default function Dashboard({ stats: propStats, activeBids: propBids, rece
       try {
         setLoading(true);
         setError(null);
+        // Only the auxiliary lists degrade silently; a failed primary request
+        // must reach the error branch instead of masquerading as "no data".
         const [bids, orders, watchlist, notifications, branchesData] = await Promise.all([
-          apiFetch('/customer/bids').catch(() => []),
+          apiFetch('/customer/bids'),
           apiFetch('/customer/orders').catch(() => []),
           apiFetch('/customer/watchlist').catch(() => []),
           apiFetch('/customer/notifications').catch(() => []),
@@ -61,7 +56,8 @@ export default function Dashboard({ stats: propStats, activeBids: propBids, rece
         const wonCount = allBids.filter(b => b.status === 'won').length;
         const spent = allOrders.reduce((s, o) => s + Number(o.amount || 0), 0);
         const watching = allWatchlist.length;
-        setStats({ activeBids: activeBidsData.length || 3, won: wonCount || 1, spent: spent || 45200, watching: watching || 2 });
+        // Real values only — a genuine 0 stays 0 (never replaced by a sample).
+        setStats({ activeBids: activeBidsData.length, won: wonCount, spent, watching });
         setActiveBids(activeBidsData.length ? activeBidsData : []);
         setRecentOrders((Array.isArray(orders) ? orders : []).slice(0, 4).map(o => ({
           ...o,
@@ -72,7 +68,7 @@ export default function Dashboard({ stats: propStats, activeBids: propBids, rece
           ...(Array.isArray(notifications) ? notifications.slice(0, 3).map(n => ({ text: n.message, time: new Date(n.created_at).toLocaleString() })) : []),
           ...(Array.isArray(bids) ? bids.slice(0, 2).map(b => ({ text: `You bid <b>${b.item}</b> — ${b.status}`, time: new Date().toLocaleString() })) : []),
         ].slice(0, 4);
-        setActivity(acts.length ? acts : sampleActivity);
+        setActivity(acts);
         const openBranches = Array.isArray(branchesData) ? branchesData.filter(b => (b.status || 'Open') === 'Open').slice(0, 4) : [];
         setBranches(openBranches);
       } catch (e) {
@@ -84,16 +80,69 @@ export default function Dashboard({ stats: propStats, activeBids: propBids, rece
     return () => { cancelled = true; };
   }, [propStats, propBids]);
 
-  // Fallback sample stats if API returns empty
-  const displayStats = stats && (stats.activeBids || stats.won || stats.spent) ? stats : { activeBids: 3, won: 1, spent: 45200, watching: 2 };
-  const displayActivity = activity.length ? activity : sampleActivity;
+  // Real data only: null while loading, otherwise the actual figures (including 0).
+  const displayStats = stats || { activeBids: 0, won: 0, spent: 0, watching: 0 };
+  const displayActivity = activity;
 
   const selectedBranch = [...(contextBranches || []), ...branches].find(
     (b) => String(b.id ?? b._id) === String(preferredBranchId)
   );
   const displayBranchName = branchName || selectedBranch?.name || '';
 
-  if (loading) return <div className="panel"><div className="empty-state"><p>Loading your dashboard…</p></div></div>;
+  // Initial load: mirror the real layout (hero → KPI row → branches → activity)
+  // so the page does not jump when data lands. Real request state only.
+  if (loading) {
+    return (
+      <SkeletonRegion label="Loading your dashboard" className="customer-dash-skeleton">
+        <div className="customer-hero" aria-hidden="true">
+          <div className="customer-hero-left">
+            <Skeleton w="140px" h={11} />
+            <Skeleton w="58%" h={30} style={{ marginTop: 10 }} />
+            <Skeleton w="72%" h={12} style={{ marginTop: 10 }} />
+          </div>
+        </div>
+
+        <div className="kpi-grid customer-kpi-grid">
+          <SkeletonKpiRow count={4} />
+        </div>
+
+        <div className="panel">
+          <div className="panel-head"><h2>Explore Branches</h2></div>
+          <div
+            className="explore-branches-grid"
+            style={{ padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '16px' }}
+          >
+            {[0, 1, 2].map((i) => (
+              <div key={i} style={{ border: '1px solid #E8E5DE', borderRadius: '12px', overflow: 'hidden', background: '#fff' }}>
+                <Skeleton w="100%" h={140} r={0} />
+                <div style={{ padding: '14px 16px' }}>
+                  <Skeleton w="62%" h={14} />
+                  <Skeleton w="88%" h={11} style={{ marginTop: 8 }} />
+                  <Skeleton w="34%" h={11} style={{ marginTop: 8 }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="panel">
+          <div className="panel-head"><h2>Recent Activity</h2></div>
+          <SkeletonList
+            count={4}
+            render={() => (
+              <>
+                <SkeletonCircle size={28} />
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <Skeleton w="76%" h={12} />
+                  <Skeleton w="30%" h={10} style={{ marginTop: 6 }} />
+                </span>
+              </>
+            )}
+          />
+        </div>
+      </SkeletonRegion>
+    );
+  }
   if (error) return <div className="panel"><div className="empty-state" style={{ color: 'var(--danger)' }}><p>Error loading dashboard: {error}</p><p className="form-hint">Please try refreshing. If this persists, check your connection.</p></div></div>;
 
   return (
@@ -143,12 +192,15 @@ export default function Dashboard({ stats: propStats, activeBids: propBids, rece
       <div className="panel">
         <div className="panel-head"><div><h2>Recent Activity</h2></div></div>
         <div className="activity-list">
-          {displayActivity.map((a, i) => (
+          {displayActivity.length ? displayActivity.map((a, i) => (
             <div key={i} className="activity-item">
               <div className="activity-dot" aria-hidden="true"><Gavel size={12} /></div>
               <div style={{ flex: 1, minWidth: 0 }}><ActivityText text={a.text} /><div className="activity-time">{a.time}</div></div>
             </div>
-          ))}
+          )) : (
+            // Confirmed empty response only — never shown while loading.
+            <div className="empty-state"><p>No activity yet.</p></div>
+          )}
         </div>
       </div>
     </>

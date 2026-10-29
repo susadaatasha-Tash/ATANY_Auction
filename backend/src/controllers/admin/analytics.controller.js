@@ -1,4 +1,7 @@
 import { pool } from '../../db/pool.js';
+import {
+  REVENUE_RULE_ID, REVENUE_RULE_LABEL, pickDecidingPayment, isPaidPayment,
+} from '../../services/revenueRule.js';
 // Spec 4.7: real SQL aggregates — no hardcoded arrays.
 // Supports per day / week / month / year bucketing via ?bucket= and an optional ?range= count.
 // bucket/trunc/unit/label all come from this whitelist (never from raw input) → safe to interpolate.
@@ -10,6 +13,12 @@ const BUCKETS = {
 };
 
 const SAFE_UNITS = new Set(['day', 'week', 'month', 'year']);
+
+// The old order-status allow-list ("completed / pending / ready_pickup") was
+// removed after the revenue audit: it counted orders with NO payment at all
+// (payment confirmation never updates orders.status) and missed every paid order
+// in 'preparing'. Revenue is now defined solely by services/revenueRule.js —
+// an order counts only when a payment reached 'paid'.
 
 function resolveRange(query) {
   const cfg = BUCKETS[String(query.bucket || 'month').toLowerCase()] || BUCKETS.month;
@@ -24,11 +33,34 @@ function resolveRange(query) {
   };
 }
 
+/**
+ * Simple, REST-safe payments read for the orders in scope. A 'paid' row always
+ * wins for an order (see revenueRule.pickDecidingPayment).
+ */
+async function loadPaymentsForOrders(orders) {
+  const map = new Map();
+  const ids = [...new Set((orders || []).map((o) => o.id).filter(Boolean))];
+  if (!ids.length) return map;
+  try {
+    const { rows } = await pool.query(
+      `SELECT order_id, status, paid_at, created_at FROM payments WHERE order_id IN (${ids.map((_, i) => `$${i + 1}`).join(',')})`,
+      ids
+    );
+    rows.forEach((p) => {
+      const key = String(p.order_id);
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(p);
+    });
+  } catch {
+    // A missing payments table must not silently inflate revenue: report none.
+  }
+  return map;
+}
+
 export const getAnalytics = async (req, res) => {
   const { cfg, count, intervalStr, prevIntervalStr, bkt } = resolveRange(req.query);
   const bucketName = cfg.unit;
 
-  const statusList = ['completed', 'pending', 'ready_pickup'];
   const now = new Date();
   const msForInterval = (str) => {
     const [num, unit] = str.split(' ');
@@ -51,13 +83,20 @@ export const getAnalytics = async (req, res) => {
   const { rows: allBids } = await pool.query('SELECT * FROM bids ORDER BY created_at DESC');
   const { rows: allBranches } = await pool.query('SELECT * FROM branches ORDER BY name ASC');
 
+  // Revenue recognition: ONE authoritative rule (services/revenueRule.js).
+  // Money counts only when a payment reached 'paid'. Order status is a
+  // fulfillment axis and is deliberately NOT consulted. Loaded as a simple
+  // fan-out because pool.js cannot translate JOINs/EXISTS under REST.
+  const orderPayments = await loadPaymentsForOrders(allOrders);
+  const isRecognized = (o) => isPaidPayment(pickDecidingPayment(orderPayments.get(String(o.id))));
+
   const productMap = Object.fromEntries(allProducts.map(p => [p.id, p]));
   const auctionMap = Object.fromEntries(allAuctions.map(a => [a.id, a]));
   const branchMap = Object.fromEntries(allBranches.map(b => [b.id, b]));
 
   // Filter by interval (auctions has no created_at — use start_time)
-  const ordersInRange = allOrders.filter(o => statusList.includes(o.status) && new Date(o.created_at) > cutoff);
-  const ordersPrevRange = allOrders.filter(o => statusList.includes(o.status) && new Date(o.created_at) > prevCutoff && new Date(o.created_at) <= cutoffPrevEnd);
+  const ordersInRange = allOrders.filter(o => isRecognized(o) && new Date(o.created_at) > cutoff);
+  const ordersPrevRange = allOrders.filter(o => isRecognized(o) && new Date(o.created_at) > prevCutoff && new Date(o.created_at) <= cutoffPrevEnd);
   const auctionsInRange = allAuctions.filter(a => new Date(a.start_time || a.end_time) > cutoff);
   const usersInRange = allUsers.filter(u => new Date(u.created_at) > cutoff);
   const bidsInRange = allBids.filter(b => new Date(b.created_at) > cutoff);
@@ -116,7 +155,7 @@ export const getAnalytics = async (req, res) => {
   let branchRevenue = Object.entries(branchMapRevenue).map(([branch, value]) => ({ branch, value }));
   if (!branchRevenue.length) {
     const fallback = {};
-    allOrders.filter(o => statusList.includes(o.status)).forEach(o => {
+    allOrders.filter(isRecognized).forEach(o => {
       const b = branchMap[o.branch_id];
       const name = b ? b.name : 'Unknown';
       fallback[name] = (fallback[name] || 0) + Number(o.amount || 0);
@@ -137,7 +176,7 @@ export const getAnalytics = async (req, res) => {
   let topItems = Object.values(topMap).sort((a,b) => b.revenue - a.revenue).slice(0,5);
   if (!topItems.length) {
     const fallback = {};
-    allOrders.filter(o => statusList.includes(o.status)).forEach(o => {
+    allOrders.filter(isRecognized).forEach(o => {
       const a = auctionMap[o.auction_id];
       const p = a ? productMap[a.product_id] : null;
       if (!p) return;
@@ -169,6 +208,7 @@ export const getAnalytics = async (req, res) => {
     bucket: bucketName, range: count,
     revenueTrend, categoryData, branchRevenue, topItems,
     userGrowthTrend,
+    revenueRule: { id: REVENUE_RULE_ID, label: REVENUE_RULE_LABEL },
     kpis: {
       totalRevenue,
       revenueDelta,

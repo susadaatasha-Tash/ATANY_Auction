@@ -176,11 +176,17 @@ if (reprobeTimer.unref) reprobeTimer.unref();
 // Extract table name, skipping schema prefix and trailing alias
 function extractTable(sql) {
   // Match: FROM schema.table alias / FROM table alias / INTO table / UPDATE table / DELETE FROM table
+  // The table name may be the LAST token in the statement, so the terminator
+  // must accept end-of-string as well as whitespace. Previously every pattern
+  // required a trailing `\s`, which silently broke simple queries such as
+  // `SELECT id, home_branch_id FROM shops` and `SELECT shop_id FROM products`
+  // — they threw "cannot parse table from query" and surfaced as a 503 whenever
+  // direct Postgres was unreachable.
   const patterns = [
-    /FROM\s+(?:[a-z_]+\.)?([a-z_]+)\s/i,
+    /FROM\s+(?:[a-z_]+\.)?([a-z_]+)(?=\s|$)/i,
     /INTO\s+(?:[a-z_]+\.)?([a-z_]+)\s*\(/i,
-    /UPDATE\s+(?:[a-z_]+\.)?([a-z_]+)\s/i,
-    /DELETE\s+FROM\s+(?:[a-z_]+\.)?([a-z_]+)\s/i,
+    /UPDATE\s+(?:[a-z_]+\.)?([a-z_]+)(?=\s|$)/i,
+    /DELETE\s+FROM\s+(?:[a-z_]+\.)?([a-z_]+)(?=\s|$)/i,
   ];
   for (const re of patterns) {
     const m = sql.match(re);
@@ -599,33 +605,42 @@ async function query(sql, params = []) {
   return restQuery(sql, params);
 }
 
+// Patch client.query with the notification-preferences gate for promise-style
+// calls. CRITICAL: must pass callback-style calls through untouched — pg-pool's
+// internal query() re-dispatches pool.query() on recycled idle clients as
+// client.query(text, values, cb). Dropping that callback (as the previous
+// 2-arg wrapper did) makes pg-pool never release the client and never settle
+// the caller's promise: the query completes on the wire but the pool leaks one
+// client per reuse, eventually exhausting all 10 and hanging every query.
+function wrapNotificationGate(client) {
+  if (client.__notifGate) return client;
+  client.__notifGate = true;
+  const origQuery = client.query.bind(client);
+  client.query = (sql, params, cb) => {
+    if (typeof params === 'function' || typeof cb === 'function') {
+      return origQuery(sql, params, cb);
+    }
+    return (async () => {
+      if (await shouldBlockNotification(sql, params || [])) {
+        return { rows: [], rowCount: 0 };
+      }
+      return origQuery(sql, params);
+    })();
+  };
+  return client;
+}
+
 // Provide pool.connect() for transaction support — wraps each query in mock BEGIN/COMMIT
 // For complex multi-query transactions, falls back to sequential REST calls (not truly atomic)
 async function connect() {
   if (directOk) {
     try {
-      const client = await directPool.connect();
-      const origQuery = client.query.bind(client);
-      client.query = async (sql, params = []) => {
-        if (await shouldBlockNotification(sql, params)) {
-          return { rows: [], rowCount: 0 };
-        }
-        return origQuery(sql, params);
-      };
-      return client;
+      return wrapNotificationGate(await directPool.connect());
     } catch (e) {
       if (!isConnFailure(e)) throw e;
       // One retry before flipping — same transient-blip rationale as query().
       try {
-        const client = await directPool.connect();
-        const origQuery = client.query.bind(client);
-        client.query = async (sql, params = []) => {
-          if (await shouldBlockNotification(sql, params)) {
-            return { rows: [], rowCount: 0 };
-          }
-          return origQuery(sql, params);
-        };
-        return client;
+        return wrapNotificationGate(await directPool.connect());
       } catch (e2) {
         if (isConnFailure(e2)) {
           console.error('[pool] direct pg connect failed (after retry), switching to REST fallback:', e2.message);

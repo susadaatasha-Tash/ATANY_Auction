@@ -7,10 +7,13 @@ import customerRoutes from './routes/customer.routes.js';
 import shopOwnerRoutes from './routes/shop-owner.routes.js';
 import adminRoutes from './routes/admin.routes.js';
 import { requireAuth } from './middleware/requireAuth.js';
+import { optionalAuth } from './middleware/optionalAuth.js';
 import { requireRole } from './middleware/requireRole.js';
+import { requireActiveAccount, isSuspendedStatus } from './middleware/requireActiveAccount.js';
 import { pool, getPoolHealth } from './db/pool.js';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
+import { joinWatcher, leaveWatcher, removeSocket, isValidAuctionId, onPresenceChange } from './services/auctionPresence.js';
 import cron from 'node-cron';
 import { createSocketAuth } from './services/socketAuth.js';
 import { closeExpiredAuctions } from './services/auctionCloser.js';
@@ -20,6 +23,8 @@ import { sendPaymentReminders } from './services/paymentReminder.js';
 import { listAuctions as listAuctionsService } from './services/auctionService.js';
 import { createUploadUrl } from './services/storageService.js';
 import { chatbotReply } from './services/chatbotService.js';
+import { getPublicBranches, getPublicStats, postPublicContact } from './controllers/public.controller.js';
+import { createPublicContactUpload } from './controllers/contactUpload.controller.js';
 import reviewRoutes from './routes/review.routes.js';
 import messageRoutes from './routes/message.routes.js';
 import billingRoutes from './routes/billing.routes.js';
@@ -74,26 +79,74 @@ io.on('connection', (socket) => {
   socket.on('join:auction', (auctionId) => {
     if (auctionId) socket.join(`auction:${auctionId}`);
   });
+  socket.on('leave:auction', (auctionId) => {
+    if (auctionId) {
+      socket.leave(`auction:${auctionId}`);
+      try { leaveWatcher({ auctionId, socketId: socket.id }); } catch {}
+    }
+  });
+  // Active-viewer presence: authenticated CUSTOMERS ONLY (sellers/admins keep
+  // room updates but never count) and ACTIVE accounts only. Unique users;
+  // multi-tab safe; disconnect and auction-end clean up. Emits
+  // auction:watchers { auctionId, watcherCount }.
+  // Active-viewer presence eligibility: role === 'customer' AND status === 'active'.
+  // The status is read from the AUTHORITATIVE users row (never from the client),
+  // so a suspended customer cannot re-register as a watcher even by holding an
+  // open socket and re-emitting this event after reconnect.
+  socket.on('auction:watch', async (payload) => {
+    try {
+      const auctionId = typeof payload === 'string' ? payload : payload?.auctionId;
+      if (!isValidAuctionId(auctionId)) return;
+      if (socket.data?.role !== 'customer' || !socket.data?.statusChecked) {
+        try {
+          const { rows } = await pool.query('SELECT role, status FROM users WHERE id=$1', [socket.data.userId]);
+          socket.data.role = rows[0]?.role || null;
+          socket.data.status = rows[0]?.status || null;
+          socket.data.statusChecked = true;
+        } catch {
+          return;
+        }
+      }
+      if (socket.data.role !== 'customer') return;
+      if (isSuspendedStatus(socket.data.status)) return;
+      socket.join(`auction:${auctionId}`);
+      joinWatcher({ auctionId, userId: socket.data.userId, socketId: socket.id });
+    } catch {}
+  });
+  socket.on('auction:unwatch', (payload) => {
+    try {
+      const auctionId = typeof payload === 'string' ? payload : payload?.auctionId;
+      if (auctionId) leaveWatcher({ auctionId, socketId: socket.id });
+    } catch {}
+  });
+  socket.on('disconnect', () => {
+    try { removeSocket(socket.id); } catch {}
+  });
   // Deprecated client event — identity room already joined by socketAuth middleware.
   socket.on('join:user', () => {
     /* no-op: authenticated user room is automatic */
   });
 });
 
-// Public — branch locator read-only (spec 4.5) + chatbot (spec 4.8 Groq server-only)
-app.get('/branches', rateLimit({ name: 'branches', windowMs: 60_000, max: 60 }), async (_req, res) => {
-  try { res.json((await pool.query('SELECT * FROM branches')).rows); }
-  catch (e) {
-    // Fallback to Supabase REST when direct pg (IPv6) is unreachable — keeps Dashboard branch badge alive
-    try {
-      const r = await fetch(`${process.env.SUPABASE_URL}/rest/v1/branches?select=*`, {
-        headers: { apikey: process.env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${process.env.SUPABASE_SERVICE_ROLE_KEY}` }
-      });
-      res.json(await r.json());
-    } catch (err2) { res.status(500).json({ message: 'Failed to load branches' }); }
-  }
+// Presence fan-out: every join/leave/disconnect/end broadcasts the fresh
+// unique count to that auction's room (sellers + watching customers).
+onPresenceChange((auctionId, watcherCount) => {
+  try { io.to(`auction:${auctionId}`).emit('auction:watchers', { auctionId, watcherCount }); } catch {}
 });
-app.post('/chat', rateLimit({ name: 'chat', windowMs: 60_000, max: 20 }), async (req, res) => {
+
+// Public — branch locator read-only (spec 4.5) + chatbot (spec 4.8 Groq server-only)
+// Serves ONLY the published branch fields from the same `branches` table the
+// Admin portal manages, so the landing page, /branches, Customer pickup and the
+// chatbot can never drift apart. No admin/employee/revenue columns exist here.
+app.get('/branches', rateLimit({ name: 'branches', windowMs: 60_000, max: 60 }), getPublicBranches);
+
+// ── Public landing-page reads (no auth, aggregate/public data only) ──
+app.get('/api/public/stats', rateLimit({ name: 'public-stats', windowMs: 60_000, max: 60 }), getPublicStats);
+app.post('/api/public/contact', rateLimit({ name: 'public-contact', windowMs: 600_000, max: 5 }), postPublicContact);
+// Optional image attachment for the public form. Bytes go straight to Supabase
+// Storage via the returned signed URL — they never traverse this server.
+app.post('/api/public/contact/attachment', rateLimit({ name: 'public-contact-upload', windowMs: 600_000, max: 10 }), createPublicContactUpload);
+app.post('/chat', rateLimit({ name: 'chat', windowMs: 60_000, max: 20 }), optionalAuth, async (req, res) => {
   const { query, message, history, mode, userId } = req.body;
   const text = query || message;
   // mode: 'customer' or 'seller' — from frontend page context (Landing/Login/Signup/Customer vs Shop Owner)
@@ -107,7 +160,10 @@ app.post('/chat', rateLimit({ name: 'chat', windowMs: 60_000, max: 20 }), async 
     if (text && replyText) {
       const { logChatTurn } = await import('./services/chatbotLogService.js');
       const escalated = /human|agent|support/i.test(String(text));
-      logChatTurn({ userId: userId || req.user?.id, mode: mode || 'customer', query: text, reply: replyText, escalated }).catch((e) => console.warn('[chatbotLog] async persist failed:', e.message));
+      // Attribution uses the VERIFIED session identity only. The route is public,
+      // so a client-declared userId is never trusted on its own; guests log NULL.
+      const verifiedUserId = req.user?.id || null;
+      logChatTurn({ userId: verifiedUserId, mode: mode || 'customer', query: text, reply: replyText, escalated }).catch((e) => console.warn('[chatbotLog] async persist failed:', e.message));
     }
   } catch (e) {
     console.warn('[chatbotLog] persist skipped:', e.message);
@@ -143,7 +199,12 @@ app.use('/auth', authRoutes);
 app.use('/seller-applications', (req, res) => {
   res.status(410).json({ message: 'Seller application is no longer available.' });
 });
-app.use('/customer', requireAuth, requireRole('customer'), customerRoutes);
+// requireActiveAccount: a valid token is not enough — a SUSPENDED customer is
+// rejected with 403 ACCOUNT_SUSPENDED on every protected customer endpoint.
+// NOTE: requireActiveAccount is a FACTORY (it takes options) and MUST be invoked.
+// Mounting the bare reference silently returns a middleware that is never called,
+// which hangs every /customer request instead of gating it.
+app.use('/customer', requireAuth, requireRole('customer'), requireActiveAccount(), customerRoutes);
 app.use('/shop-owner', requireAuth, requireRole('shop_owner'), shopOwnerRoutes);
 app.use('/messages', messageRoutes);
 app.use('/admin', requireAuth, requireRole(['admin']), adminRoutes);
@@ -219,3 +280,33 @@ process.on('uncaughtException', (err) => console.error('uncaughtException', err?
 
 const port = process.env.PORT || 4000;
 httpServer.listen(port, () => console.log(`ATANY API + Socket.io on :${port}`));
+
+// ── Outgoing email configuration check ───────────────────────────────────
+// Fails loudly (server-side only) when the selected provider is not usable, so a
+// missing App Password is obvious at boot instead of silently dropping enquiries.
+// Only variable NAMES are ever reported — never values, never the App Password.
+(async () => {
+  try {
+    const { describeConfig, verifySmtp } = await import('./services/emailTransport.js');
+    const cfg = describeConfig();
+    if (cfg.provider === 'gmail') {
+      if (!cfg.configured) {
+        console.error(
+          `[email] Gmail SMTP selected (EMAIL_PROVIDER=gmail) but not configured. ` +
+          `Missing: ${cfg.missing.join(', ')}. Contact/support requests will still be saved, ` +
+          `but no notification email will be sent until these are set.`
+        );
+        return;
+      }
+      console.log(`[email] provider=gmail host=${cfg.host} port=${cfg.port} from=${cfg.from}`);
+      // Verification is a live credential check — dev only, never in production.
+      if (process.env.NODE_ENV !== 'production' && process.env.EMAIL_VERIFY_ON_BOOT !== 'false') {
+        await verifySmtp();
+      }
+    } else {
+      console.log(`[email] provider=${cfg.provider}${cfg.configured ? '' : ' (not configured)'}`);
+    }
+  } catch (e) {
+    console.error('[email] transport configuration check failed:', e?.message || e);
+  }
+})();

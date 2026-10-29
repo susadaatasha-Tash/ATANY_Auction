@@ -28,6 +28,33 @@ export function maskReference(ref) {
   return s.length > 10 ? `${s.slice(0, 6)}…${s.slice(-4)}` : s;
 }
 
+/**
+ * Display reference for a billing record — never masked.
+ * Real provider reference when present; otherwise a deterministic derived
+ * SUB-YYYYMMDD-XXXX from the record's due date + id (never a fabricated
+ * provider id). Billing records without a provider reference still get a
+ * stable, human-readable reference number.
+ */
+export function formatBillingReference(record) {
+  if (!record) return '—';
+  const ref = record.payment_reference || record.paymongo_checkout_session_id;
+  if (ref) return String(ref);
+  const due = record.due_date || record.current_period_end;
+  const date = due ? new Date(due) : null;
+  const ymd =
+    date && !isNaN(date.getTime())
+      ? `${date.getFullYear()}${String(date.getMonth() + 1).padStart(2, '0')}${String(
+          date.getDate()
+        ).padStart(2, '0')}`
+      : '00000000';
+  const tag =
+    String(record.id || '')
+      .replace(/-/g, '')
+      .slice(0, 4)
+      .toUpperCase() || '0000';
+  return `SUB-${ymd}-${tag}`;
+}
+
 function startOfToday() {
   const now = new Date();
   return new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
@@ -146,9 +173,7 @@ export function buildSellerSubscriptionState(records = []) {
       planName: resolvePlanForRecord(nextPaymentRecord).name,
       statusKey: normalizeSubscriptionStatus(nextPaymentRecord.status).key,
       statusLabel: normalizeSubscriptionStatus(nextPaymentRecord.status).label,
-      reference: maskReference(
-        nextPaymentRecord.payment_reference || nextPaymentRecord.paymongo_checkout_session_id
-      ),
+      reference: formatBillingReference(nextPaymentRecord),
       mode: 'open_invoice',
     };
   } else if (kind === 'active' || kind === 'trialing' || kind === 'active_with_upcoming') {
@@ -161,7 +186,7 @@ export function buildSellerSubscriptionState(records = []) {
       planName: plan.name,
       statusKey: status.key,
       statusLabel: status.label,
-      reference: maskReference(paymentReference),
+      reference: formatBillingReference(record),
       mode: 'next_billing_date',
     };
   }

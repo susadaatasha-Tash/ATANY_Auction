@@ -1,0 +1,433 @@
+/* Admin — Users & Roles (/admin/users)
+   Reference layout (4 KPI cards, search/filters, pill tabs, compact rounded
+   table) mapped onto the REAL data model: roles customer|shop_owner|admin,
+   statuses active|suspended, branch resolved from users.preferred_branch_id,
+   JOINED from the real created_at. No invented states. */
+
+.aur-root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--shell-gap);
+  min-width: 0;
+}
+
+.aur-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ── KPI cards ──────────────────────────────────────────────────────────── */
+.aur-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.aur-kpi {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  min-width: 0;
+  padding: 18px 20px;
+  background: var(--ivory);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.aur-kpi__icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.aur-kpi__icon--blue {
+  background: var(--gold-dim);
+  color: var(--navy-2);
+}
+
+.aur-kpi__label {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.aur-kpi__value {
+  margin: 4px 0 2px;
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--navy);
+  font-variant-numeric: tabular-nums;
+}
+
+.aur-kpi__sub {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+/* ── main panel ─────────────────────────────────────────────────────────── */
+.aur-panel {
+  background: var(--ivory);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: 18px 20px 14px;
+  min-width: 0;
+}
+
+.aur-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  transition: opacity .18s var(--ease);
+}
+
+.aur-controls[aria-busy='true'] { opacity: .6; }
+
+.aur-search {
+  position: relative;
+  flex: 1 1 260px;
+  min-width: 200px;
+}
+
+.aur-search svg {
+  position: absolute;
+  top: 50%;
+  left: 13px;
+  width: 16px;
+  height: 16px;
+  transform: translateY(-50%);
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.aur-search input,
+.aur-select {
+  width: 100%;
+  height: 42px;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 13.5px;
+  color: var(--text);
+  background: var(--soft);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  outline: none;
+  transition: border-color .18s var(--ease), background .18s var(--ease);
+}
+
+.aur-search input { padding-left: 37px; }
+
+.aur-select {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 150px;
+  padding-right: 34px;
+  cursor: pointer;
+  appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+                    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position: calc(100% - 17px) 19px, calc(100% - 12px) 19px;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+}
+
+.aur-search input:focus,
+.aur-select:focus {
+  border-color: var(--gold);
+  background: var(--ivory);
+}
+
+/* ── status pill tabs ───────────────────────────────────────────────────── */
+.aur-tabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 14px 0 4px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.aur-tab {
+  appearance: none;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 7px 15px;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  transition: background .16s var(--ease), color .16s var(--ease), border-color .16s var(--ease);
+}
+
+.aur-tab:hover { color: var(--navy); background: var(--soft); }
+
+.aur-tab.is-active {
+  background: var(--navy);
+  border-color: var(--navy);
+  color: #fff;
+}
+
+/* ── table ──────────────────────────────────────────────────────────────── */
+.aur-table {
+  width: 100%;
+  table-layout: fixed; /* keeps long emails truncating instead of forcing a sideways scroll */
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13.5px;
+}
+
+.aur-table th:nth-child(2), .aur-table td:nth-child(2) { width: 132px; }
+.aur-table th:nth-child(3), .aur-table td:nth-child(3) { width: 172px; }
+.aur-table th:nth-child(4), .aur-table td:nth-child(4) { width: 112px; }
+.aur-table th:nth-child(5), .aur-table td:nth-child(5) { width: 124px; }
+.aur-table th:nth-child(6), .aur-table td:nth-child(6) { width: 170px; }
+.aur-table th:first-child, .aur-table td:first-child { width: auto; }
+
+.aur-table th {
+  text-align: left;
+  padding: 14px 12px 10px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.aur-table th:last-child,
+.aur-table td:last-child { text-align: right; }
+
+.aur-table td {
+  padding: 11px 12px;
+  border-top: 1px solid var(--line);
+  color: var(--text);
+  vertical-align: middle;
+}
+
+.aur-table tbody tr { transition: background .14s var(--ease); }
+.aur-table tbody tr:hover { background: var(--soft); }
+
+.aur-user {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+
+.aur-user__avatar {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: var(--gold-dim);
+  color: var(--navy-2);
+  font-size: 12.5px;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+
+.aur-user__meta {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.aur-user__name {
+  font-weight: 600;
+  color: var(--navy);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aur-user__email {
+  font-size: 12px;
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aur-branch {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.aur-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 11px;
+  border-radius: var(--radius-pill);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.aur-status--active { background: var(--success-bg); color: var(--success); }
+.aur-status--suspended { background: var(--danger-bg); color: var(--danger); }
+
+.aur-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.aur-btn-suspend,
+.aur-btn-reactivate,
+.aur-btn-edit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  border-radius: 9px;
+  border: 1px solid var(--line);
+  background: var(--ivory);
+  color: var(--text);
+  cursor: pointer;
+  transition: border-color .16s var(--ease), background .16s var(--ease), color .16s var(--ease);
+}
+
+.aur-btn-suspend { color: var(--danger); }
+.aur-btn-suspend:hover { background: var(--danger-bg); border-color: var(--danger); }
+
+.aur-btn-reactivate { color: var(--success); }
+.aur-btn-reactivate:hover { background: var(--success-bg); border-color: var(--success); }
+
+.aur-btn-edit { width: 30px; padding: 0; justify-content: center; }
+.aur-btn-edit:hover { background: var(--soft); border-color: var(--gold); color: var(--navy); }
+
+/* ── footer count ───────────────────────────────────────────────────────── */
+.aur-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 12px 4px;
+  border-top: 1px solid var(--line);
+  margin-top: 4px;
+}
+
+.aur-footer__count {
+  font-size: 12.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── states ─────────────────────────────────────────────────────────────── */
+.aur-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 40px 20px;
+  text-align: center;
+}
+
+.aur-state__title { margin: 0; font-size: 14px; font-weight: 600; color: var(--navy); }
+.aur-state__sub { margin: 0; font-size: 13px; color: var(--muted); max-width: 46ch; }
+
+.aur-error {
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.aur-modal { width: min(440px, 100%); }
+
+.aur-confirm__name {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--navy);
+}
+
+.aur-confirm__body { margin: 0; font-size: 13.5px; color: var(--muted); }
+
+/* ── responsive ─────────────────────────────────────────────────────────── */
+@media (max-width: 1180px) {
+  .aur-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+/* Tablet: the admin content column is narrow once the sidebar is shown, so
+   columns collapse progressively instead of forcing a sideways scroll.
+   Hidden fields stay fully visible in the Edit dialog. */
+@media (max-width: 1100px) {
+  .aur-table th:nth-child(2), .aur-table td:nth-child(2) { width: 108px; }
+  .aur-table th:nth-child(3), .aur-table td:nth-child(3),
+  .aur-table th:nth-child(5), .aur-table td:nth-child(5) { display: none; }
+  .aur-table th:nth-child(4), .aur-table td:nth-child(4) { width: 100px; }
+  .aur-table th:nth-child(6), .aur-table td:nth-child(6) { width: 170px; }
+  .aur-btn-suspend, .aur-btn-reactivate { padding: 0 10px; }
+}
+
+@media (max-width: 860px) {
+  .aur-select { flex: 1 1 150px; min-width: 0; }
+}
+
+@media (max-width: 620px) {
+  .aur-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .aur-kpi { padding: 14px 16px; gap: 11px; }
+  .aur-kpi__icon { width: 34px; height: 34px; border-radius: 10px; }
+  .aur-kpi__value { font-size: 22px; }
+  .aur-panel { padding: 14px 14px 10px; }
+  .aur-table { font-size: 13px; }
+  /* Keep USER + STATUS + ACTIONS reachable without sideways scrolling; the
+     ROLE/BRANCH/JOINED detail stays available in the edit dialog. */
+  .aur-table th:nth-child(2), .aur-table td:nth-child(2),
+  .aur-table th:nth-child(3), .aur-table td:nth-child(3) { display: none; }
+  .aur-table th, .aur-table td { padding-left: 8px; padding-right: 8px; }
+  .aur-user__avatar { width: 32px; height: 32px; }
+  .aur-actions { gap: 6px; }
+  /* Icon-only actions so STATUS + ACTIONS stay on screen at 390px */
+  .aur-btn__label { display: none; }
+  .aur-btn-suspend, .aur-btn-reactivate { width: 30px; padding: 0; justify-content: center; }
+  .aur-table th:nth-child(4), .aur-table td:nth-child(4) { width: 96px; }
+  .aur-table th:nth-child(6), .aur-table td:nth-child(6) { width: 92px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aur-search input,
+  .aur-select,
+  .aur-tab,
+  .aur-btn-suspend,
+  .aur-btn-reactivate,
+  .aur-btn-edit,
+  .aur-controls,
+  .aur-table tbody tr { transition: none; }
+}

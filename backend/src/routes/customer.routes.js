@@ -11,6 +11,9 @@ import { getOrders, payOrder } from '../controllers/customer/order.controller.js
 import { getOrderDetails, createCheckout } from '../controllers/customer/payment.controller.js';
 import { getAccount, updateAccount, getPreferredBranch, setPreferredBranch } from '../controllers/customer/account.controller.js';
 import { listNotifications, markAllRead, markOneRead, deleteNotification } from '../controllers/customer/notification.controller.js';
+import { createCustomerSupportRequest } from '../controllers/customer/support.controller.js';
+import { createCustomerSupportUpload } from '../controllers/contactUpload.controller.js';
+import { rateLimit } from '../middleware/rateLimit.js';
 
 const router = Router();
 router.get('/auctions', listAuctions);
@@ -33,6 +36,11 @@ router.post('/orders/:id/payment', createCheckout);
 router.post('/orders/:id/pay', payOrder); // legacy: Pay at Branch Counter fallback
 router.get('/account', getAccount);
 router.put('/account', updateAccount);
+// Profile -> Help & Support -> Contact Us. Identity is derived from the verified
+// session server-side; rate limited so it cannot be used to spam support.
+router.post('/support', rateLimit({ name: 'customer-support', windowMs: 600_000, max: 5 }), createCustomerSupportRequest);
+// Optional image attachment; identity is namespaced from the session.
+router.post('/support/attachment', rateLimit({ name: 'customer-support-upload', windowMs: 600_000, max: 10 }), createCustomerSupportUpload);
 router.get('/preferred-branch', getPreferredBranch);
 router.put('/preferred-branch', setPreferredBranch);
 router.get('/notifications', listNotifications);

@@ -10,7 +10,7 @@ import OtherBranchLivePopup from '../roles/customer/components/OtherBranchLivePo
 import AuctionStartPopup from '../roles/customer/components/AuctionStartPopup';
 import { useAuth } from '../shared/hooks/useAuth';
 import { BranchProvider, useBranch } from '../shared/hooks/useBranch';
-import { Home, Gavel, Tag, Heart, Eye, ShoppingBag, Settings, MapPin } from 'lucide-react';
+import { Home, Gavel, Tag, Heart, Eye, ShoppingBag, MapPin } from 'lucide-react';
 import '../roles/customer/customer-dashboard.css';
 
 const sections = [
@@ -23,7 +23,9 @@ const sections = [
     { to: '/customer/branch-locator', name: 'Branch Locator', icon: <MapPin size={16} /> },
   ]},
   { label: 'ORDERS', items: [{ to: '/customer/purchases', name: 'My Purchases', icon: <ShoppingBag size={16} /> }] },
-  { label: 'SETTINGS', items: [{ to: '/customer/settings', name: 'Settings', icon: <Settings size={16} /> }] },
+  // Customer Settings was retired: its useful part (Help & Support) now lives on
+  // Profile (/customer/account), which is reached through the account menu.
+  // Profile deliberately stays OUT of this nav so there is a single entry point.
 ];
 
 const titles = {
@@ -37,7 +39,6 @@ const titles = {
   '/customer/messages': ['Messages'],
   '/customer/notifications': ['Notifications'],
   '/customer/account': ['Profile'],
-  '/customer/settings': ['Settings'],
 };
 
 function BranchSwitcher() {

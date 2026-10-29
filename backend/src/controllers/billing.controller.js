@@ -15,12 +15,15 @@ import {
   toISODate,
   normalizeMrrContribution,
   computeSubscriptionMetricsFromRecords,
+  getPaymentMethodsCapability,
 } from '../services/subscriptionService.js';
 import {
   previewPlanChange,
   confirmPlanChange,
   cancelScheduledChange,
+  cancelPendingUpgrade,
   getActiveSubscriptionChange,
+  getPendingUpgrade,
   getScheduledDowngrade,
 } from '../services/subscriptionPlanChangeService.js';
 import {
@@ -74,14 +77,17 @@ export const getMySubscription = async (req, res) => {
     const summary = buildSubscriptionSummary(rows);
     let scheduled_change = null;
     let active_change = null;
+    let pending_change = null;
     try {
       active_change = await getActiveSubscriptionChange(req.user.id);
       scheduled_change = await getScheduledDowngrade(req.user.id);
+      pending_change = await getPendingUpgrade(req.user.id);
     } catch {}
     res.json({
       ...summary,
       scheduled_change,
       active_change,
+      pending_change,
       shop: shop
         ? { id: shop.id, shop_name: shop.shop_name, home_branch_id: shop.home_branch_id }
         : null,
@@ -111,18 +117,31 @@ export const getMyBillingOne = async (req, res) => {
   }
 };
 
-// POST /billing/:id/checkout — seller pays/retries own billing record
+// POST /billing/:id/checkout — seller pays/retries own billing record.
+// Optional body { payment_method } restricts the hosted PayMongo checkout to a
+// single method ('gcash' | 'card' | 'qrph' | 'maya' | 'billease' when
+// enabled). Amount/seller always derived server-side; unknown types → 400.
 export const createMaintenanceCheckout = async (req, res) => {
   try {
+    const requestedType = (req.body?.payment_method || req.body?.paymentMethod || '')
+      .toString()
+      .trim()
+      .toLowerCase();
     const { rows } = await pool.query(
       `SELECT * FROM billing_records WHERE id=$1 AND seller_id=$2`,
       [req.params.id, req.user.id]
     );
     if (!rows.length) return res.status(404).json({ message: 'Billing record not found' });
-    const result = await createBillingCheckoutSession(rows[0], { actorRole: 'shop_owner' });
+    const result = await createBillingCheckoutSession(rows[0], {
+      actorRole: 'shop_owner',
+      paymentMethodTypes: requestedType || null,
+    });
     res.json({ checkout_url: result.checkout_url, billing: result.billing, reused: result.reused });
   } catch (e) {
     const status = e.statusCode || 500;
+    if (e.code === 'INVALID_PAYMENT_METHOD_TYPE') {
+      return res.status(status).json({ error: e.code, message: e.message });
+    }
     console.error('[billing checkout]', e.message);
     res.status(status).json({ message: e.message || 'Failed to create checkout' });
   }
@@ -296,8 +315,22 @@ export const confirmSubscriptionChange = async (req, res) => {
 
 export const cancelSubscriptionChange = async (req, res) => {
   try {
-    const change = await cancelScheduledChange({ sellerId: req.user.id });
-    res.json({ ok: true, change });
+    // Scheduled downgrades first (existing behavior).
+    try {
+      const change = await cancelScheduledChange({ sellerId: req.user.id });
+      return res.json({ ok: true, kind: 'scheduled', change });
+    } catch (e) {
+      if (e?.code !== 'NO_SCHEDULED_CHANGE') throw e;
+    }
+    // Then unpaid pending upgrades (validated: unpaid only, never paid).
+    const result = await cancelPendingUpgrade({
+      sellerId: req.user.id,
+      changeId: req.body?.change_id || req.body?.changeId || null,
+    });
+    if (result.reconciled) {
+      return res.json({ ok: true, kind: 'reconciled', reconciled: result.reconciled, change: result.change || null });
+    }
+    return res.json({ ok: true, kind: 'pending', change: result.change });
   } catch (e) {
     const status = e.statusCode || 500;
     console.error('[subscription change cancel]', e.message);
@@ -311,6 +344,25 @@ export const cancelSubscriptionChange = async (req, res) => {
 // ---------------------------------------------------------------------------
 // Payment methods (safe metadata only)
 // ---------------------------------------------------------------------------
+
+// GET /billing/paymongo-config — client config for PayMongo.js Elements.
+// SECURITY: only the PUBLISHABLE key (pk_...) is ever serialized; the secret
+// key stays server-side in PAYMONGO_SECRET_KEY and is never read here.
+// payment_methods is the provider capability map the frontend renders rows
+// from (QR Ph / Card / GCash / GrabPay / Maya; BillEase only when enabled).
+export const getPaymongoClientConfig = async (_req, res) => {
+  try {
+    const publishableKey = String(process.env.PAYMONGO_PUBLIC_KEY || '').trim();
+    res.json({
+      publishable_key: publishableKey || null,
+      elements_src: 'https://js.paymongo.com/v1/elements.js',
+      payment_methods: getPaymentMethodsCapability(),
+    });
+  } catch (e) {
+    console.error('[paymongo config]', e.message);
+    res.status(500).json({ message: 'Failed to load payment config' });
+  }
+};
 
 export const listMyPaymentMethods = async (req, res) => {
   try {

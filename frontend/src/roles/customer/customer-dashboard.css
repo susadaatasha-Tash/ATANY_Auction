@@ -573,3 +573,119 @@
   .customer-app .customer-hero-title, .app .customer-hero-title { font-size: 20px !important; white-space: normal !important; }
   .customer-app .customer-hero-desc, .app .customer-hero-desc { font-size: 11px !important; white-space: normal !important; }
 }
+
+/* ================================================================
+   CUSTOMER PROFILE (/customer/account)
+   Profile Information | Security   then   Help & Support full width.
+   ================================================================ */
+.profile-page { display: flex; flex-direction: column; gap: 16px; }
+
+.profile-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.profile-panel-body { padding: 22px 24px 24px; display: flex; flex-direction: column; gap: 14px; }
+.profile-info-panel .panel-head h2,
+.profile-security-panel .panel-head h2,
+.profile-help-panel .panel-head h2 { font-size: 16px; }
+.profile-info-panel .panel-head p,
+.profile-security-panel .panel-head p,
+.profile-help-panel .panel-head p { font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+.profile-saved-flag {
+  font-size: 11px; font-weight: 700; color: #2E7D5B;
+  background: rgba(46,125,91,.1); border: 1px solid rgba(46,125,91,.25);
+  border-radius: 999px; padding: 3px 10px; align-self: flex-start;
+}
+
+/* Phone / name errors and read-only affordances */
+.field-error { font-size: 11px; color: var(--danger); margin-top: 4px; display: block; }
+.field-hint  { font-size: 11px; color: var(--muted); margin-top: 4px; display: block; line-height: 1.5; }
+.profile-panel-body input.has-error,
+.profile-panel-body select.has-error,
+.profile-panel-body textarea.has-error { border-color: var(--danger) !important; }
+.read-only-field { background: var(--soft) !important; cursor: not-allowed; color: var(--muted); }
+
+/* Password field with an in-field Eye toggle (right side, padded so the
+   caret never sits under the icon). */
+.password-wrap { position: relative; display: block; }
+.password-wrap input { padding-right: 42px; }
+.password-toggle {
+  position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  display: grid; place-items: center;
+  width: 30px; height: 30px; padding: 0;
+  background: transparent; border: none; border-radius: 6px;
+  color: var(--muted); cursor: pointer;
+}
+.password-toggle:hover { color: var(--navy); background: rgba(20,42,74,.05); }
+.password-toggle:focus-visible { outline: 2px solid var(--gold); outline-offset: 1px; }
+
+.profile-alert { font-size: 12px; border-radius: 8px; padding: 9px 12px; }
+.profile-alert.error { color: #A33; background: rgba(170,51,51,.08); border: 1px solid rgba(170,51,51,.2); }
+
+/* Help & Support rows */
+.profile-help-panel .profile-panel-body { padding-top: 8px; padding-bottom: 8px; }
+.profile-help-row {
+  width: 100%; display: flex; align-items: center; gap: 12px;
+  padding: 14px 0; background: transparent; border: none;
+  border-bottom: 1px solid var(--line); cursor: pointer; text-align: left;
+}
+.profile-help-row:last-child { border-bottom: none; }
+.profile-help-row:hover .profile-help-title { color: var(--gold); }
+.profile-help-row:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; border-radius: 6px; }
+.profile-help-icon {
+  width: 34px; height: 34px; flex: none; border-radius: 50%;
+  display: grid; place-items: center;
+  background: #FDF6E3; border: 1px solid #F0E6C8; color: #8A6D2B;
+}
+.profile-help-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.profile-help-title { font-size: 13px; font-weight: 700; color: var(--navy); transition: color .18s ease; }
+.profile-help-desc { font-size: 11px; color: var(--muted); }
+.profile-help-chevron { color: #C1C7D0; flex: none; }
+
+/* Modals */
+.profile-modal-backdrop {
+  position: fixed; inset: 0; z-index: 1200;
+  background: rgba(20,42,74,.45);
+  display: grid; place-items: center; padding: 16px;
+}
+.profile-modal {
+  width: min(460px, 100%); max-height: 88vh; overflow-y: auto;
+  background: #fff; border-radius: 12px; padding: 22px 24px;
+  box-shadow: 0 24px 60px rgba(20,42,74,.28);
+}
+.profile-modal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 12px; }
+.profile-modal-head h3 { font-size: 16px; font-weight: 800; color: var(--navy); margin: 0; }
+.profile-modal-head button { background: transparent; border: none; cursor: pointer; color: var(--muted); display: grid; place-items: center; }
+.profile-modal-head button:hover { color: var(--navy); }
+
+.profile-faq { display: flex; flex-direction: column; }
+.profile-faq-item { border-bottom: 1px solid var(--line); }
+.profile-faq-item:last-child { border-bottom: none; }
+.profile-faq-item > button {
+  width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 13px 0; background: transparent; border: none; cursor: pointer;
+  font-size: 13px; font-weight: 700; color: var(--navy); text-align: left;
+}
+.profile-faq-item p { margin: 0 0 13px; font-size: 12px; line-height: 1.65; color: var(--muted); }
+.profile-faq-item.open > button svg { transform: rotate(180deg); }
+
+.profile-contact-form { display: flex; flex-direction: column; gap: 13px; }
+.profile-contact-prefill { font-size: 12px; color: var(--muted); margin: 0; }
+.profile-contact-sent { text-align: center; display: flex; flex-direction: column; gap: 10px; align-items: center; padding: 8px 0; }
+.profile-contact-sent svg { color: #2E7D5B; }
+.profile-contact-sent h4 { margin: 0; font-size: 15px; color: var(--navy); }
+.profile-contact-sent p { margin: 0; font-size: 12px; color: var(--muted); line-height: 1.6; }
+
+/* Stack on tablet / mobile */
+@media (max-width: 900px) {
+  .profile-grid { grid-template-columns: 1fr; }
+  .profile-panel-body { padding: 20px; }
+}
+@media (max-width: 480px) {
+  .profile-panel-body { padding: 18px 16px; }
+  .password-wrap input { padding-right: 40px; }
+}

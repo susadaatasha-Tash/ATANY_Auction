@@ -27,6 +27,7 @@ const isoAgo = (ms) => new Date(Date.now() - ms).toISOString();
 
 const BUYER_A = '11111111-1111-1111-1111-111111111111';
 const BUYER_B = '22222222-2222-2222-2222-222222222222';
+const BUYER_C = '33333333-3333-3333-3333-333333333333';
 const AUCTION = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 const ORDER = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb';
 
@@ -103,7 +104,7 @@ describe('customer payment notifications (7-day lifecycle)', () => {
       if (/FROM auctions WHERE status/i.test(sql)) {
         return { rows: [{ id: AUCTION }] };
       }
-      if (/FROM bids WHERE auction_id/i.test(sql)) {
+      if (/FROM bids[\s\S]*auction_id/i.test(sql)) {
         return { rows: [{ user_id: BUYER_A, amount: 20000, created_at: isoAgo(2 * DAY) }] };
       }
       if (/FROM orders WHERE auction_id/i.test(sql)) return { rows: [], rowCount: 0 };
@@ -163,83 +164,139 @@ describe('customer payment notifications (7-day lifecycle)', () => {
     expect(captureInserts().every((n) => n.user_id === BUYER_A && n.auction_id === AUCTION)).toBe(true);
   });
 
-  test('5/6/7. expiration notifies old winner; new winner gets notice + fresh deadline; old winner gets no new-winner notice', async () => {
-    const order = {
-      id: ORDER, auction_id: AUCTION, buyer_id: BUYER_A, amount: 20000,
-      status: 'pending', transaction_code: 'TXN-9001', created_at: isoAgo(8 * DAY),
-    };
-    pool.query.mockImplementation(async (sql, params = []) => {
-      if (/FROM notifications/i.test(sql)) return { rows: [], rowCount: 0 };
-      if (/FROM orders WHERE status/i.test(sql)) return { rows: [order] };
-      if (/FROM payments/i.test(sql)) return { rows: [], rowCount: 0 };
-      if (/FROM bids WHERE auction_id/i.test(sql)) {
+  // Shared fixture for the two rotation tests below.
+  // Mirrors the required scenario: Maria 71k (rank 1), Britz 65k (rank 2),
+  // John 58k (rank 3) — repeated bids collapsed to one rank per user.
+  function rotationRouter(order) {
+    return async (sql, params = []) => {
+      const s = String(sql);
+      // winnerExpiration refuses to run until the migrated schema is present.
+      if (/information_schema\.columns/.test(s)) {
         return {
           rows: [
-            { user_id: BUYER_A, amount: 20000, created_at: isoAgo(9 * DAY) },
-            { user_id: BUYER_B, amount: 19000, created_at: isoAgo(9 * DAY) },
+            { column_name: 'payment_deadline' },
+            { column_name: 'winner_confirmed_at' },
+            { column_name: 'winner_rank' },
+          ],
+          rowCount: 3,
+        };
+      }
+      if (/FROM pg_enum/.test(s)) return { rows: [{ exists: 1 }], rowCount: 1 };
+      if (/FROM notifications/i.test(s)) return { rows: [], rowCount: 0 };
+      if (/FROM (public\.)?orders[\s\S]*status = 'pending'/i.test(s) && /payment_deadline/i.test(s)) {
+        return { rows: [{ id: order.id }], rowCount: 1 };
+      }
+      if (/FROM public\.orders WHERE id = \$1 FOR UPDATE/i.test(s)) {
+        return { rows: [{ ...order }], rowCount: 1 };
+      }
+      if (/FROM payments/i.test(s)) return { rows: [], rowCount: 0 };
+      if (/FROM bids[\s\S]*auction_id/i.test(s)) {
+        return {
+          rows: [
+            { user_id: BUYER_A, amount: 71000, created_at: isoAgo(9 * DAY) },
+            { user_id: BUYER_B, amount: 65000, created_at: isoAgo(9 * DAY) },
+            { user_id: BUYER_C, amount: 58000, created_at: isoAgo(9 * DAY) },
           ],
         };
       }
-      // Simulate the rotation UPDATE mutating the DB row (not the service's held
-      // copy) so the verify re-read passes while later reads see the new buyer.
-      if (/UPDATE orders SET buyer_id/i.test(sql)) {
-        order._rotatedTo = params[0];
-        order.created_at = new Date().toISOString();
-        return { rows: [], rowCount: 1 };
+      if (/FROM auctions[\s\S]*LEFT JOIN products/i.test(s)) {
+        return { rows: [{ product_id: 'p1', product_name: 'Rose Gold Bangle', shop_id: null, shop_name: null, seller_id: null }] };
       }
-      if (/FROM orders WHERE id/i.test(sql)) {
-        return { rows: [{ ...order, buyer_id: order._rotatedTo || order.buyer_id }] };
+      if (/SELECT buyer_id, amount, status, winner_rank[\s\S]*FROM public\.orders WHERE id/i.test(s)) {
+        return { rows: [{ ...order }], rowCount: 1 };
       }
-      if (/FROM users WHERE id/i.test(sql)) return { rows: [{ name: 'Winner B' }] };
-      if (/FROM auctions WHERE id/i.test(sql)) return { rows: [{ product_id: 'p1' }] };
-      if (/FROM products WHERE id/i.test(sql)) return { rows: [{ name: 'Gold Ring', shop_id: null }] };
-      if (/FROM users WHERE role/i.test(sql)) return { rows: [] };
+      if (/UPDATE public\.orders[\s\S]*buyer_id/i.test(s)) {
+        order.__rotated = {
+          buyer_id: params[0], amount: params[1],
+          confirmed: params[2], deadline: params[3], rank: params[4],
+        };
+        return { rowCount: 1, rows: [] };
+      }
+      if (/UPDATE public\.orders SET status = 'expired'/i.test(s)) return { rowCount: 1, rows: [] };
+      if (/SELECT name FROM public\.users WHERE id/i.test(s)) return { rows: [{ name: 'Britz Susada' }], rowCount: 1 };
+      if (/FROM public\.users WHERE role='admin'/i.test(s)) return { rows: [], rowCount: 0 };
       return { rows: [], rowCount: 1 };
+    };
+  }
+
+  test('5/6/7. expiration notifies the old winner and hands the item to the next eligible bidder', async () => {
+    const order = {
+      id: ORDER, auction_id: AUCTION, buyer_id: BUYER_A, amount: 71000,
+      status: 'pending', transaction_code: 'TXN-9001',
+      created_at: isoAgo(8 * DAY),
+      winner_confirmed_at: isoAgo(8 * DAY),
+      payment_deadline: isoAgo(1 * DAY),
+      winner_rank: 1,
+    };
+    pool.query.mockImplementation(rotationRouter(order));
+    // The verify step must observe the post-write row, like a real DB would.
+    const base = pool.query.getMockImplementation();
+    pool.query.mockImplementation(async (sql, params = []) => {
+      if (/SELECT buyer_id, amount, status, winner_rank[\s\S]*FROM public\.orders WHERE id/i.test(String(sql))) {
+        const r = order.__rotated;
+        return {
+          rows: [r
+            ? {
+              buyer_id: r.buyer_id, amount: Number(r.amount), status: 'pending',
+              winner_rank: Number(r.rank), payment_deadline: r.deadline,
+            }
+            : { ...order }],
+          rowCount: 1,
+        };
+      }
+      return base(sql, params);
     });
+
     await checkAndExpireWinners();
     const inserts = captureInserts();
-    const expiredNotice = inserts.filter((n) => n.user_id === BUYER_A && /expired/.test(n.message));
+
+    // Old winner is told their eligibility lapsed (never that bids were deleted).
+    const expiredNotice = inserts.filter((n) => n.user_id === BUYER_A && /has expired/.test(n.message));
     expect(expiredNotice.length).toBe(1);
+    expect(expiredNotice[0].message).not.toMatch(/bids (were|have been) (deleted|removed)/i);
+
+    // New winner is told they are the eligible winner, with amount + deadline.
     const newWinnerNotice = inserts.filter((n) => n.user_id === BUYER_B && /eligible winner/.test(n.message));
     expect(newWinnerNotice.length).toBe(1);
-    expect(newWinnerNotice[0].message).toMatch(/7 days/);
-    // Old winner must NOT receive the new-winner notification.
+    expect(newWinnerNotice[0].message).toMatch(/₱65,000/);
+    expect(newWinnerNotice[0].message).toMatch(/Pay by/i);
+    // The old winner is never told they are the winner.
     expect(inserts.filter((n) => n.user_id === BUYER_A && /eligible winner/.test(n.message)).length).toBe(0);
+
+    // Reassignment state: THEIR OWN highest bid, next rank, fresh stored deadline.
+    expect(order.__rotated).toBeTruthy();
+    expect(order.__rotated.buyer_id).toBe(BUYER_B);
+    expect(Number(order.__rotated.amount)).toBe(65000);
+    expect(Number(order.__rotated.rank)).toBe(2);
+    const fresh = new Date(order.__rotated.deadline).getTime() - Date.now();
+    expect(fresh).toBeGreaterThan(6.9 * DAY);
+    expect(fresh).toBeLessThanOrEqual(7 * DAY);
+    // orders.created_at is the auction-close stamp and must NOT be rewritten.
+    expect(new Date(order.created_at).getTime()).toBeLessThan(Date.now() - 7 * DAY);
   });
 
-  test('8. reassignment gives a fresh 7-day deadline (rotation update issued)', async () => {
+  test('8. reassignment is a single UPDATE of the SAME order row (one order per auction)', async () => {
     const order = {
-      id: ORDER, auction_id: AUCTION, buyer_id: BUYER_A, amount: 20000,
-      status: 'pending', transaction_code: 'TXN-9001', created_at: isoAgo(8 * DAY),
+      id: ORDER, auction_id: AUCTION, buyer_id: BUYER_A, amount: 71000,
+      status: 'pending', transaction_code: 'TXN-9001',
+      created_at: isoAgo(8 * DAY),
+      winner_confirmed_at: isoAgo(8 * DAY),
+      payment_deadline: isoAgo(1 * DAY),
+      winner_rank: 1,
     };
-    let rotationUpdate = null;
-    pool.query.mockImplementation(async (sql, params = []) => {
-      if (/FROM notifications/i.test(sql)) return { rows: [], rowCount: 0 };
-      if (/FROM orders WHERE status/i.test(sql)) return { rows: [order] };
-      if (/FROM payments/i.test(sql)) return { rows: [], rowCount: 0 };
-      if (/FROM bids WHERE auction_id/i.test(sql)) {
-        return { rows: [{ user_id: BUYER_B, amount: 19000, created_at: isoAgo(9 * DAY) }] };
-      }
-      if (/FROM orders WHERE id/i.test(sql)) return { rows: [{ ...order }] };
-      if (/UPDATE orders SET buyer_id/i.test(sql)) {
-        rotationUpdate = { sql, params };
-        order.buyer_id = params[0];
-        order.created_at = new Date().toISOString();
-        return { rows: [], rowCount: 1 };
-      }
-      if (/SELECT buyer_id FROM orders/i.test(sql)) return { rows: [{ buyer_id: order.buyer_id }] };
-      if (/FROM users WHERE id/i.test(sql)) return { rows: [{ name: 'Winner B' }] };
-      if (/FROM auctions WHERE id/i.test(sql)) return { rows: [{ product_id: 'p1' }] };
-      if (/FROM products WHERE id/i.test(sql)) return { rows: [{ name: 'Gold Ring', shop_id: null }] };
-      if (/FROM users WHERE role/i.test(sql)) return { rows: [] };
-      return { rows: [], rowCount: 1 };
-    });
+    pool.query.mockImplementation(rotationRouter(order));
+
     await checkAndExpireWinners();
-    expect(rotationUpdate).not.toBeNull();
-    expect(rotationUpdate.params[0]).toBe(BUYER_B);
-    // Buyer rotated to B with a fresh timestamp, so the next deadline is ~7 days out.
-    expect(order.buyer_id).toBe(BUYER_B);
-    expect(Date.now() - new Date(order.created_at).getTime()).toBeLessThan(5 * 60 * 1000);
+
+    const mutations = pool.query.mock.calls
+      .map(([sql]) => String(sql))
+      .filter((s) => /^\s*UPDATE/i.test(s) && /orders/i.test(s));
+    // Exactly one authoritative write: no INSERT of a second order, no retry.
+    expect(mutations.length).toBe(1);
+    expect(pool.query.mock.calls.some(([sql]) => /INSERT INTO orders/i.test(String(sql)))).toBe(false);
+    // and it is the new-column form — the broken catch-and-retry is gone
+    expect(mutations[0]).toMatch(/payment_deadline\s*=\s*\$4/);
+    expect(mutations[0]).toMatch(/winner_rank\s*=\s*\$5/);
   });
 
   test('9. paid order receives no future reminders', async () => {

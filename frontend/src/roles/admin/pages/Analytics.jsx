@@ -112,7 +112,7 @@ export default function Analytics({ analytics: propAnalytics, onRangeChange, onD
             <div style={{ fontSize: 11, opacity: .7 }}>to sellers</div>
           </div>
         </div>
-        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 10, lineHeight: 1.4 }}>Sale Amount = Commission (10%) + Payout (90%) — calculated from real orders where status in pending/ready_pickup/completed.</div>
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 10, lineHeight: 1.4 }}>Sale Amount = Commission (10%) + Payout (90%) — recognized revenue: orders with a confirmed paid payment (order status is a fulfillment state).</div>
       </div>
 
       {subscriptionStats && (

@@ -267,16 +267,27 @@ describe('H2 fail-closed money/job paths', () => {
     expect(src).toMatch(/BIDDING_UNAVAILABLE/);
   });
 
-  it('webhook paid path uses atomic claim + requireDirectPg', () => {
+  it('webhook paid path settles through the shared ORDER-LOCKED transaction', () => {
     const src = fs.readFileSync(path.join(root, 'controllers/webhook.controller.js'), 'utf8');
-    expect(src).toMatch(/requireDirectPg/);
-    expect(src).toMatch(/status IN \('pending','processing','failed','expired'\)/);
+    // The paid transition is no longer an inline claim in the controller: both the
+    // webhook and the polling path delegate to one serialized settlement so a
+    // payment can never interleave with a winner rotation.
+    expect(src).toMatch(/settlePaidPaymentWithOrderLock/);
+    expect(src).not.toMatch(/UPDATE payments SET status='paid'/);
+    const guard = fs.readFileSync(path.join(root, 'services/paymentRaceGuard.js'), 'utf8');
+    // ...and that settlement is the fail-closed, atomic one it replaced.
+    expect(guard).toMatch(/requireDirectPg|isDirectPg/);
+    expect(guard).toMatch(/FROM public\.orders WHERE id = \$1 FOR UPDATE/);
+    expect(guard).toMatch(/BEGIN/);
+    expect(guard).toMatch(/status IN \('pending','processing','failed','expired','cancelled'\)/);
   });
 
-  it('payment polling path uses atomic claim + requireDirectPg', () => {
+  it('payment polling path settles through the shared ORDER-LOCKED transaction', () => {
     const src = fs.readFileSync(path.join(root, 'controllers/customer/payment.controller.js'), 'utf8');
-    expect(src).toMatch(/requireDirectPg/);
-    expect(src).toMatch(/status IN \('pending','processing','failed','expired'\)/);
+    expect(src).toMatch(/settlePaidPaymentWithOrderLock/);
+    expect(src).not.toMatch(/UPDATE payments SET status='paid'/);
+    // online checkout refuses to START a payment after the 7-day window closed
+    expect(src).toMatch(/PAYMENT_WINDOW_EXPIRED/);
   });
 
   it('subscription apply paths require direct pg', () => {

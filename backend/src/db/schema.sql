@@ -65,7 +65,8 @@ CREATE TABLE auctions (
   status auction_status NOT NULL DEFAULT 'scheduled',
   start_time TIMESTAMPTZ NOT NULL,
   end_time TIMESTAMPTZ NOT NULL,
-  paused_at TIMESTAMPTZ
+  paused_at TIMESTAMPTZ,
+  minimum_bid_increment INTEGER NOT NULL DEFAULT 1000
 );
 
 CREATE TABLE bids (
@@ -77,6 +78,22 @@ CREATE TABLE bids (
   flag_reason TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Persistent unique viewers per auction (TOTAL VIEWERS; see 032 migration).
+-- One row per (auction, user): first_viewed_at immutable, last_viewed_at
+-- refreshes on reopen. Live presence (WATCHERS) stays in-memory only.
+CREATE TABLE IF NOT EXISTS auction_viewers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  auction_id UUID NOT NULL REFERENCES auctions(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  first_viewed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_viewed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_auction_viewers_auction_user UNIQUE (auction_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_auction_viewers_auction ON auction_viewers(auction_id);
+CREATE INDEX IF NOT EXISTS idx_auction_viewers_user ON auction_viewers(user_id);
 
 CREATE TABLE orders (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -224,10 +241,23 @@ CREATE TRIGGER trg_users_guard_privileged
   BEFORE UPDATE ON public.users FOR EACH ROW
   EXECUTE FUNCTION public.users_guard_privileged_columns();
 
--- Orders winner tracking (migration 021)
+-- Orders winner tracking (migrations 021 + 034)
+-- Kept in sync with src/db/migrations/034_winner_fallback_hardening.sql so a
+-- fresh install is never born with the drift that silently disabled winner
+-- reassignment in an existing environment.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'expired' AND enumtypid = 'public.order_status'::regtype) THEN
+    ALTER TYPE public.order_status ADD VALUE 'expired';
+  END IF;
+END $$;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS winner_confirmed_at TIMESTAMPTZ;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS payment_deadline TIMESTAMPTZ;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS winner_rank INTEGER DEFAULT 1;
+-- Candidate index for the 7-day expiration cron
+-- (status='pending' AND payment_deadline <= NOW())
+CREATE INDEX IF NOT EXISTS idx_orders_pending_deadline
+  ON orders (payment_deadline)
+  WHERE status = 'pending' AND payment_deadline IS NOT NULL;
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS transaction_code TEXT;
 ALTER TABLE auctions ADD COLUMN IF NOT EXISTS auction_code TEXT;
 
@@ -270,6 +300,7 @@ CREATE TABLE IF NOT EXISTS billing_records (
   billing_interval TEXT NOT NULL DEFAULT 'monthly',
   billing_type TEXT NOT NULL DEFAULT 'subscription',
   subscription_change_id UUID,
+  payment_method_type TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

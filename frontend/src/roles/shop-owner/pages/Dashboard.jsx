@@ -6,6 +6,7 @@ import { ArrowRight, CalendarDays, Clock, Gavel, Gem, LineChart, Package, Receip
 import { apiFetch } from '../../../shared/lib/apiClient';
 import { StatusBadge, payoutPresentation, fulfillmentPresentation, auctionPresentation } from '../components/StatusBadge';
 import { DashboardEmptyState } from '../components/DashboardEmptyState';
+import { Skeleton, SkeletonCircle, SkeletonList, SkeletonRegion } from '../../../shared/ui/Skeleton';
 import { SellerWelcomeBanner } from '../components/SellerWelcomeBanner';
 import '../seller-dashboard.css';
 
@@ -99,17 +100,41 @@ function Thumb({ src, alt }) {
   );
 }
 
+/**
+ * Mirrors `.sdash-summary-card` (icon + label / value / meta) while the sales
+ * request is in flight, so the seller never sees a fabricated "₱0 / 0 lots"
+ * that would be indistinguishable from a real zero.
+ */
+function SummaryCardSkeleton({ label, gold }) {
+  return (
+    <div className={`sdash-summary-card${gold ? ' sdash-summary-card--gold' : ''}`} aria-hidden="true">
+      <div className="sdash-summary-card__icon"><Skeleton w={16} h={16} r={6} /></div>
+      <div className="sdash-summary-card__body">
+        <div className="sdash-summary-card__label">{label}</div>
+        <div className="sdash-summary-card__value"><Skeleton w={72} h={18} /></div>
+        <div className="sdash-summary-card__meta"><Skeleton w={46} h={11} /></div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Table skeleton built on the shared ATANY primitive. Rendered inside the real
+ * `.sdash-table-wrap` so its width matches the loaded table (no skeleton→table
+ * shift) and the first column keeps the thumb rhythm.
+ */
 function TableSkeleton({ rows = 4, cols = 6 }) {
   return (
-    <>
+    <div className="sdash-table-wrap" aria-busy="true">
       {Array.from({ length: rows }).map((_, i) => (
         <div className="sdash-skeleton-row" key={i}>
-          {Array.from({ length: cols }).map((__, j) => (
-            <div className="sdash-skeleton" key={j} style={{ flex: j === 0 ? 2 : 1, height: 14 }} />
+          <SkeletonCircle size={32} />
+          {Array.from({ length: cols - 1 }).map((__, j) => (
+            <Skeleton key={j} w="100%" h={14} style={{ flex: j === 0 ? 2 : 1 }} />
           ))}
         </div>
       ))}
-    </>
+    </div>
   );
 }
 
@@ -208,7 +233,7 @@ export default function ShopDashboard() {
                 <h2 className="sdash-panel__title" id="sdash-sales-title">Recent Sales</h2>
                 <p className="sdash-panel__subtitle">Your latest sold lots, buyers and payouts</p>
               </div>
-              <Link to="/shop/sales" className="sdash-link-btn">
+              <Link to="/shop/orders" className="sdash-link-btn">
                 View all orders
                 <ArrowRight />
               </Link>
@@ -229,39 +254,53 @@ export default function ShopDashboard() {
                   </button>
                 ))}
               </div>
-              <div className="sdash-filter-total" title="Sold total for selected range">
+              <div className="sdash-filter-total" title="Sold total for selected range" aria-busy={loading ? 'true' : undefined}>
                 <span className="sdash-filter-total__icon" aria-hidden="true"><LineChart /></span>
-                <span>{peso(filterTotal.total)}</span>
+                <span>{loading ? <Skeleton w={54} h={12} /> : peso(filterTotal.total)}</span>
                 <span className="sdash-filter-total__sep">·</span>
-                <span className="sdash-filter-total__meta">{filterTotal.count} {filterTotal.count === 1 ? 'lot' : 'lots'}</span>
+                <span className="sdash-filter-total__meta">
+                  {loading ? <Skeleton w={38} h={12} style={{ display: 'inline-block' }} /> : `${filterTotal.count} ${filterTotal.count === 1 ? 'lot' : 'lots'}`}
+                </span>
               </div>
             </div>
 
-            <div className="sdash-summary">
-              <div className="sdash-summary-card sdash-summary-card--gold">
-                <div className="sdash-summary-card__icon" aria-hidden="true"><LineChart /></div>
-                <div className="sdash-summary-card__body">
-                  <div className="sdash-summary-card__label">Sold This Month</div>
-                  <div className="sdash-summary-card__value">{peso(summary.soldMonthTotal)}</div>
-                  <div className="sdash-summary-card__meta">{summary.soldMonthCount} {summary.soldMonthCount === 1 ? 'lot' : 'lots'}</div>
-                </div>
-              </div>
-              <div className="sdash-summary-card">
-                <div className="sdash-summary-card__icon" aria-hidden="true"><CalendarDays /></div>
-                <div className="sdash-summary-card__body">
-                  <div className="sdash-summary-card__label">Sold Today</div>
-                  <div className="sdash-summary-card__value">{peso(summary.soldTodayTotal)}</div>
-                  <div className="sdash-summary-card__meta">{summary.soldTodayCount} {summary.soldTodayCount === 1 ? 'lot' : 'lots'}</div>
-                </div>
-              </div>
-              <div className="sdash-summary-card">
-                <div className="sdash-summary-card__icon" aria-hidden="true"><Clock /></div>
-                <div className="sdash-summary-card__body">
-                  <div className="sdash-summary-card__label">Awaiting Release</div>
-                  <div className="sdash-summary-card__value">{peso(summary.awaitingTotal)}</div>
-                  <div className="sdash-summary-card__meta">{summary.awaitingCount} {summary.awaitingCount === 1 ? 'settlement' : 'settlements'}</div>
-                </div>
-              </div>
+            {/* Initial load: shape only. Once sales arrive the real figures
+                render (a genuine ₱0 stays ₱0). */}
+            <div className="sdash-summary" aria-busy={loading ? 'true' : undefined}>
+              {loading ? (
+                <>
+                  <SummaryCardSkeleton gold label="Sold This Month" />
+                  <SummaryCardSkeleton label="Sold Today" />
+                  <SummaryCardSkeleton label="Awaiting Release" />
+                </>
+              ) : (
+                <>
+                  <div className="sdash-summary-card sdash-summary-card--gold">
+                    <div className="sdash-summary-card__icon" aria-hidden="true"><LineChart /></div>
+                    <div className="sdash-summary-card__body">
+                      <div className="sdash-summary-card__label">Sold This Month</div>
+                      <div className="sdash-summary-card__value">{peso(summary.soldMonthTotal)}</div>
+                      <div className="sdash-summary-card__meta">{summary.soldMonthCount} {summary.soldMonthCount === 1 ? 'lot' : 'lots'}</div>
+                    </div>
+                  </div>
+                  <div className="sdash-summary-card">
+                    <div className="sdash-summary-card__icon" aria-hidden="true"><CalendarDays /></div>
+                    <div className="sdash-summary-card__body">
+                      <div className="sdash-summary-card__label">Sold Today</div>
+                      <div className="sdash-summary-card__value">{peso(summary.soldTodayTotal)}</div>
+                      <div className="sdash-summary-card__meta">{summary.soldTodayCount} {summary.soldTodayCount === 1 ? 'lot' : 'lots'}</div>
+                    </div>
+                  </div>
+                  <div className="sdash-summary-card">
+                    <div className="sdash-summary-card__icon" aria-hidden="true"><Clock /></div>
+                    <div className="sdash-summary-card__body">
+                      <div className="sdash-summary-card__label">Awaiting Release</div>
+                      <div className="sdash-summary-card__value">{peso(summary.awaitingTotal)}</div>
+                      <div className="sdash-summary-card__meta">{summary.awaitingCount} {summary.awaitingCount === 1 ? 'settlement' : 'settlements'}</div>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             <div className="sdash-panel__body">
@@ -424,7 +463,20 @@ export default function ShopDashboard() {
             <div className="sdash-panel__body">
               {activityLoading ? (
                 <div style={{ padding: 4 }}>
-                  <TableSkeleton rows={5} cols={2} />
+                  <SkeletonRegion label="Loading recent activity">
+                    <SkeletonList
+                      count={5}
+                      render={() => (
+                        <>
+                          <SkeletonCircle size={30} />
+                          <span style={{ flex: 1, minWidth: 0 }}>
+                            <Skeleton w="82%" h={11} />
+                            <Skeleton w="36%" h={9} style={{ marginTop: 6 }} />
+                          </span>
+                        </>
+                      )}
+                    />
+                  </SkeletonRegion>
                 </div>
               ) : activityError ? (
                 <DashboardEmptyState

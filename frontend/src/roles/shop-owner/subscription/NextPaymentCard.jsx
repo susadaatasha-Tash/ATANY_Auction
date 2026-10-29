@@ -8,6 +8,7 @@ export function NextPaymentCard({
   paying,
   onUpdatePaymentMethod,
   billingInterval,
+  defaultMethod,
 }) {
   if (!nextPayment) {
     return (
@@ -76,7 +77,9 @@ export function NextPaymentCard({
         <div className="ssub-nextpay__row">
           <span className="ssub-nextpay__row-icon" aria-hidden="true">↻</span>
           <span data-testid="next-payment-method-note">
-            Payment method selected during checkout
+            {defaultMethod?.last4
+              ? `Payment method: Default card •••• ${defaultMethod.last4}`
+              : 'Payment method: Select at checkout'}
           </span>
         </div>
       </div>

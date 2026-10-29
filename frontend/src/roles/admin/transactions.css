@@ -1,0 +1,16 @@
+.tx-reassigned {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  color: #7a5a12;
+  background: #fdf3d9;
+  border: 1px solid #e8d3a0;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.tx-winner-label {
+  font-weight: 600;
+  color: #142a4a;
+}

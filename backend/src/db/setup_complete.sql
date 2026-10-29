@@ -46,6 +46,18 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL;
 END $$;
 
+-- 7-day winner fallback parity (migrations 021 + 034).
+-- 'preparing' is the fulfillment step between pending and ready_pickup;
+-- 'expired' is terminal: the payment window closed and no eligible bidder remained.
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'preparing' AND enumtypid = 'public.order_status'::regtype) THEN
+    ALTER TYPE public.order_status ADD VALUE 'preparing';
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_enum WHERE enumlabel = 'expired' AND enumtypid = 'public.order_status'::regtype) THEN
+    ALTER TYPE public.order_status ADD VALUE 'expired';
+  END IF;
+END $$;
+
 DO $$ BEGIN
   CREATE TYPE alert_severity AS ENUM ('low','medium','high');
 EXCEPTION WHEN duplicate_object THEN NULL;
@@ -130,6 +142,8 @@ CREATE TABLE IF NOT EXISTS auctions (
 );
 -- Migration 030 parity for fresh installs (see backend/src/db/migrations/030_auction_pause_support.sql)
 ALTER TABLE auctions ADD COLUMN IF NOT EXISTS paused_at TIMESTAMPTZ;
+-- Migration 031 parity for fresh installs (see backend/src/db/migrations/031_auction_minimum_bid_increment.sql)
+ALTER TABLE auctions ADD COLUMN IF NOT EXISTS minimum_bid_increment INTEGER NOT NULL DEFAULT 1000;
 
 CREATE TABLE IF NOT EXISTS bids (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -140,6 +154,20 @@ CREATE TABLE IF NOT EXISTS bids (
   flag_reason TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Migration 032 parity for fresh installs (see backend/src/db/migrations/032_auction_viewers.sql)
+CREATE TABLE IF NOT EXISTS auction_viewers (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  auction_id UUID NOT NULL REFERENCES auctions(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  first_viewed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_viewed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT uq_auction_viewers_auction_user UNIQUE (auction_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS idx_auction_viewers_auction ON auction_viewers(auction_id);
+CREATE INDEX IF NOT EXISTS idx_auction_viewers_user ON auction_viewers(user_id);
 
 CREATE TABLE IF NOT EXISTS orders (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -253,6 +281,7 @@ CREATE TABLE IF NOT EXISTS billing_records (
   billing_interval TEXT NOT NULL DEFAULT 'monthly',
   billing_type TEXT NOT NULL DEFAULT 'subscription',
   subscription_change_id UUID,
+  payment_method_type TEXT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );

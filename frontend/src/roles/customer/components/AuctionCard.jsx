@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { formatCountdown, formatOpensIn } from '../../../shared/hooks/useAuctionCountdown';
 import { BidStepper } from './BidStepper';
+import { incrementOf, minimumNextBid, formatPeso } from '../../../shared/lib/bidMinimum';
 
 function peso(n) {
   const num = Number(n);
@@ -72,13 +73,18 @@ export function AuctionCard({ auction, isFavorited, isNotifying, onOpenDetail, o
         <div className="live-meta"><span>{auction.bids} bids</span><span>{isEnded ? 'Auction over' : isLive ? `${formatCountdown(countdownSec)} left` : formatOpensIn(countdownSec * 1000)}</span></div>
         {auction.branch_name && <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>📍 Pickup at {auction.branch_name}</div>}
         <div className="price">Current bid: <b>{peso(auction.currentBid)}</b></div>
+        {isLive && (
+          <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+            Min increment {formatPeso(incrementOf(auction))} · Next bid ≥ {formatPeso(minimumNextBid(Number(auction.currentBid ?? auction.current_bid ?? auction.startPrice ?? auction.start_price ?? 0) || 0, incrementOf(auction)))}
+          </div>
+        )}
         {isPaused ? (
           <div style={{ padding: '8px 12px', background: '#fff3cd', borderRadius: 8, textAlign: 'center', color: '#856404', fontSize: 13, fontWeight: 600 }}>Auction Paused</div>
         ) : isEnded ? (
           <div style={{ padding: '8px 12px', background: 'var(--soft, #f5f5f5)', borderRadius: 8, textAlign: 'center', color: 'var(--muted, #888)', fontSize: 13, fontWeight: 600 }}>Auction Ended</div>
         ) : isLive ? (
           <div className="bid-box" onClick={(e) => e.stopPropagation()}>
-            <BidStepper currentBid={auction.currentBid ?? auction.current_bid} startPrice={auction.start_price ?? auction.startPrice} onPlaceBid={handleBid} size="small" disabled={isSubmitting} />
+            <BidStepper currentBid={auction.currentBid ?? auction.current_bid} startPrice={auction.start_price ?? auction.startPrice} minIncrement={incrementOf(auction)} auction={auction} onPlaceBid={handleBid} size="small" disabled={isSubmitting} />
           </div>
         ) : (
           <button type="button" className={`btn ${isNotifying ? 'btn-primary' : 'btn-outline'}`} style={{ width: '100%', justifyContent: 'center' }} onClick={(e) => { e.stopPropagation(); e.preventDefault(); onToggleNotify(auction.id); }}>{isNotifying ? 'Notifying ✓' : 'Notify Me'}</button>

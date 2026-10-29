@@ -2,7 +2,7 @@
 // Role-based routing — redirects to layout after login per spec.
 // Guards mirror backend requireRole middleware: customer token can't hit /admin etc.
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, RequireRole } from './shared/hooks/useAuth';
+import { AuthProvider, RequireRole, RequireActiveCustomer } from './shared/hooks/useAuth';
 import { ToastProvider } from './shared/components/Toast';
 import { ErrorBoundary } from './shared/components/ErrorBoundary';
 import CustomerLayout from './layouts/CustomerLayout';
@@ -15,8 +15,10 @@ import AuthCallback from './pages/AuthCallback';
 import SelectBranch from './pages/SelectBranch';
 import BranchLocator from './roles/customer/pages/BranchLocator';
 import { customerRoutes } from './roles/customer/routes';
+import AccountSuspended from './pages/AccountSuspended';
 import { shopOwnerRoutes } from './roles/shop-owner/routes';
 import { adminRoutes } from './roles/admin/routes';
+import { AccountStatusRedirect } from './shared/components/AccountStatusRedirect';
 
 export default function App() {
   return (
@@ -24,6 +26,11 @@ export default function App() {
       <ToastProvider>
         <ErrorBoundary>
           <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+          {/* Global account-state redirect: a realtime account:status event or a
+              403 ACCOUNT_SUSPENDED API response lands the user here from ANY tab
+              without a manual refresh. AuthProvider owns the state; this only
+              performs the navigation + presence cleanup. */}
+          <AccountStatusRedirect />
           <Routes>
             <Route path="/" element={<LandingPage />} />
             <Route path="/login" element={<Login />} />
@@ -31,9 +38,10 @@ export default function App() {
             <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/branches" element={<BranchLocator />} />
             <Route path="/seller-application" element={<Navigate to="/" replace />} />
-            <Route path="/select-branch" element={<RequireRole role="customer"><SelectBranch /></RequireRole>} />
+            <Route path="/account-suspended" element={<AccountSuspended />} />
+            <Route path="/select-branch" element={<RequireActiveCustomer><SelectBranch /></RequireActiveCustomer>} />
             {/* Customer */}
-            <Route path="/customer" element={<RequireRole role="customer"><CustomerLayout /></RequireRole>}>
+            <Route path="/customer" element={<RequireActiveCustomer><CustomerLayout /></RequireActiveCustomer>}>
               {customerRoutes.map((r) => <Route key={r.path} path={r.path} element={r.element} />)}
             </Route>
             {/* Shop Owner */}

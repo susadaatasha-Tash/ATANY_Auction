@@ -4,6 +4,32 @@ import { useState, useEffect } from 'react';
 import { apiFetch } from '../../../shared/lib/apiClient';
 import { useToast } from '../../../shared/components/Toast';
 
+
+// ── 7-day winner state ───────────────────────────────────────────────────────
+// A pending, unpaid winner is an ELIGIBLE winner: the item is not settled until
+// payments.status = 'paid'. After payment it becomes a settled Winner.
+function formatDeadline(value) {
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return '—';
+  const day = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  return `${day} · ${time}`;
+}
+
+export function winnerState(t) {
+  const paid = String(t.payment_status || '').toLowerCase() === 'paid';
+  const rank = Number(t.winner_rank) > 1 ? Number(t.winner_rank) : 1;
+  const expired = String(t.status || '').toLowerCase() === 'expired';
+  return {
+    paid,
+    rank,
+    expired,
+    label: paid ? 'Winner' : (expired ? 'No Eligible Winner' : 'Eligible Winner'),
+    paymentLabel: paid ? 'Paid' : 'Awaiting Payment',
+    deadline: t.payment_deadline || null,
+  };
+}
+
 export default function Transactions({ txns: propTxns, onMarkPaid: propMarkPaid }) {
   const [txns, setTxns] = useState(propTxns || []);
   const [q, setQ] = useState('');
@@ -64,12 +90,12 @@ export default function Transactions({ txns: propTxns, onMarkPaid: propMarkPaid 
       </div>
       <div className="table-wrap">
         <table>
-          <thead><tr><th>Transaction ID</th><th>Customer</th><th>Item</th><th>Amount</th><th>Branch</th><th>Status</th><th>Date</th><th /></tr></thead>
-          <tbody>{filtered.length ? filtered.map((t) => <tr key={t.id}><td className="cell-main">{t.displayId}</td><td>{t.customer}</td><td>{t.item}</td><td>₱{Number(t.amount).toLocaleString()}</td><td>{t.branch}</td><td><span className={`badge ${t.status}`}>{t.status}</span></td><td>{t.date}</td><td style={{display:'flex',gap:6}}>
+          <thead><tr><th>Transaction ID</th><th>Eligible Winner</th><th>Item</th><th>Amount</th><th>Branch</th><th>Winner Status</th><th>Payment Deadline</th><th>Status</th><th>Date</th><th /></tr></thead>
+          <tbody>{filtered.length ? filtered.map((t) => { const w = winnerState(t); return <tr key={t.id}><td className="cell-main">{t.displayId}</td><td><span className="tx-winner-label">{w.label}</span> {t.customer}{w.rank > 1 && <span className="tx-reassigned" title="Winner reassigned after the previous winner's payment window expired">Reassigned</span>}</td><td>{t.item}</td><td>₱{Number(t.amount).toLocaleString()}</td><td>{t.branch}</td><td><span className={`badge ${w.paymentLabel === 'Paid' ? 'paid' : 'pending'}`}>{w.paymentLabel}</span></td><td>{w.deadline && !w.paid ? formatDeadline(w.deadline) : '—'}</td><td><span className={`badge ${t.status}`}>{t.status}</span></td><td>{t.date}</td><td style={{display:'flex',gap:6}}>
             {t.status === 'pending' && <button className="btn-ghost" onClick={() => handleStatus(t.id,'preparing')}>Mark Preparing</button>}
             {t.status === 'preparing' && <button className="btn-ghost" onClick={() => handleStatus(t.id,'ready_pickup')}>Mark Ready</button>}
             {t.status === 'ready_pickup' && <button className="btn-ghost" onClick={() => handleStatus(t.id,'completed')}>Mark Picked Up</button>}
-          </td></tr>) : <tr><td colSpan={8}><div className="empty-state"><p>No transactions yet.</p></div></td></tr>}</tbody>
+          </td></tr>; }) : <tr><td colSpan={10}><div className="empty-state"><p>No transactions yet.</p></div></td></tr>}</tbody>
         </table>
       </div>
       <div className="pager"><span>{filtered.length} transaction{filtered.length!==1?'s':''}</span></div>

@@ -1,0 +1,89 @@
+/* ATANY skeleton system — one shimmer for every portal.
+   Neutral cream tones that match the real card surfaces, so a loading
+   dashboard reads as the same layout in a quieter state. */
+
+.atany-skel {
+  display: block;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #f1ece1 25%, #e6ddcc 37%, #f1ece1 63%);
+  background-size: 400% 100%;
+  animation: atany-skel-shimmer 1.2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+@keyframes atany-skel-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+/* Reduced motion: no shimmer, keep the same tone/shape so layout is unchanged. */
+@media (prefers-reduced-motion: reduce) {
+  .atany-skel {
+    animation: none;
+    background: #f1ece1;
+  }
+}
+
+.atany-skel-text {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.atany-skel-text > * + * {
+  margin-top: 0;
+}
+
+/* Region wrapper — busy state only, never interactive. */
+.atany-skel-region {
+  min-width: 0;
+}
+
+/* KPI card mirror (.kpi-card geometry: radius 12-18px, 20px padding, 32px value). */
+.atany-skel-kpi {
+  background: transparent;
+  border: 1px solid rgba(230, 226, 218, 0.7);
+  border-radius: 18px;
+  padding: 20px 22px 22px;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.atany-skel-kpi__head {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.atany-skel-kpi__divider {
+  margin: 14px 0 18px;
+  border-radius: 0;
+}
+
+.atany-skel-kpi__badge {
+  margin-top: 12px;
+}
+
+/* List rows — matches .activity-item / branch card rhythm. */
+.atany-skel-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 100%;
+  min-width: 0;
+}
+
+.atany-skel-list__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+
+/* Table rows inside real table markup. */
+.atany-skel-tr > td {
+  padding: 10px 14px;
+  vertical-align: middle;
+}

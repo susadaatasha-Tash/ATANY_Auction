@@ -6,6 +6,10 @@ import { supabase } from './supabaseClient';
 
 const BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
+/** Stable server contract for a suspended ATANY account. */
+export const ACCOUNT_SUSPENDED_CODE = 'ACCOUNT_SUSPENDED';
+const ACCOUNT_SUSPENDED_EVENT = 'atany:account-suspended';
+
 export class ApiError extends Error {
   constructor(message, status = 500, code = null) {
     super(message);
@@ -79,7 +83,17 @@ export async function apiFetch(path, opts = {}) {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({ message: res.statusText }));
-    const error = new ApiError(err.message || 'Request failed', res.status, err.code || null);
+    const code = err?.code || err?.error?.code || null;
+    const message = err?.message || err?.error?.message || 'Request failed';
+    const error = new ApiError(message, res.status, code);
+    // Global account-state fallback. Realtime is the primary signal, but a
+    // suspended customer must be caught even when the socket event was missed:
+    // ANY protected request answering 403 ACCOUNT_SUSPENDED flips the global
+    // account state, which drives the guard to /account-suspended. Individual
+    // pages never handle this themselves.
+    if (res.status === 403 && code === ACCOUNT_SUSPENDED_CODE) {
+      window.dispatchEvent(new CustomEvent(ACCOUNT_SUSPENDED_EVENT, { detail: { code, message, path } }));
+    }
     throw error;
   }
   if (res.status === 204 || res.status === 205) return null;

@@ -1,15 +1,77 @@
 // frontend/src/pages/LandingPage.jsx
 // Landing page — hero, stats, live auctions, jewelry, about, how-it-works, branches, CTA, footer
-import { useState, useEffect } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { useState, useEffect, useMemo } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuctionCountdown, formatCountdown } from '../shared/hooks/useAuctionCountdown';
 import { useToast } from '../shared/components/Toast';
 import { AssistantWidget } from '../shared/components/AssistantWidget';
 import { PublicHeader } from '../shared/components/PublicHeader';
-import { supabase } from '../shared/lib/supabaseClient';
+import { BranchMap } from '../roles/customer/components/BranchMap';
 import { apiFetch } from '../shared/lib/apiClient';
+import { uploadSupportAttachment, validateSupportImage, SUPPORT_IMAGE_ACCEPT, SUPPORT_IMAGE_HINT } from '../shared/lib/supportAttachment';
 import { useAuth } from '../shared/hooks/useAuth';
-import landingPageBackground from '../assests/landing-page-background.png';
+// Hero art: identical pixels to landing-page-background.png but ~27x smaller
+// (1.78 MB -> 70 KB) via lossy WebP at q88. The PNG is kept in the repo as the
+// untouched source; it is simply no longer shipped to visitors.
+import landingPageBackground from '../assests/landing-page-background.webp';
+import { ArrowRight, Mail, MapPin } from 'lucide-react';
+
+// Verification-section image. The previous Unsplash id (photo-1586878341523…)
+// returns HTTP 404, which is why the page was rendering its alt text instead of
+// a photo. This id is verified to return 200 and is not reused by any other card.
+const verificationImage = 'https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=600&q=80';
+
+// ATANY contact addresses.
+//
+// GENERAL/SUPPORT now resolve to the real, monitored destination mailbox that
+// receives every Contact Us and Customer Help & Support notification
+// (backend SUPPORT_RECIPIENT_EMAIL). The previous hello@atany.ph /
+// support@atany.ph pair sat on a domain that was never verified with the mail
+// provider, so no notification was ever reliably deliverable to them.
+// Partnerships is a distinct business channel and is unchanged.
+const CONTACT_GENERAL_EMAIL = 'goldjewelryauction@gmail.com';
+const CONTACT_SUPPORT_EMAIL = 'goldjewelryauction@gmail.com';
+const CONTACT_PARTNERSHIPS_EMAIL = 'partnerships@atany.ph';
+
+// Single, explicit data model for the footer Contact column.
+//
+// Two fixes land here at once:
+//  1. Keys are stable semantic IDs, never the address. Addresses can legitimately
+//     be shared (General and Support resolve to the same mailbox), so keying on
+//     the value is what produced the duplicate-key warning.
+//  2. General + Support are consolidated into ONE row instead of rendering the
+//     same Gmail twice. `mailto` is preserved; the backend recipient is
+//     unaffected (SUPPORT_RECIPIENT_EMAIL is the single source of truth there).
+const FOOTER_CONTACT_LINKS = [
+  {
+    id: 'general-support-email',
+    label: 'General & Support',
+    href: `mailto:${CONTACT_GENERAL_EMAIL}`,
+    email: CONTACT_GENERAL_EMAIL,
+    Icon: Mail,
+  },
+  {
+    id: 'branch-locations',
+    label: 'Branch locations',
+    href: '/branches',
+    Icon: MapPin,
+  },
+];
+
+// Public Contact → "Email Us" panel. Same rule: unique IDs, and the shared
+// General/Support mailbox is shown once rather than duplicated.
+const CONTACT_EMAIL_ROWS = [
+  {
+    id: 'general-support',
+    label: 'General & Support:',
+    email: CONTACT_GENERAL_EMAIL,
+  },
+  {
+    id: 'partnerships',
+    label: 'Partnerships:',
+    email: CONTACT_PARTNERSHIPS_EMAIL,
+  },
+];
 
 function Countdown({ initial }) {
   const sec = useAuctionCountdown(initial);
@@ -19,19 +81,77 @@ function Countdown({ initial }) {
 export default function LandingPage() {
   const showToast = useToast();
   const { hash } = useLocation();
-  const [bidItem, setBidItem] = useState(null);
-  const [amount, setAmount] = useState('');
   const [cName, setCName] = useState('');
   const [cEmail, setCEmail] = useState('');
   const [cSubject, setCSubject] = useState('General Inquiry');
   const [cMessage, setCMessage] = useState('');
   const [cBusy, setCBusy] = useState(false);
   const [cSent, setCSent] = useState(false);
-  const { user } = useAuth();
+  const [cAttachment, setCAttachment] = useState(null);   // { file, path, name }
+  const [cAttachmentError, setCAttachmentError] = useState(null);
+  const navigate = useNavigate();
+  // role/status drive the bid CTA: only an ACTIVE customer may bid, and never
+  // from this page — the real bidding UI is reused.
+  const { user, role, status } = useAuth();
+  const suspended = status === 'suspended';
   const [liveAuctions, setLiveAuctions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [guestBidAuctionId, setGuestBidAuctionId] = useState(null);
+
+  // Real platform statistics (was four hardcoded marketing numbers).
+  const [stats, setStats] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [statsError, setStatsError] = useState(false);
+
+  // Real branches — same `branches` table Admin manages at /admin/branches.
+  const [branches, setBranches] = useState([]);
+  const [branchesLoading, setBranchesLoading] = useState(true);
+  const [branchesError, setBranchesError] = useState(false);
+
+  /**
+   * CTA destination.
+   *
+   * Follows the same post-auth role routing Login.jsx already applies (role ->
+   * its own portal), so a signed-in visitor is never pushed back to a signup
+   * form they no longer need. A suspended customer stays governed by the
+   * suspension page — the CTA must never route around it.
+   */
+  const ctaPath = !user
+    ? '/signup'
+    : suspended
+      ? '/account-suspended'
+      : role === 'admin'
+        ? '/admin'
+        : role === 'shop_owner'
+          ? '/shop'
+          : '/customer';
+
+  /** The one auction page this platform actually has. Used for every redirect. */
+  const auctionPath = (id) => `/customer/auctions${id ? `?auction=${encodeURIComponent(id)}` : ''}`;
+  const loginPath = (next) => `/login?redirect=${encodeURIComponent(next)}`;
+
+  /** Validate immediately, then upload to private storage and keep the path. */
+  const handleAttachmentPick = async (e) => {
+    const file = e.target.files?.[0] || null;
+    setCAttachmentError(null);
+    if (!file) { setCAttachment(null); return; }
+    const invalid = validateSupportImage(file);
+    if (invalid) {
+      setCAttachment(null);
+      setCAttachmentError(invalid);
+      e.target.value = '';
+      return;
+    }
+    try {
+      const path = await uploadSupportAttachment(file, { authenticated: false });
+      setCAttachment({ file, path, name: file.name });
+    } catch (err) {
+      setCAttachment(null);
+      setCAttachmentError(err?.message || 'We could not upload your image. Please try again.');
+      e.target.value = '';
+    }
+  };
 
   const handleContactSubmit = async (e) => {
     e.preventDefault();
@@ -40,17 +160,39 @@ export default function LandingPage() {
       return;
     }
     setCBusy(true);
-    const { error } = await supabase.from('support_requests').insert({
-      name: cName.trim(), email: cEmail.trim().toLowerCase(), subject: cSubject, message: cMessage.trim(),
-    });
-    setCBusy(false);
-    if (error) {
-      showToast('Something went wrong — please try again or email us directly');
-      return;
+    try {
+      // Upload first (best effort): if the image cannot be stored we still send
+      // the message rather than losing it, and the attachment is simply absent.
+      let attachmentPath = null;
+      if (cAttachment?.file) {
+        try {
+          attachmentPath = await uploadSupportAttachment(cAttachment.file, { authenticated: false });
+        } catch (uploadErr) {
+          setCAttachmentError(uploadErr?.message || 'We could not attach your image.');
+        }
+      }
+      // Routed through the backend so the request is validated and rate-limited;
+      // the support_requests row remains the authoritative record.
+      await apiFetch('/api/public/contact', {
+        method: 'POST',
+        public: true,
+        body: JSON.stringify({
+          name: cName.trim(),
+          email: cEmail.trim().toLowerCase(),
+          subject: cSubject,
+          message: cMessage.trim(),
+          ...(attachmentPath ? { attachment_path: attachmentPath } : {}),
+        }),
+      });
+      setCSent(true);
+      showToast('Your message has been submitted successfully.');
+      setCName(''); setCEmail(''); setCSubject('General Inquiry'); setCMessage('');
+      setCAttachment(null); setCAttachmentError(null);
+    } catch (err) {
+      showToast(err?.message || 'Something went wrong — please try again or email us directly');
+    } finally {
+      setCBusy(false);
     }
-    setCSent(true);
-    showToast('Message sent — we\'ll get back to you within 1 business day');
-    setCName(''); setCEmail(''); setCSubject('General Inquiry'); setCMessage('');
   };
 
   useEffect(() => {
@@ -58,16 +200,57 @@ export default function LandingPage() {
       const el = document.getElementById(hash.slice(1));
       if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth' }), 100);
     }
-    const onScroll = () => {
+    // One scroll-spy, applied immediately on mount so "Home" is highlighted
+    // before the visitor ever scrolls, and kept in sync afterwards.
+    const syncActive = () => {
       const sections = document.querySelectorAll('main section[id]');
       const links = document.querySelectorAll('.nav-links a');
       let cur = 'home';
       sections.forEach((s) => { if (window.scrollY >= s.offsetTop - 120) cur = s.id; });
       links.forEach((a) => a.classList.toggle('active', a.getAttribute('href') === '#' + cur));
     };
-    window.addEventListener('scroll', onScroll);
-    return () => window.removeEventListener('scroll', onScroll);
+    syncActive();
+    window.addEventListener('scroll', syncActive, { passive: true });
+    window.addEventListener('resize', syncActive);
+    return () => {
+      window.removeEventListener('scroll', syncActive);
+      window.removeEventListener('resize', syncActive);
+    };
   }, [hash]);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch('/api/public/stats', { public: true })
+      .then((d) => { if (!cancelled) setStats(d); })
+      .catch(() => { if (!cancelled) setStatsError(true); })
+      .finally(() => { if (!cancelled) setStatsLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch('/branches', { public: true })
+      .then((rows) => { if (!cancelled) setBranches(Array.isArray(rows) ? rows : []); })
+      .catch(() => { if (!cancelled) setBranchesError(true); })
+      .finally(() => { if (!cancelled) setBranchesLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  // Deterministic featured branch: first OPEN branch in the server's order.
+  // Never randomised, and never a hardcoded branch.
+  const featuredBranch = useMemo(
+    () => branches.find((b) => String(b.status).toLowerCase() === 'open') || branches[0] || null,
+    [branches]
+  );
+
+  // Contact panel: up to 3 open branches, in the same server order.
+  const contactBranches = useMemo(
+    () => (branches.filter((b) => String(b.status).toLowerCase() === 'open').length
+      ? branches.filter((b) => String(b.status).toLowerCase() === 'open')
+      : branches
+    ).slice(0, 3),
+    [branches]
+  );
 
   useEffect(() => {
     async function fetchLiveAuctions() {
@@ -85,6 +268,24 @@ export default function LandingPage() {
     }
     fetchLiveAuctions();
   }, []);
+
+  /**
+   * Place Bid from a landing card.
+   * guest          -> existing login-required modal, redirecting back to THIS auction
+   * active customer-> straight to the real auction page (no duplicate bid logic here)
+   * suspended      -> the suspension guard owns the outcome
+   * seller/admin   -> bidding is a customer-only capability
+   */
+  const handlePlaceBid = (a) => {
+    const target = auctionPath(a.id);
+    if (!user) { setGuestBidAuctionId(a.id); return; }
+    if (suspended) { showToast('Your account is suspended and cannot place bids.'); return; }
+    if (role !== 'customer') {
+      showToast('Bids are placed with a customer account.');
+      return;
+    }
+    navigate(target);
+  };
 
   return (
     <div className="public-page">
@@ -107,13 +308,26 @@ export default function LandingPage() {
 
         <div className="stats">
           <div className="container stats-grid">
+            {/* Real counts from GET /api/public/stats. No invented totals: a
+                failed request renders an em dash rather than a fake number. */}
             {[
-              ['2,450+', 'Happy Customers'],
-              ['1,250+', 'Jewelry Pieces'],
-              ['320+', 'Live Auctions'],
-              ['98%', 'Satisfaction Rate'],
-            ].map(([n, l]) => (
-              <div key={l} className="stat"><div><div className="stat-number">{n}</div><div className="stat-label">{l}</div></div></div>
+              ['registeredCustomers', 'Registered Customers'],
+              ['jewelryPieces', 'Jewelry Pieces'],
+              ['completedAuctions', 'Completed Auctions'],
+              ['branches', 'ATANY Branches'],
+            ].map(([key, label]) => (
+              <div key={key} className="stat">
+                <div>
+                  <div className="stat-number">
+                    {statsLoading
+                      ? <span className="stat-skeleton" aria-hidden="true" />
+                      : statsError || stats?.[key] === undefined
+                        ? '\u2014'
+                        : Number(stats[key]).toLocaleString()}
+                  </div>
+                  <div className="stat-label">{label}</div>
+                </div>
+              </div>
             ))}
           </div>
         </div>
@@ -122,7 +336,10 @@ export default function LandingPage() {
           <div className="container">
             <div className="section-heading">
               <div><h2>Featured Auctions</h2><p>Bid before time runs out — server decides winner.</p></div>
-              <Link to="/customer/auctions" className="text-link">View all auctions →</Link>
+              {/* ATANY has no public auction catalogue — Customer Auctions is the
+                  real one and it requires an account, so guests are sent to log in
+                  and returned here afterwards. */}
+              <Link to={user ? auctionPath() : loginPath('/customer/auctions')} className="text-link">View all auctions →</Link>
             </div>
             <div className="auction-grid">
               {loading ? (
@@ -148,13 +365,25 @@ export default function LandingPage() {
                         <span>{a.branch_name || ''}</span>
                       </div>
                       <div className="price">Current bid: {a.currentBid ? `₱${a.currentBid.toLocaleString()}` : 'Starting'}</div>
+                      {/* Minimum next bid is computed ONLY from the server's own
+                          current bid + the auction's minimum_bid_increment, which
+                          is the exact rule the backend enforces. */}
+                      {isLive && a.currentBid ? (
+                        <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>
+                          Min next bid: ₱{(Number(a.currentBid) + Number(a.minimum_bid_increment || 1000)).toLocaleString()}
+                        </div>
+                      ) : null}
                       {a.karat_weight && <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6 }}>✦ {a.karat_weight}</div>}
-                      <div className="starting"><div>Ends in</div>{a.endsInSec !== undefined ? <Countdown initial={a.endsInSec} /> : <span>Unknown</span>}</div>
+                      <div className="starting"><div>{isLive ? 'Ends in' : 'Starts in'}</div>
+                        {isLive
+                          ? (a.endsInSec !== undefined ? <Countdown initial={a.endsInSec} /> : <span>Unknown</span>)
+                          : (a.startsInSec !== undefined ? <Countdown initial={a.startsInSec} /> : <span>—</span>)}
+                      </div>
                       <div className="bid-box" onClick={(e) => e.stopPropagation()}>
-                        {user ? (
-                          <button className="btn btn-primary" onClick={() => setBidItem(a)}>Place Bid</button>
+                        {isLive ? (
+                          <button className="btn btn-primary" onClick={() => handlePlaceBid(a)}>Place Bid</button>
                         ) : (
-                          <button className="btn btn-outline" onClick={() => setGuestBidAuctionId(a.id)}>Place Bid</button>
+                          <button className="btn btn-outline" onClick={() => navigate(auctionPath(a.id))}>View Auction</button>
                         )}
                       </div>
                     </div>
@@ -169,7 +398,7 @@ export default function LandingPage() {
           <div className="container">
             <div className="section-heading">
               <div><h2>Shop Our Jewelry</h2><p>Browse by category — find the perfect piece.</p></div>
-              <Link to="/customer/auctions" className="text-link">View All Jewelry →</Link>
+              <Link to={user ? auctionPath() : loginPath('/customer/auctions')} className="text-link">Browse All Auctions →</Link>
             </div>
             <div className="jewelry-grid">
               {[
@@ -179,7 +408,13 @@ export default function LandingPage() {
                 { name: 'Earrings', img: 'https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?auto=format&fit=crop&w=400&q=80' },
                 { name: 'Watches', img: 'https://images.unsplash.com/photo-1524592094714-0f0654e20314?auto=format&fit=crop&w=400&q=80' },
               ].map((cat) => (
-                <Link key={cat.name} to={`/customer/auctions?category=${cat.name}`} className="collection-card">
+                <Link
+                  key={cat.name}
+                  to={user
+                    ? `/customer/auctions?category=${encodeURIComponent(cat.name)}`
+                    : loginPath(`/customer/auctions?category=${encodeURIComponent(cat.name)}`)}
+                  className="collection-card"
+                >
                   <div className="collection-image"><img src={cat.img} alt={cat.name} /></div>
                   <div className="collection-info"><h4>{cat.name}</h4><span>Explore →</span></div>
                 </Link>
@@ -214,20 +449,23 @@ export default function LandingPage() {
           <div className="container" style={{ maxWidth: 800 }}>
             <div className="landing-about-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 48, alignItems: 'center' }}>
               <div style={{ borderRadius: 12, overflow: 'hidden', border: '1px solid var(--line)', order: 2 }}>
-                <img src="https://images.unsplash.com/photo-1586878341523-7c8e5f1b1f4e?auto=format&fit=crop&w=600&q=80" alt="Karat certification" style={{ width: '100%', height: 320, objectFit: 'cover' }} />
+                <img src={verificationImage} alt="Jewelry being inspected before it is listed" style={{ width: '100%', height: 320, objectFit: 'cover' }} />
               </div>
               <div style={{ order: 1 }}>
-                <div className="eyebrow">VERIFIED AUTHENTICITY</div>
-                <h2 style={{ fontSize: 28, color: 'var(--navy)', fontWeight: 800, lineHeight: 1.2, marginBottom: 14 }}>Every Piece Certified</h2>
+                <div className="eyebrow">VERIFIED LISTINGS</div>
+                <h2 style={{ fontSize: 28, color: 'var(--navy)', fontWeight: 800, lineHeight: 1.2, marginBottom: 14 }}>Know What You Are Bidding On</h2>
                 <p style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.7, marginBottom: 14 }}>
-                  Every ATANY piece is professionally inspected and comes with a karat and weight certificate.
-                  Our verification process ensures you know exactly what you're bidding on.
+                  Every piece listed on ATANY is reviewed before it reaches the auction floor, and its
+                  karat and weight are recorded on the listing so you can see exactly what you are bidding on.
                 </p>
                 <div style={{ display: 'grid', gap: 10 }}>
+                  {/* Wording describes what the platform actually holds on every
+                      listing (karat + weight) rather than promising certificate
+                      records or condition grades the database does not store. */}
                   {[
-                    ['Karat Certification', 'Verified gold purity — 14K, 18K, 22K, or 24K confirmed by weight analysis.'],
-                    ['Weight Documentation', 'Precise gram weight recorded for every piece, visible on the listing card.'],
-                    ['Condition Grading', 'Each item graded for condition so you know exactly what to expect at pickup.'],
+                    ['Karat & Weight Recorded', 'Each listing shows the piece\u2019s stated karat and gram weight before you bid.'],
+                    ['Pre-Listing Review', 'A listing must be approved before it can go live, so incomplete items are not auctioned.'],
+                    ['Branch Inspection at Pickup', 'Collect in person at an ATANY branch, where you can inspect the piece before completing pickup.'],
                   ].map(([title, desc]) => (
                     <div key={title} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
                       <div style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--gold)', marginTop: 6, flexShrink: 0 }} />
@@ -248,10 +486,10 @@ export default function LandingPage() {
             <div className="center-heading"><h2>How It Works</h2></div>
             <div className="landing-steps" style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 32 }}>
               {[
-                ['Browse', 'Explore exquisite jewelry and discover pieces you love.'],
-                ['Place Your Bid', 'Join a live auction and place your best competitive bid.'],
-                ['Win', 'Highest bidder when auction ends wins — decided server-side by cron.'],
-                ['Claim at Branch', 'Pickup-only — bring ID + order number to your selected ATANY branch.'],
+                ['Browse', 'Explore the jewelry currently listed for auction and follow the pieces you like.'],
+                ['Place Your Bid', 'When an auction is live, bid any amount above the current bid plus the stated minimum increment.'],
+                ['Win & Pay Within 7 Days', 'When an auction ends, the highest eligible bidder becomes the winner and has 7 days to complete payment. If payment is not completed in time, the opportunity may pass to the next highest eligible bidder with a fresh 7-day window.'],
+                ['Claim at Branch', 'After payment is confirmed and your order is prepared, collect your piece at your selected ATANY branch with valid ID and your order number.'],
               ].map(([t, d], i) => (
                 <div key={t} className="step">
                   <div className="step-number">{i + 1}</div>
@@ -265,21 +503,45 @@ export default function LandingPage() {
         <section className="branch-section">
           <div className="container">
             <div className="branch-box">
-              <div className="branch-map" aria-label="Branch map">
-                <div className="road" />
-                <div className="road two" />
-                <div className="pin" />
+              {/* Real map of the featured branch's ACTUAL coordinates. Same
+                  Leaflet/OpenStreetMap stack already used by /branches — the
+                  previous decorative divs are gone, so nothing here pretends to
+                  be interactive. */}
+              <div className="branch-map" aria-label={featuredBranch ? `Map showing ${featuredBranch.name}` : 'Branch map'}>
+                {featuredBranch && Number.isFinite(Number(featuredBranch.lat)) && Number.isFinite(Number(featuredBranch.lng)) ? (
+                  <BranchMap
+                    branches={[featuredBranch]}
+                    initialCenter={[Number(featuredBranch.lat), Number(featuredBranch.lng)]}
+                  />
+                ) : (
+                  <div className="branch-map__placeholder" aria-hidden="true">
+                    <span>Map preview unavailable</span>
+                  </div>
+                )}
               </div>
               <div className="branch-content">
                 <div className="eyebrow">CONVENIENT PICKUP</div>
                 <h2>Find Your Nearest Branch</h2>
                 <p>Won an auction? Your jewelry can be securely claimed at an ATANY branch convenient for you.</p>
-                <div className="branch-info">
-                  <div>⌖ <strong>Davao City Branch</strong></div>
-                  <div>◇ Victoria Plaza Area, Davao City</div>
-                  <div>◷ Mon–Sat · 9:00 AM – 6:00 PM</div>
-                </div>
-                <Link className="btn btn-primary" to="/customer/branches">Find a Branch</Link>
+                {branchesLoading ? (
+                  <div className="branch-info" aria-busy="true">
+                    <div className="branch-skeleton" />
+                  </div>
+                ) : branchesError || !featuredBranch ? (
+                  <div className="branch-info">
+                    <div>Branch information is temporarily unavailable.</div>
+                  </div>
+                ) : (
+                  <div className="branch-info">
+                    <div>⌖ <strong>{featuredBranch.name}</strong></div>
+                    {featuredBranch.address ? <div>◇ {featuredBranch.address}</div> : null}
+                    {featuredBranch.hours ? <div>◷ {featuredBranch.hours}</div> : null}
+                    {featuredBranch.phone ? <div>☎ {featuredBranch.phone}</div> : null}
+                  </div>
+                )}
+                {/* Public route: visitors must never be pushed into a
+                    customer-only page just to see where ATANY is. */}
+                <Link className="btn btn-primary" to="/branches">Find a Branch</Link>
               </div>
             </div>
           </div>
@@ -297,8 +559,8 @@ export default function LandingPage() {
                 {cSent ? (
                   <div style={{ textAlign: 'center', padding: '40px 20px' }}>
                     <div style={{ fontSize: 36, marginBottom: 12 }}>✓</div>
-                    <h3 style={{ fontSize: 18, color: 'var(--navy)', fontWeight: 800, marginBottom: 6 }}>Message Sent</h3>
-                    <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 18 }}>Thanks for reaching out. We'll respond within 1 business day.</p>
+                    <h3 style={{ fontSize: 18, color: 'var(--navy)', fontWeight: 800, marginBottom: 6 }}>Message Received</h3>
+                    <p style={{ fontSize: 13, color: 'var(--muted)', marginBottom: 18 }}>Thanks for reaching out. Your message has been submitted successfully. Our team will review it as soon as possible.</p>
                     <button className="btn btn-outline" onClick={() => setCSent(false)}>Send Another Message</button>
                   </div>
                 ) : (
@@ -311,6 +573,21 @@ export default function LandingPage() {
                       </select>
                     </div>
                     <div className="form-row"><label>Message *</label><textarea value={cMessage} onChange={(e) => setCMessage(e.target.value)} placeholder="How can we help?" required rows={5} /></div>
+                    <div className="form-row">
+                      <label htmlFor="cf-attachment">Attach Image (optional)</label>
+                      <input
+                        id="cf-attachment"
+                        type="file"
+                        accept={SUPPORT_IMAGE_ACCEPT}
+                        onChange={handleAttachmentPick}
+                        style={{ fontSize: 12 }}
+                      />
+                      {cAttachmentError
+                        ? <span className="field-error">{cAttachmentError}</span>
+                        : cAttachment
+                          ? <span className="field-hint">Attached: {cAttachment.name}</span>
+                          : <span className="field-hint">{SUPPORT_IMAGE_HINT}</span>}
+                    </div>
                     <button type="submit" className="btn btn-primary" disabled={cBusy} style={{ width: '100%', minHeight: 46 }}>{cBusy ? 'Sending…' : 'Send Message'}</button>
                   </form>
                 )}
@@ -319,28 +596,39 @@ export default function LandingPage() {
                 <div style={{ background: 'var(--ivory)', border: '1px solid var(--line)', borderRadius: 14, padding: '24px 22px', marginBottom: 16 }}>
                   <h3 style={{ fontSize: 14, color: 'var(--navy)', fontWeight: 800, marginBottom: 14 }}>Email Us</h3>
                   <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.7 }}>
-                    <div><strong style={{ color: 'var(--navy)' }}>General:</strong> hello@atany.ph</div>
-                    <div><strong style={{ color: 'var(--navy)' }}>Support:</strong> support@atany.ph</div>
-                    <div><strong style={{ color: 'var(--navy)' }}>Partnerships:</strong> partnerships@atany.ph</div>
+                    {CONTACT_EMAIL_ROWS.map(({ id, label, email }) => (
+                      <div key={id}>
+                        <strong style={{ color: 'var(--navy)' }}>{label}</strong>{' '}
+                        <a href={`mailto:${email}`} style={{ color: 'var(--navy)' }}>{email}</a>
+                      </div>
+                    ))}
                   </div>
                 </div>
                 <div style={{ background: 'var(--ivory)', border: '1px solid var(--line)', borderRadius: 14, padding: '24px 22px', marginBottom: 16 }}>
                   <h3 style={{ fontSize: 14, color: 'var(--navy)', fontWeight: 800, marginBottom: 14 }}>Visit a Branch</h3>
-                  {[
-                    { name: 'Davao City', addr: 'Victoria Plaza Area, Davao City', phone: '(082) 123-4567', hours: 'Mon–Sat · 9AM–6PM' },
-                    { name: 'Cebu', addr: 'Ayala Center, Cebu City', phone: '(032) 234-5678', hours: 'Mon–Sat · 10AM–7PM' },
-                    { name: 'Manila', addr: 'Greenbelt 5, Makati City', phone: '(02) 8888-1234', hours: 'Daily · 10AM–8PM' },
-                  ].map((b) => (
-                    <div key={b.name} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid var(--line)' }}>
+                  {/* REAL branches from the Admin-managed `branches` table. The
+                      previous hardcoded Cebu / Manila entries did not exist in
+                      the database and were removed. */}
+                  {branchesLoading ? (
+                    <div className="branch-skeleton" aria-busy="true" />
+                  ) : branchesError ? (
+                    <div style={{ fontSize: 12, color: 'var(--muted)' }}>Branch information is temporarily unavailable.</div>
+                  ) : contactBranches.length === 0 ? (
+                    <div style={{ fontSize: 12, color: 'var(--muted)' }}>No branches are listed yet.</div>
+                  ) : contactBranches.map((b) => (
+                    <div key={b.id} style={{ marginBottom: 12, paddingBottom: 12, borderBottom: '1px solid var(--line)' }}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--navy)' }}>{b.name}</div>
-                      <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.6 }}>{b.addr}<br />{b.phone} · {b.hours}</div>
+                      <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.6 }}>
+                        {b.address ? <>{b.address}<br /></> : null}
+                        {[b.phone, b.hours].filter(Boolean).join(' · ')}
+                      </div>
                     </div>
                   ))}
                   <Link to="/branches" className="text-link">View All Branches →</Link>
                 </div>
                 <div style={{ background: 'var(--navy)', borderRadius: 14, padding: '22px 22px', color: '#fff' }}>
                   <h3 style={{ fontSize: 14, fontWeight: 800, marginBottom: 6 }}>Response Time</h3>
-                  <p style={{ fontSize: 12, color: 'rgba(255,255,255,.72)', lineHeight: 1.6 }}>We aim to respond within 1 business day. For urgent bid or payout issues, visit your nearest ATANY branch with a valid ID.</p>
+                  <p style={{ fontSize: 12, color: 'rgba(255,255,255,.72)', lineHeight: 1.6 }}>Our team reviews every message as soon as possible. For urgent bid or payout matters, you can also raise it in person at your nearest ATANY branch.</p>
                 </div>
               </div>
             </div>
@@ -354,46 +642,75 @@ export default function LandingPage() {
                 <h2>Join ATANY Today</h2>
                 <p>Create an account and start your journey to owning timeless beauty.</p>
               </div>
-              <Link className="btn" to="/signup">Get Started Now</Link>
+              <Link className="cta-btn" to={ctaPath}>
+                Get Started Now
+                <ArrowRight size={17} strokeWidth={2.2} aria-hidden="true" />
+              </Link>
             </div>
           </div>
         </section>
       </main>
 
-      <footer>
+      <footer className="site-footer">
         <div className="container">
           <div className="footer-main">
             <div className="footer-brand">
-              <Link to="/" style={{ fontSize: 20, fontWeight: 800, color: 'var(--navy)' }}>ATANY</Link>
+              <Link to="/" className="footer-logo">ATANY</Link>
               <p>The Philippines' premier jewelry auction platform. Discover, bid, and own timeless pieces with confidence.</p>
             </div>
-            <div><h3>Quick Links</h3><a href="#auctions">Live Auctions</a><a href="#jewelry">Shop Jewelry</a><a href="#how-it-works">How It Works</a><Link to="/branches">Find a Branch</Link></div>
-            <div><h3>Account</h3><Link to="/login">Sign In</Link><Link to="/signup">Create Account</Link></div>
-            <div><h3>Contact</h3><a href="mailto:hello@atany.ph">hello@atany.ph</a><a href="mailto:support@atany.ph">support@atany.ph</a><a>Davao City, Philippines</a></div>
+
+            {/* Quick Links point at the REAL landing sections through the
+                existing hash-scroll behaviour (/#section), never at invented
+                routes such as /jewelry. */}
+            <nav className="footer-col" aria-label="Quick links">
+              <h3>Quick Links</h3>
+              <ul className="footer-list">
+                <li><Link to="/#auctions">Live Auctions</Link></li>
+                <li><Link to="/#jewelry">Shop Jewelry</Link></li>
+                <li><Link to="/#how-it-works">How It Works</Link></li>
+                <li><Link to="/branches">Find a Branch</Link></li>
+              </ul>
+            </nav>
+
+            {/* Static by design, matching PublicHeader's Login / Sign Up pair.
+                /login and /signup keep their own guards, so an already
+                signed-in visitor is forwarded by Login rather than looping. */}
+            <nav className="footer-col" aria-label="Account">
+              <h3>Account</h3>
+              <ul className="footer-list">
+                <li><Link to="/login">Sign In</Link></li>
+                <li><Link to="/signup">Create Account</Link></li>
+              </ul>
+            </nav>
+
+            <div className="footer-col">
+              <h3>Contact</h3>
+              <ul className="footer-list">
+                {FOOTER_CONTACT_LINKS.map(({ id, label, href, Icon }) => (
+                  <li key={id}>
+                    {href.startsWith('mailto:') ? (
+                      <a href={href}>
+                        <Icon size={15} aria-hidden="true" />
+                        <span>{id === 'general-support-email' ? CONTACT_GENERAL_EMAIL : label}</span>
+                      </a>
+                    ) : (
+                      <Link to={href}>
+                        <Icon size={15} aria-hidden="true" />
+                        <span>{label}</span>
+                      </Link>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
           </div>
+
           <div className="footer-bottom">
-            <span>&copy; 2026 ATANY. All rights reserved.</span>
+            <span>&copy; {new Date().getFullYear()} ATANY. All rights reserved.</span>
             <span>Pickup-only &middot; No delivery</span>
           </div>
         </div>
       </footer>
-
-      {bidItem && (
-        <div className="modal-overlay show" onClick={(e) => e.target === e.currentTarget && setBidItem(null)}>
-          <div className="modal-box">
-            <div className="modal-box-head"><h3>Place Your Bid</h3><button className="modal-close" onClick={() => setBidItem(null)}>×</button></div>
-            <div className="modal-box-body">
-              <p style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 12 }}>{bidItem.title || bidItem.name} · Current bid: {bidItem.price || (bidItem.currentBid ? `₱${Number(bidItem.currentBid).toLocaleString()}` : '—')}</p>
-              <div className="form-row"><label>Your Bid Amount</label><input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Enter amount" /></div>
-              <p style={{ fontSize: 10, color: 'var(--muted)' }}>Min increment ₱1,000 enforced server-side. Public landing bids require login — you'll be redirected.</p>
-            </div>
-            <div className="modal-box-foot">
-              <button className="btn btn-outline" onClick={() => setBidItem(null)}>Cancel</button>
-              <Link className="btn btn-primary" to="/login" onClick={() => { showToast('Please sign in to place a bid.'); setBidItem(null); }}>Sign In to Bid</Link>
-            </div>
-          </div>
-        </div>
-      )}
 
       {guestBidAuctionId && (
         <div className="modal-overlay show" onClick={(e) => (e.target === e.currentTarget ? setGuestBidAuctionId(null) : null)}>
@@ -406,7 +723,7 @@ export default function LandingPage() {
             </div>
             <div className="modal-box-foot">
               <button className="btn btn-outline" onClick={() => setGuestBidAuctionId(null)}>Continue Browsing</button>
-              <Link className="btn btn-primary" to={`/login?redirect=/auction/${guestBidAuctionId}`}>Login / Create Account</Link>
+              <Link className="btn btn-primary" to={loginPath(auctionPath(guestBidAuctionId))}>Login / Create Account</Link>
             </div>
           </div>
         </div>

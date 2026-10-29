@@ -65,7 +65,8 @@ test('category filters compose with status', async () => {
   await screen.findByText('18K Gold Solitaire Diamond Ring');
   const liveTab = screen.getAllByRole('tab').find(el => /Live/.test(el.textContent));
   fireEvent.click(liveTab);
-  fireEvent.click(screen.getByText('Rings'));
+  fireEvent.click(screen.getByRole('button', { name: /Filter by category/ }));
+  fireEvent.click(await screen.findByRole('button', { name: /Rings \d/ }));
   expect(screen.getByText('18K Gold Solitaire Diamond Ring')).toBeInTheDocument();
 });
 

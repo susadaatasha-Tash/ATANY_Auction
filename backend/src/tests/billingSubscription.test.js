@@ -32,6 +32,7 @@ import {
   markBillingPaid,
   pickCurrentBillingRecord,
   buildSubscriptionSummary,
+  getPaymentMethodsCapability,
 } from '../services/subscriptionService.js';
 import {
   getPlanByCode,
@@ -47,6 +48,7 @@ import {
   listAllBilling,
   adminRetryBilling,
   listSubscriptionPlans,
+  getPaymongoClientConfig,
 } from '../controllers/billing.controller.js';
 import { paymongoWebhook } from '../controllers/webhook.controller.js';
 
@@ -150,7 +152,10 @@ beforeEach(() => {
     }
     if (/UPDATE billing_records[\s\S]*SET paymongo_checkout_session_id\s*=\s*\$1/i.test(s)) {
       const idx = billingStore.findIndex((b) => b.id === params[1]);
-      if (idx >= 0) billingStore[idx].paymongo_checkout_session_id = params[0];
+      if (idx >= 0) {
+        billingStore[idx].paymongo_checkout_session_id = params[0];
+        billingStore[idx].payment_method_type = params[2] ?? null;
+      }
       return { rows: [] };
     }
     if (/UPDATE billing_records[\s\S]*SET status\s*=\s*\$1,\s*updated_at\s*=\s*now\(\)/i.test(s)) {
@@ -422,6 +427,250 @@ describe('seller checkout ownership', () => {
   });
 });
 
+describe('GCash checkout (server-side authority)', () => {
+  function gcashReq(body = { payment_method: 'gcash' }, seller = SELLER) {
+    return Object.assign(reqUser(seller, 'shop_owner'), { params: { id: BILLING_ID }, body });
+  }
+
+  test('gcash checkout: types restricted to [gcash], amount derived server-side, channel stamped', async () => {
+    seedBilling([
+      { id: BILLING_ID, seller_id: SELLER, status: 'overdue', amount: 1500, plan_code: 'gold', billing_period: 'Oct', paymongo_checkout_session_id: null, payment_method_type: null, updated_at: pastISO(2), created_at: new Date().toISOString() },
+    ]);
+    getCheckoutSession.mockRejectedValue(new Error('none'));
+    fetchMock.mockClear();
+
+    const res = mockRes();
+    // Client also sends forged amount/currency — server must ignore them.
+    await createMaintenanceCheckout(gcashReq({ payment_method: 'gcash', amount: 1, currency: 'USD' }), res);
+
+    expect(res.json.mock.calls[0][0].checkout_url).toBeTruthy();
+    const call = fetchMock.mock.calls.find(([u]) => String(u).includes('/v1/checkout_sessions'));
+    expect(call).toBeTruthy();
+    const payload = JSON.parse(call[1].body);
+    expect(payload.data.attributes.payment_method_types).toEqual(['gcash']);
+    expect(payload.data.attributes.line_items[0].amount).toBe(150000); // 1500 PHP → centavos
+    expect(payload.data.attributes.line_items[0].currency).toBe('PHP');
+    expect(payload.data.attributes.cancel_url).toContain('payment=cancelled');
+    expect(payload.data.attributes.cancel_url).toContain('/shop/billing');
+    expect(billingStore[0].paymongo_checkout_session_id).toBe('cs_new');
+    expect(billingStore[0].payment_method_type).toBe('gcash');
+    // Response never leaks the secret or raw provider payload
+    expect(JSON.stringify(res.json.mock.calls[0][0])).not.toContain('sk_test');
+  });
+
+  test('gcash request does not reuse a generic hosted-picker session', async () => {
+    seedBilling([
+      { id: BILLING_ID, seller_id: SELLER, status: 'pending', amount: 1000, plan_code: 'bronze', billing_period: 'Oct', paymongo_checkout_session_id: 'cs_old', payment_method_type: null, updated_at: new Date().toISOString(), created_at: new Date().toISOString() },
+    ]);
+    // Reuse probe would succeed for same-channel, but channel intent differs
+    getCheckoutSession.mockResolvedValue({ data: { attributes: { checkout_url: 'https://pay.test/reuse', status: 'pending' } } });
+    checkoutStatus.mockReturnValue('pending');
+    fetchMock.mockClear();
+
+    const res = mockRes();
+    await createMaintenanceCheckout(gcashReq(), res);
+
+    const call = fetchMock.mock.calls.find(([u]) => String(u).includes('/v1/checkout_sessions'));
+    expect(call).toBeTruthy();
+    expect(JSON.parse(call[1].body).data.attributes.payment_method_types).toEqual(['gcash']);
+    expect(res.json.mock.calls[0][0].reused).toBe(false);
+  });
+
+  test('generic checkout still offers full hosted picker (gcash + card + others)', async () => {
+    seedBilling([
+      { id: BILLING_ID, seller_id: SELLER, status: 'overdue', amount: 1000, plan_code: 'bronze', billing_period: 'Oct', paymongo_checkout_session_id: null, payment_method_type: null, updated_at: pastISO(2), created_at: new Date().toISOString() },
+    ]);
+    getCheckoutSession.mockRejectedValue(new Error('none'));
+    fetchMock.mockClear();
+
+    const res = mockRes();
+    await createMaintenanceCheckout(gcashReq({}), res); // no body payment_method
+
+    const call = fetchMock.mock.calls.find(([u]) => String(u).includes('/v1/checkout_sessions'));
+    expect(JSON.parse(call[1].body).data.attributes.payment_method_types).toContain('gcash');
+    expect(JSON.parse(call[1].body).data.attributes.payment_method_types).toContain('card');
+    expect(billingStore[0].payment_method_type).toBeNull();
+  });
+
+  test('unsupported payment_method value is rejected with 400', async () => {
+    seedBilling([
+      { id: BILLING_ID, seller_id: SELLER, status: 'overdue', amount: 1000, paymongo_checkout_session_id: null, created_at: new Date().toISOString() },
+    ]);
+    const res = mockRes();
+    await createMaintenanceCheckout(gcashReq({ payment_method: 'bitcoin' }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].error).toBe('INVALID_PAYMENT_METHOD_TYPE');
+  });
+
+  test('gcash cannot pay another seller billing record', async () => {
+    seedBilling([
+      { id: BILLING_ID, seller_id: OTHER, status: 'overdue', amount: 1000 },
+    ]);
+    const res = mockRes();
+    await createMaintenanceCheckout(gcashReq({ payment_method: 'gcash' }, SELLER), res);
+    expect(res.status).toHaveBeenCalledWith(404);
+  });
+
+  test('gcash cannot pay an already-paid record', async () => {
+    seedBilling([
+      { id: BILLING_ID, seller_id: SELLER, status: 'paid', amount: 1000, paymongo_checkout_session_id: 'cs_p', payment_method_type: 'gcash', created_at: new Date().toISOString() },
+    ]);
+    getCheckoutSession.mockResolvedValue({ data: { attributes: { checkout_url: 'https://pay.test/done', status: 'paid' } } });
+    checkoutStatus.mockReturnValue('paid');
+    const res = mockRes();
+    await createMaintenanceCheckout(gcashReq(), res);
+    expect(res.status).toHaveBeenCalledWith(409);
+  });
+
+  test('GCash paid webhook is idempotent and marks channel-backed record paid once', async () => {
+    seedBilling([
+      { id: BILLING_ID, seller_id: SELLER, status: 'pending', amount: 1000, plan_code: 'bronze', billing_period: 'Oct', paymongo_checkout_session_id: 'cs_g', payment_method_type: 'gcash', created_at: new Date().toISOString() },
+    ]);
+    const mkReq = () => ({
+      rawBody: '{}',
+      headers: { 'paymongo-signature': 'sig' },
+      body: {
+        data: {
+          attributes: {
+            type: 'checkout_session.paid',
+            data: {
+              id: 'cs_g',
+              attributes: {
+                reference_number: BILLING_ID,
+                payments: [{ id: 'pay_g', attributes: { status: 'paid' } }],
+              },
+            },
+          },
+        },
+      },
+    });
+    const res1 = mockRes();
+    await paymongoWebhook(mkReq(), res1);
+    expect(billingStore[0].status).toBe('paid');
+    expect(billingStore[0].payment_method_type).toBe('gcash'); // channel preserved for "Paid using GCash" display
+
+    const res2 = mockRes();
+    await paymongoWebhook(mkReq(), res2);
+    expect(res2.json).toHaveBeenCalledWith({ received: true, already_paid: true });
+  });
+});
+
+describe('payment method types (allowlist)', () => {
+  function pmReq(body) {
+    return Object.assign(reqUser(SELLER, 'shop_owner'), { params: { id: BILLING_ID }, body });
+  }
+  function seedPayable() {
+    seedBilling([
+      { id: BILLING_ID, seller_id: SELLER, status: 'overdue', amount: 1000, plan_code: 'bronze', billing_period: 'Oct', paymongo_checkout_session_id: null, payment_method_type: null, updated_at: pastISO(2), created_at: new Date().toISOString() },
+    ]);
+    getCheckoutSession.mockRejectedValue(new Error('none'));
+    fetchMock.mockClear();
+  }
+
+  test.each([
+    ['card', ['card']],
+    ['qrph', ['qrph']],
+    ['maya', ['paymaya']],
+    ['gcash', ['gcash']],
+  ])('payment_method "%s" restricts hosted checkout to %j', async (type, expected) => {
+    seedPayable();
+    const res = mockRes();
+    await createMaintenanceCheckout(pmReq({ payment_method: type }), res);
+    expect(res.json.mock.calls[0][0].checkout_url).toBeTruthy();
+    const call = fetchMock.mock.calls.find(([u]) => String(u).includes('/v1/checkout_sessions'));
+    expect(JSON.parse(call[1].body).data.attributes.payment_method_types).toEqual(expected);
+    expect(billingStore[0].payment_method_type).toBe(expected[0]);
+  });
+
+  test.each(['grabpay', 'grab_pay', 'shopeepay', 'unionbank', 'bitcoin', 'paypal'])(
+    'unsupported payment_method "%s" is rejected with 400',
+    async (type) => {
+      seedPayable();
+      const res = mockRes();
+      await createMaintenanceCheckout(pmReq({ payment_method: type }), res);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json.mock.calls[0][0].error).toBe('INVALID_PAYMENT_METHOD_TYPE');
+      expect(fetchMock.mock.calls.filter(([u]) => String(u).includes('/v1/checkout_sessions'))).toHaveLength(0);
+    }
+  );
+
+  test('billease is rejected by default (env gate off)', async () => {
+    const prev = process.env.PAYMONGO_ENABLE_BILLEASE;
+    delete process.env.PAYMONGO_ENABLE_BILLEASE;
+    try {
+      seedPayable();
+      const res = mockRes();
+      await createMaintenanceCheckout(pmReq({ payment_method: 'billease' }), res);
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json.mock.calls[0][0].error).toBe('INVALID_PAYMENT_METHOD_TYPE');
+      expect(res.json.mock.calls[0][0].message).toMatch(/not available/i);
+    } finally {
+      if (prev !== undefined) process.env.PAYMONGO_ENABLE_BILLEASE = prev;
+    }
+  });
+
+  test('billease accepted when PAYMONGO_ENABLE_BILLEASE=true', async () => {
+    const prev = process.env.PAYMONGO_ENABLE_BILLEASE;
+    process.env.PAYMONGO_ENABLE_BILLEASE = 'true';
+    try {
+      seedPayable();
+      const res = mockRes();
+      await createMaintenanceCheckout(pmReq({ payment_method: 'billease' }), res);
+      expect(res.json.mock.calls[0][0].checkout_url).toBeTruthy();
+      const call = fetchMock.mock.calls.find(([u]) => String(u).includes('/v1/checkout_sessions'));
+      expect(JSON.parse(call[1].body).data.attributes.payment_method_types).toEqual(['billease']);
+    } finally {
+      if (prev === undefined) delete process.env.PAYMONGO_ENABLE_BILLEASE;
+      else process.env.PAYMONGO_ENABLE_BILLEASE = prev;
+    }
+  });
+
+  test('default picker excludes billease unless enabled; no forbidden wallets ever', async () => {
+    const prev = process.env.PAYMONGO_ENABLE_BILLEASE;
+    delete process.env.PAYMONGO_ENABLE_BILLEASE;
+    try {
+      seedPayable();
+      const res = mockRes();
+      await createMaintenanceCheckout(pmReq({}), res);
+      const call = fetchMock.mock.calls.find(([u]) => String(u).includes('/v1/checkout_sessions'));
+      const types = JSON.parse(call[1].body).data.attributes.payment_method_types;
+      expect(types).toEqual(['gcash', 'card', 'paymaya', 'qrph']);
+      expect(types).not.toContain('billease');
+      expect(types).not.toContain('shopeepay');
+      expect(types).not.toContain('unionbank');
+    } finally {
+      if (prev !== undefined) process.env.PAYMONGO_ENABLE_BILLEASE = prev;
+    }
+  });
+});
+
+describe('payment capability map (GET /billing/paymongo-config)', () => {
+  test('exposes QR Ph / Card / GCash / GrabPay / Maya; no ShopeePay or UnionBank', () => {
+    const cap = getPaymentMethodsCapability();
+    expect(cap.qrph).toBe(true);
+    expect(cap.card).toBe(true);
+    const walletIds = cap.wallets.map((w) => w.id);
+    expect(walletIds).toEqual(['gcash', 'maya']);
+    expect(walletIds).not.toContain('shopeepay');
+    expect(walletIds).not.toContain('unionbank');
+    expect(JSON.stringify(cap)).not.toMatch(/shopeepay|unionbank/i);
+  });
+
+  test('bnpl rows only appear when the env gate is on', () => {
+    const prev = process.env.PAYMONGO_ENABLE_BILLEASE;
+    delete process.env.PAYMONGO_ENABLE_BILLEASE;
+    try {
+      expect(getPaymentMethodsCapability().bnpl).toEqual([]);
+      process.env.PAYMONGO_ENABLE_BILLEASE = 'true';
+      const bnpl = getPaymentMethodsCapability().bnpl;
+      expect(bnpl.map((b) => b.id)).toEqual(['billease']);
+    } finally {
+      if (prev === undefined) delete process.env.PAYMONGO_ENABLE_BILLEASE;
+      else process.env.PAYMONGO_ENABLE_BILLEASE = prev;
+    }
+  });
+});
+
 describe('payment confirmation + idempotency', () => {
   test('webhook paid activates billing once; duplicate webhook does not double-apply', async () => {
     seedBilling([
@@ -580,5 +829,42 @@ describe('security surface', () => {
     expect(s.total_due).toBe(1000);
     expect(s.next_payment.mode).toBe('open_invoice');
     expect(s.subscription_status).toBe('pending');
+  });
+});
+
+describe('GET /billing/paymongo-config (publishable key exposure)', () => {
+  test('returns the publishable key and never the secret key', async () => {
+    process.env.PAYMONGO_PUBLIC_KEY = 'pk_test_abc123';
+    process.env.PAYMONGO_SECRET_KEY = 'sk_test_super_secret';
+    const req = reqUser(SELLER, 'shop_owner');
+    const res = mockRes();
+    await getPaymongoClientConfig(req, res);
+    const body = res.json.mock.calls[0][0];
+    expect(body.publishable_key).toBe('pk_test_abc123');
+    expect(body.elements_src).toContain('js.paymongo.com');
+    // Secret must never appear anywhere in the serialized response
+    const raw = JSON.stringify(body);
+    expect(raw).not.toContain('sk_test_super_secret');
+    expect(raw).not.toMatch(/secret/i);
+    delete process.env.PAYMONGO_PUBLIC_KEY;
+  });
+
+  test('returns null publishable_key when not configured (no crash)', async () => {
+    const saved = process.env.PAYMONGO_PUBLIC_KEY;
+    delete process.env.PAYMONGO_PUBLIC_KEY;
+    const res = mockRes();
+    await getPaymongoClientConfig(reqUser(SELLER, 'shop_owner'), res);
+    const body = res.json.mock.calls[0][0];
+    expect(body.publishable_key).toBeNull();
+    if (saved !== undefined) process.env.PAYMONGO_PUBLIC_KEY = saved;
+  });
+
+  test('route is requireAuth-protected (no anonymous access)', async () => {
+    const { readFileSync } = await import('fs');
+    const { default: pathMod } = await import('path');
+    const { fileURLToPath } = await import('url');
+    const here = pathMod.dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(pathMod.resolve(here, '../routes/billing.routes.js'), 'utf8');
+    expect(src).toMatch(/paymongo-config['"]?,\s*requireAuth/);
   });
 });

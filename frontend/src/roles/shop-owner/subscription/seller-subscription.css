@@ -227,6 +227,37 @@
   color: #D4B36A;
 }
 
+/* Feature lists inside the dark hero panel need light text — the default
+   .ssub-feature-list li color targets light cream surfaces only. */
+.ssub-hero__panel .ssub-feature-list li {
+  color: rgba(255, 255, 255, 0.88);
+}
+.ssub-hero__panel .ssub-feature-list__check {
+  background: rgba(200, 155, 60, 0.28);
+  color: #F0D9A8;
+}
+
+/* Ghost buttons on LIGHT cards (e.g. Next payment card): the base ghost
+   style targets the dark hero, so scope a readable light variant. Disabled
+   stays legible — reduced interaction, never invisible text. */
+.ssub-card .ssub-btn--ghost {
+  background: #fff;
+  color: #142A4A;
+  border-color: #D8D2C2;
+}
+.ssub-card .ssub-btn--ghost:hover:not(:disabled) {
+  border-color: #C89B3C;
+  color: #8A6A1F;
+  background: #FDF6E3;
+}
+.ssub-card .ssub-btn--ghost:disabled {
+  opacity: 1;
+  cursor: not-allowed;
+  color: #5F6B84;
+  border-color: #D8D2C2;
+  background: #F5F2EA;
+}
+
 .ssub-feature-list {
   list-style: none;
   margin: 12px 0 0;
@@ -241,7 +272,7 @@
   gap: 10px;
   align-items: flex-start;
   font-size: 13px;
-  color: #D7DEEA;
+  color: #52627A;
   line-height: 1.35;
 }
 
@@ -250,7 +281,7 @@
   height: 18px;
   border-radius: 50%;
   background: rgba(200, 155, 60, 0.18);
-  color: #E6C78A;
+  color: #8A6A1F;
   font-size: 11px;
   font-weight: 800;
   display: grid;
@@ -845,7 +876,7 @@
 .ssub-upgrade__plan-label {
   font-size: 11px;
   letter-spacing: 0.06em;
-  color: #8a93a5;
+  color: #5F6B84;
   font-weight: 700;
 }
 .ssub-upgrade__plan-name {
@@ -879,7 +910,7 @@
   color: #334155;
 }
 .ssub-upgrade__row--muted {
-  color: #8a93a5;
+  color: #5F6B84;
   font-size: 12px;
 }
 .ssub-upgrade__instant {
@@ -1020,6 +1051,924 @@
   gap: 8px;
   font-size: 13px;
   color: #334155;
+}
+
+/* ===========================================================================
+   Update payment method modal — multi-step flow (approved reference layout)
+   Wide steps: left = subscription summary (42%), right = method content (58%).
+   Narrow nested steps: single column + back link. Title + X stay in place.
+   Combined selectors beat .modal-box { width: min(520px) } in index.css.
+   =========================================================================== */
+.modal-box.ssub-payment-modal {
+  width: min(980px, calc(100vw - 48px));
+  max-height: 86vh;
+  border-radius: 20px;
+  /* Footer stays visible: box is a column flex, body scrolls internally. */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.modal-box.ssub-payment-modal--narrow {
+  width: min(568px, calc(100vw - 48px));
+}
+.modal-box.ssub-payment-modal .modal-box-head__text {
+  min-width: 0;
+}
+.modal-box-subtitle {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: #5f6b84;
+}
+.modal-box.ssub-payment-modal .modal-box-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0;
+}
+.modal-box.ssub-payment-modal .modal-box-foot {
+  flex: 0 0 auto;
+}
+
+/* Step shell ---------------------------------------------------------------- */
+.ssub-pm--wide {
+  display: grid;
+  grid-template-columns: minmax(0, 42fr) minmax(0, 58fr);
+  min-height: 440px;
+  align-items: stretch;
+}
+.ssub-pm__left {
+  background: #fbfaf7;
+  border-right: 1px solid #ece9e2;
+  padding: 26px 26px;
+  min-width: 0;
+}
+.ssub-pm__right {
+  padding: 24px 26px;
+  min-width: 0;
+}
+.ssub-pm--narrow {
+  padding: 22px 26px 26px;
+}
+
+/* Left panel — subscription summary only (real /billing/me/subscription) */
+.ssub-pm-summary {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  gap: 16px;
+}
+
+/* Plan card: gold crown + real plan name + badge + catalog description */
+.ssub-sum-plan {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 16px 16px 18px;
+  border-radius: 14px;
+  background: #fdf8ec;
+  border: 1px solid #f1e6cd;
+}
+.ssub-sum-plan__icon {
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  border-radius: 999px;
+  background: linear-gradient(140deg, #e8c987, #c89b3c);
+  color: #fffdf7;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(200, 155, 60, 0.28);
+}
+.ssub-sum-plan__body {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.ssub-sum-plan__titlerow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ssub-sum-plan__name {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+  color: #142a4a;
+  letter-spacing: -0.2px;
+}
+.ssub-sum-plan__badge {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #f6e3b6;
+  color: #8a6316;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.ssub-sum-plan__interval {
+  margin: 3px 0 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #44506b;
+}
+.ssub-sum-plan__desc {
+  margin: 8px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: #5f6b84;
+}
+
+/* Fee rows + Total Due */
+.ssub-sum-rows {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ssub-sum-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 14px;
+  font-size: 13.5px;
+}
+.ssub-sum-row dt {
+  color: #44506b;
+}
+.ssub-sum-row dd {
+  margin: 0;
+  font-weight: 700;
+  color: #142a4a;
+  text-align: right;
+  word-break: break-word;
+}
+.ssub-sum-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 14px;
+  margin-top: -4px;
+  padding-top: 14px;
+  border-top: 1px solid #e6e2d9;
+  font-size: 15px;
+  font-weight: 800;
+  color: #142a4a;
+}
+.ssub-sum-total strong {
+  font-size: 20px;
+  font-weight: 800;
+  color: #16356b;
+  letter-spacing: -0.3px;
+}
+
+/* Billing metadata panel */
+.ssub-sum-meta {
+  margin-top: 2px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  background: #f5f6f8;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+.ssub-sum-meta__item {
+  display: flex;
+  gap: 11px;
+  align-items: flex-start;
+  color: #6b7280;
+}
+.ssub-sum-meta__item svg {
+  flex: 0 0 auto;
+  margin-top: 1px;
+  color: #7b8497;
+}
+.ssub-sum-meta__label {
+  display: block;
+  font-size: 12px;
+  color: #6b7280;
+  line-height: 1.3;
+}
+.ssub-sum-meta__value {
+  display: block;
+  margin-top: 2px;
+  font-size: 13.5px;
+  font-weight: 700;
+  color: #142a4a;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.ssub-sum-note {
+  margin: auto 0 0;
+  padding-top: 4px;
+  font-size: 12px;
+  color: #5f6b84;
+  line-height: 1.5;
+}
+
+/* Back link + step headings */
+.ssub-pm-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 0;
+  background: transparent;
+  color: #16356b;
+  font-size: 13px;
+  font-weight: 700;
+  padding: 6px 8px;
+  margin: 0 0 14px -8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.ssub-pm-back:hover {
+  background: #f1f5fb;
+}
+.ssub-pm-back:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.ssub-pm-stephead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.ssub-pm-stephead .ssub-pm-heading {
+  margin: 0;
+}
+
+/* Method step: rows + full-width Continue + security note */
+.ssub-pm-methodstep {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  height: 100%;
+}
+.ssub-pm-methodfoot {
+  margin-top: auto;
+}
+
+/* Method selector rows */
+.ssub-pm-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.ssub-pm-method {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 76px;
+  box-sizing: border-box;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  border-radius: 14px;
+  padding: 12px 14px;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.ssub-pm-method:hover {
+  border-color: #c9d3e4;
+  background: #fcfcfb;
+}
+.ssub-pm-method:focus-visible {
+  outline: 2px solid #c89b3c;
+  outline-offset: 2px;
+}
+.ssub-pm-method.is-selected {
+  border-color: #3b82f6;
+  background: #f3f8ff;
+}
+
+/* Leading radio (real role="radio" button) */
+.ssub-pm-radio {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  border: 2px solid #c3cad6;
+  background: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.ssub-pm-radio.is-on {
+  border-color: #16356b;
+  box-shadow: inset 0 0 0 4px #16356b;
+}
+
+/* Category icon box */
+.ssub-pm-rowicon {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  color: #142a4a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.ssub-pm-rowicon--navy {
+  background: #16356b;
+  border-color: #16356b;
+  color: #fff;
+}
+.ssub-pm-rowicon--plain {
+  border: 0;
+  background: transparent;
+}
+.ssub-pm-rowicon--plain .ssub-pm-logo svg {
+  width: 44px;
+  height: 44px;
+}
+
+.ssub-pm-method__body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 2px;
+}
+.ssub-pm-method__title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #142a4a;
+}
+.ssub-pm-method__hint {
+  font-size: 12.5px;
+  color: #5f6b84;
+}
+
+/* Right-hand provider logos */
+.ssub-pm-rowlogos {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  line-height: 0;
+}
+.ssub-pm-rowlogos--chips {
+  gap: 6px;
+}
+.ssub-pm-rowlogos--chips .ssub-pm-logo {
+  border: 1px solid #eef0f3;
+  border-radius: 6px;
+  background: #fff;
+  padding: 3px 4px;
+}
+.ssub-pm-wordmark {
+  width: 68px;
+  height: 24px;
+}
+.ssub-pm-method__chev {
+  flex: 0 0 auto;
+  color: #94a3b8;
+}
+
+/* Full-width Continue on the method step */
+.ssub-btn--wide {
+  width: 100%;
+  height: 52px;
+  border-radius: 12px;
+  font-size: 15.5px;
+  font-weight: 700;
+  gap: 8px;
+}
+
+/* Security line under Continue */
+.ssub-pm-security {
+  margin: 12px 0 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 12px;
+  color: #5f6b84;
+  text-align: center;
+  line-height: 1.45;
+}
+.ssub-pm-security svg {
+  flex: 0 0 auto;
+  color: #16356b;
+}
+
+/* Local brand logo boxes (inline SVG — never remote images) */
+.ssub-pm-logo {
+  display: inline-flex;
+  flex: 0 0 auto;
+  line-height: 0;
+}
+.ssub-pm-logo svg {
+  display: block;
+  border-radius: 6px;
+}
+.ssub-pm-logo--xs svg {
+  width: 30px;
+  height: 20px;
+}
+.ssub-pm-logo--sm svg {
+  width: 40px;
+  height: 27px;
+}
+.ssub-pm-logo--md svg {
+  width: 48px;
+  height: 32px;
+}
+.ssub-pm-logo--lg svg {
+  width: 76px;
+  height: 51px;
+}
+.ssub-pm-heading {
+  margin: 0 0 8px;
+  font-size: 18px;
+  font-weight: 800;
+  color: #142a4a;
+}
+.ssub-pm-sub {
+  margin: 0 0 18px;
+  font-size: 13px;
+  color: #5f6b84;
+}
+.ssub-pm-label {
+  margin: 16px 0 7px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334155;
+}
+
+/* Saved card rows */
+.ssub-pm-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ssub-pm-cardrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #e8e5de;
+  border-radius: 12px;
+  background: #fff;
+  padding: 10px 12px;
+}
+.ssub-pm-cardrow.is-selected {
+  border-color: #3b82f6;
+  background: #f3f8ff;
+}
+.ssub-pm-cardrow__select {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  text-align: left;
+  padding: 2px 0;
+  min-width: 0;
+}
+.ssub-pm-radio {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid #b9c2d0;
+  flex: 0 0 auto;
+  position: relative;
+}
+.ssub-pm-radio.is-on {
+  border-color: #3b82f6;
+}
+.ssub-pm-radio.is-on::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: #3b82f6;
+}
+.ssub-pm-brand {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  color: #142a4a;
+  background: #eef2f8;
+  border-radius: 6px;
+  padding: 6px 8px;
+  min-width: 46px;
+  text-align: center;
+}
+/* Brand-colored chips (CSS-only local styling — no remote logos) */
+.ssub-pm-brand--visa {
+  background: #e8eefc;
+  color: #1a1f71;
+}
+.ssub-pm-brand--mastercard {
+  background: #fdeee8;
+  color: #b5251c;
+}
+.ssub-pm-brand--amex {
+  background: #e6f1fb;
+  color: #006fcf;
+}
+.ssub-pm-brand--jcb {
+  background: #eaf7ef;
+  color: #0b7a3b;
+}
+.ssub-pm-cardrow__main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ssub-pm-cardrow__num {
+  font-weight: 700;
+  color: #142a4a;
+  font-size: 14px;
+  letter-spacing: 1px;
+}
+.ssub-pm-cardrow__exp {
+  font-size: 12px;
+  color: #7a8496;
+}
+.ssub-pm-cardrow .ssub-chip {
+  flex: 0 0 auto;
+}
+.ssub-pm-empty {
+  border: 1px dashed #d9d4c8;
+  border-radius: 12px;
+  padding: 18px 14px;
+  background: #faf7f0;
+  text-align: center;
+}
+.ssub-pm-empty__title {
+  margin: 0 0 4px;
+  font-weight: 700;
+  color: #142a4a;
+  font-size: 14px;
+}
+.ssub-pm-empty__text {
+  margin: 0;
+  font-size: 12.5px;
+  color: #5f6b84;
+}
+
+/* Options (⋮) menu */
+.ssub-pm-menu {
+  position: relative;
+  flex: 0 0 auto;
+}
+.ssub-pm-menu__btn {
+  border: 0;
+  background: transparent;
+  color: #5f6b84;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.ssub-pm-menu__btn:hover,
+.ssub-pm-menu__btn[aria-expanded='true'] {
+  background: #f1efe8;
+  color: #142a4a;
+}
+.ssub-pm-menu__pop {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 5;
+  background: #fff;
+  border: 1px solid #e8e5de;
+  border-radius: 10px;
+  box-shadow: 0 10px 24px rgba(20, 42, 74, 0.12);
+  min-width: 160px;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+}
+.ssub-pm-menu__pop button {
+  border: 0;
+  background: transparent;
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: #142a4a;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.ssub-pm-menu__pop button:hover {
+  background: #f5f3ec;
+}
+.ssub-pm-menu__danger {
+  color: #9f1239 !important;
+}
+
+/* Add-card step: form controls fill the narrow step column only */
+.ssub-pm .ssub-field input {
+  width: 100%;
+  box-sizing: border-box;
+}
+.ssub-pm-cardfield {
+  margin-bottom: 10px;
+}
+.ssub-pm-cardfield__frame {
+  border: 1px solid #e3e7ef;
+  border-radius: 10px;
+  background: #fff;
+  min-height: 46px;
+  padding: 2px;
+}
+/* PayMongo Elements mounts its own fieldset/inputs here — style to match.
+   The SDK sets an inline fieldset border; override it. */
+.ssub-pm-cardfield__frame fieldset {
+  border: 0 !important;
+  padding: 10px !important;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.ssub-pm-cardfield__frame fieldset > div {
+  display: flex;
+  gap: 10px;
+}
+.ssub-pm-cardfield__frame .pm-input {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid #e3e7ef;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  color: #142a4a;
+  background: #fff;
+}
+.ssub-pm-cardfield__frame .pm-input:focus {
+  outline: none;
+  border-color: #0c7ff2;
+  box-shadow: 0 0 0 3px rgba(12, 127, 242, 0.12);
+}
+.ssub-pm-cardfield__frame .pm-card-expiry,
+.ssub-pm-cardfield__frame .pm-card-cvc {
+  flex: 1;
+  min-width: 0;
+}
+.ssub-pm-lock {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 10px;
+  font-size: 12.5px;
+  color: #5f6b84;
+}
+.ssub-pm-lock svg {
+  flex: 0 0 auto;
+  color: #0c7ff2;
+}
+.ssub-pm-brands {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.ssub-pm-addbtn {
+  width: 100%;
+  margin-top: 16px;
+  min-height: 46px;
+}
+/* Compact inline notice — not a giant warning block */
+.ssub-pm-unavailable {
+  border: 1px solid #e8e5de;
+  background: #f7f5ee;
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin: 16px 0;
+}
+.ssub-pm-unavailable strong {
+  color: #142a4a;
+  display: block;
+  font-size: 13px;
+  margin-bottom: 5px;
+}
+.ssub-pm-unavailable p {
+  margin: 0;
+  font-size: 12.5px;
+  color: #5f6b84;
+}
+.ssub-pm-hint {
+  margin: 8px 0 0;
+  font-size: 12px;
+  color: #5f6b84;
+  text-align: center;
+}
+.ssub-pm-hint--error {
+  color: #9f1239;
+}
+
+/* Hint variants (security notes, left-aligned copy with inline icons) */
+.ssub-pm-hint--left {
+  text-align: left;
+  display: flex;
+  gap: 7px;
+  align-items: flex-start;
+  line-height: 1.5;
+}
+.ssub-pm-hint--left svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+  color: #16356b;
+}
+
+/* Primary navy CTA for the payment flow (gold stays the page-level accent) */
+.ssub-btn--navy {
+  background: #16356b;
+  color: #fff;
+  border-color: #16356b;
+}
+.ssub-btn--navy:hover:not(:disabled) {
+  background: #1a4284;
+  border-color: #1a4284;
+}
+.ssub-btn--navy:disabled {
+  opacity: 0.55;
+}
+
+/* QR Ph step */
+.ssub-pm-qrhero {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  border: 1px solid #ece9e2;
+  background: #fbfaf7;
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 18px;
+}
+.ssub-pm-qrhero strong {
+  display: block;
+  color: #142a4a;
+  font-size: 14.5px;
+}
+.ssub-pm-qrhero p {
+  margin: 5px 0 0;
+  font-size: 12.5px;
+  color: #5f6b84;
+  line-height: 1.5;
+}
+.ssub-pm-steps {
+  list-style: none;
+  margin: 0 0 18px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+.ssub-pm-steps li {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  font-size: 13.5px;
+  color: #334155;
+  line-height: 1.5;
+}
+.ssub-pm-steps__n {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #16356b;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  line-height: 1;
+}
+.ssub-pm-infoband {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  background: #f3f8ff;
+  border: 1px solid #dbe7fb;
+  color: #1c3f78;
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 12.5px;
+  line-height: 1.5;
+  margin: 0;
+}
+.ssub-pm-infoband svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+/* Review step */
+.ssub-pm-reviewrow {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  border: 1px solid #3b82f6;
+  background: #f3f8ff;
+  border-radius: 14px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+}
+.ssub-pm-reviewrow__body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.ssub-pm-reviewrow__label {
+  font-size: 12px;
+  color: #5f6b84;
+}
+.ssub-pm-reviewrow__body strong {
+  font-size: 15px;
+  color: #142a4a;
+}
+.ssub-pm-summary__rows--review {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+  margin-bottom: 16px;
+}
+
+@media (max-width: 720px) {
+  .modal-box.ssub-payment-modal {
+    width: 100%;
+    max-height: 92vh;
+    border-radius: 16px;
+  }
+  .ssub-pm--wide {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+  .ssub-pm__left {
+    border-right: 0;
+    border-bottom: 1px solid #ece9e2;
+    padding: 20px;
+  }
+  .ssub-pm__right,
+  .ssub-pm--narrow {
+    padding: 18px 20px 22px;
+  }
+  .ssub-sum-plan {
+    padding: 14px;
+  }
+  .ssub-sum-total strong {
+    font-size: 18px;
+  }
+}
+
+@media (max-width: 900px) {
+  /* Logo clusters drop to their own line so titles/subtitles stay readable. */
+  .ssub-pm-method {
+    flex-wrap: wrap;
+    row-gap: 10px;
+  }
+  .ssub-pm-method__body {
+    flex: 1 1 calc(100% - 92px);
+  }
+  .ssub-pm-method__title,
+  .ssub-pm-method__hint {
+    overflow-wrap: normal;
+    word-break: keep-all;
+  }
+  .ssub-pm-rowlogos {
+    margin-left: 50px;
+  }
+}
+
+@media (max-width: 480px) {
+  .ssub-pm__right,
+  .ssub-pm--narrow {
+    padding: 16px;
+  }
+  .ssub-pm-method {
+    padding: 12px 14px;
+    gap: 12px;
+  }
+  .ssub-pm-stephead {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .ssub-pm-method {
+    min-height: 0;
+  }
+  .ssub-btn--wide {
+    height: 50px;
+  }
 }
 
 @media (max-width: 640px) {

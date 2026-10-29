@@ -4,31 +4,31 @@ import { useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from '../shared/components/Sidebar';
 import { Topbar } from '../shared/components/Topbar';
-import { NotificationBell } from '../shared/components/NotificationBell';
 import { useAuth } from '../shared/hooks/useAuth';
+import {
+  BarChart3, Building2, LayoutDashboard, Receipt, ShieldAlert, Sparkles,
+} from 'lucide-react';
 
+// Jewelry + Auctions are no longer standalone admin destinations: inventory and
+// auction monitoring are reached through Branches → selected branch → Jewelry /
+// Auctions. The pages/services themselves are untouched and their old URLs
+// redirect to /admin/branches (see roles/admin/routes.jsx).
 const sections = [
-  { label: 'OVERVIEW', items: [{ to: '/admin', name: 'Dashboard', end: true }] },
+  { label: 'OVERVIEW', items: [{ to: '/admin', name: 'Dashboard', end: true, icon: <LayoutDashboard size={17} /> }] },
   { label: 'BRANCH OPERATIONS', items: [
-    { to: '/admin/branches', name: 'Branches' },
-    { to: '/admin/users', name: 'Users & Roles' },
-    { to: '/admin/transactions', name: 'Orders' },
-  ]},
-  { label: 'INVENTORY & AUCTIONS', items: [
-    { to: '/admin/products', name: 'Jewelry' },
-    { to: '/admin/auctions', name: 'Auctions' },
+    { to: '/admin/branches', name: 'Branches', icon: <Building2 size={17} /> },
+    { to: '/admin/users', name: 'Users & Roles', icon: <Sparkles size={17} /> },
+    { to: '/admin/transactions', name: 'Orders', icon: <Receipt size={17} /> },
   ]},
   { label: 'PLATFORM MANAGEMENT', items: [
-    { to: '/admin/billing', name: 'Subscriptions' },
-    { to: '/admin/analytics', name: 'Reports' },
-    { to: '/admin/security', name: 'Security Alerts' },
+    { to: '/admin/billing', name: 'Subscriptions', icon: <Sparkles size={17} /> },
+    { to: '/admin/analytics', name: 'Reports', icon: <BarChart3 size={17} /> },
+    { to: '/admin/security', name: 'Security Alerts', icon: <ShieldAlert size={17} /> },
   ]},
 ];
 
 const titles = {
   '/admin': ['Dashboard'],
-  '/admin/products': ['Jewelry'],
-  '/admin/auctions': ['Auctions'],
   '/admin/users': ['Users & Roles'],
   '/admin/transactions': ['Orders'],
   '/admin/analytics': ['Reports'],
@@ -65,7 +65,9 @@ export default function AdminLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { user, signOut } = useAuth();
   const { pathname } = useLocation();
-  const title = titles[pathname]?.[0] || titles['/admin'][0];
+  // /admin/branches/:id stays under the Branches title (reference header).
+  const titleKey = pathname.startsWith('/admin/branches') ? '/admin/branches' : pathname;
+  const title = titles[titleKey]?.[0] || titles['/admin'][0];
   const displayName = getDisplayName(user);
   const initials = getUserInitials(displayName, user?.email);
   // Subscriptions page owns its flat portal header (search + platform pill)
@@ -85,7 +87,11 @@ export default function AdminLayout() {
             onSidebarToggle={() => setSidebarCollapsed((v) => !v)}
             user={{ initials, name: displayName, role: 'Administrator' }}
             onSignOut={signOut}
-            rightExtra={<NotificationBell to="/admin/notifications" apiPath="/admin/notifications/history" />}
+            /* No notification bell in the Admin portal by design. The shared
+               PortalPageHeader still renders rightExtra for Customer and Seller,
+               and the Admin header's right group keeps the profile/avatar chip
+               flush right (justify-content: space-between), so removing the bell
+               leaves no orphan gap, badge or hitbox. */
             settingsTo="/admin"
           />
         )}

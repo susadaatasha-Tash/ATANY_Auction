@@ -8,6 +8,7 @@ import { listTransactions, markPaid, updateOrderStatus } from '../controllers/ad
 import { getAnalytics, exportCsv } from '../controllers/admin/analytics.controller.js';
 import { listAlerts, updateAlert } from '../controllers/admin/security.controller.js';
 import { listBranches, createBranch, updateBranch, deleteBranch } from '../controllers/admin/branch.controller.js';
+import * as branchMonitor from '../controllers/admin/branchMonitor.controller.js';
 import { listHistory, markAllRead, markOneRead, deleteNotification } from '../controllers/admin/notification.controller.js';
 
 const router = Router();
@@ -25,7 +26,15 @@ router.get('/analytics', getAnalytics); router.get('/analytics/export', exportCs
 // Security — spec 4.2 alerts
 router.get('/security-alerts', listAlerts); router.patch('/security-alerts/:id', updateAlert);
 // Branches — single source of truth spec 4.5
-router.get('/branches', listBranches); router.post('/branches', createBranch); router.put('/branches/:id', updateBranch); router.delete('/branches/:id', deleteBranch);
+router.get('/branches', listBranches);
+// Branch-centric monitoring (READ-ONLY): branch-scoped jewelry, auctions, monitor drawer.
+// Registered BEFORE the /:id-style branch routes below is irrelevant (no such route), and all
+// sit behind the existing app-level requireAuth + requireRole(['admin']).
+router.get('/branches/monitor', branchMonitor.listBranchMonitorOverview);
+router.get('/branches/:id/overview', branchMonitor.getBranchOverview);
+router.get('/branches/:id/listings', branchMonitor.listBranchListings);
+router.get('/branches/:id/auctions', branchMonitor.listBranchAuctions);
+router.get('/branches/:id/auctions/:auctionId', branchMonitor.getBranchAuctionMonitor); router.post('/branches', createBranch); router.put('/branches/:id', updateBranch); router.delete('/branches/:id', deleteBranch);
 // Notifications — automatic system-generated only (manual POST removed)
 // Mutations are scoped to the authenticated admin's own rows (see controller).
 router.get('/notifications/history', listHistory);

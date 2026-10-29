@@ -114,33 +114,53 @@ export function classifyPlanChange({ currentPlan, targetPlan, currentInterval, t
 // ---------------------------------------------------------------------------
 
 export async function getActiveSubscriptionChange(sellerId) {
-  const { rows } = await pool.query(
-    `SELECT * FROM subscription_changes
-     WHERE seller_id = $1 AND status IN ('pending_payment', 'scheduled')
-     ORDER BY created_at DESC LIMIT 1`,
-    [sellerId]
-  );
-  return rows[0] || null;
+  try {
+    const { rows } = await pool.query(
+      `SELECT * FROM subscription_changes
+       WHERE seller_id = $1 AND status IN ('pending_payment', 'scheduled')
+       ORDER BY created_at DESC LIMIT 1`,
+      [sellerId]
+    );
+    return rows[0] || null;
+  } catch (e) {
+    // Pre-migration database without subscription_changes (025/026): there can
+    // be no active change by definition — return null instead of 500ing every
+    // preview/confirm. Any other error still propagates.
+    if (e?.code === '42P01') return null;
+    throw e;
+  }
 }
 
 export async function getScheduledDowngrade(sellerId) {
-  const { rows } = await pool.query(
-    `SELECT * FROM subscription_changes
-     WHERE seller_id = $1 AND status = 'scheduled'
-     ORDER BY created_at DESC LIMIT 1`,
-    [sellerId]
-  );
-  return rows[0] || null;
+  try {
+    const { rows } = await pool.query(
+      `SELECT * FROM subscription_changes
+       WHERE seller_id = $1 AND status = 'scheduled'
+       ORDER BY created_at DESC LIMIT 1`,
+      [sellerId]
+    );
+    return rows[0] || null;
+  } catch (e) {
+    // Pre-migration database (no subscription_changes table): no scheduled
+    // change can exist — return null instead of failing the caller.
+    if (e?.code === '42P01') return null;
+    throw e;
+  }
 }
 
 export async function getPendingUpgrade(sellerId) {
-  const { rows } = await pool.query(
-    `SELECT * FROM subscription_changes
-     WHERE seller_id = $1 AND status = 'pending_payment'
-     ORDER BY created_at DESC LIMIT 1`,
-    [sellerId]
-  );
-  return rows[0] || null;
+  try {
+    const { rows } = await pool.query(
+      `SELECT * FROM subscription_changes
+       WHERE seller_id = $1 AND status = 'pending_payment'
+       ORDER BY created_at DESC LIMIT 1`,
+      [sellerId]
+    );
+    return rows[0] || null;
+  } catch (e) {
+    if (e?.code === '42P01') return null;
+    throw e;
+  }
 }
 
 export async function getSubscriptionChangeById(id, sellerId = null) {
@@ -371,7 +391,24 @@ export async function previewPlanChange({ sellerId, planCode, billingInterval })
     }
   }
 
-  const activeChange = await getActiveSubscriptionChange(sellerId);
+  let activeChange = await getActiveSubscriptionChange(sellerId);
+  // Reconcile a stale pending_payment against PayMongo before deciding:
+  // paid → applied (preview the NEW state); failed/expired → cleared so a
+  // fresh attempt can proceed; still pending → resumable metadata below.
+  if (activeChange && activeChange.status === 'pending_payment') {
+    try {
+      const reconciled = await reconcilePendingChange(sellerId, activeChange);
+      if (reconciled.state === 'applied') {
+        activeChange = await getActiveSubscriptionChange(sellerId);
+      } else if (reconciled.state === 'failed' || reconciled.state === 'expired') {
+        activeChange = null;
+      } else {
+        activeChange = { ...activeChange, _reconciled: reconciled.state, _expiresAt: reconciled.expiresAt || null };
+      }
+    } catch {
+      // Reconciliation must never break preview — keep the change as-is.
+    }
+  }
   if (activeChange) {
     const samePendingUpgrade =
       activeChange.status === 'pending_payment' &&
@@ -384,6 +421,11 @@ export async function previewPlanChange({ sellerId, planCode, billingInterval })
         type: 'upgrade',
         mode: 'immediate',
         reuse_pending_change: true,
+        pending_payment: {
+          id: activeChange.id,
+          status: activeChange.status,
+          expires_at: activeChange._expiresAt || null,
+        },
         current_plan: serializePlan(currentResolved, currentInterval),
         target_plan: serializePlan(targetPlan, targetInterval),
         billing_interval: targetInterval,
@@ -671,6 +713,116 @@ export async function scheduleDowngrade({
   });
 
   return change;
+}
+
+/**
+ * Reconcile a pending_payment change against PayMongo (authoritative).
+ * - paid → apply the upgrade exactly once (idempotent claim), return applied.
+ * - failed/expired → mark change + billing accordingly, return terminal state.
+ * - still pending → return pending (with checkout expiry when known).
+ * - PayMongo unreachable → return unknown (caller must stay fail-closed).
+ * Never throws for provider states; throws only on DB errors.
+ */
+export async function reconcilePendingChange(sellerId, pending) {
+  if (!pending || pending.status !== 'pending_payment') return { state: 'none' };
+  let billing = null;
+  try {
+    const { rows } = await pool.query(`SELECT * FROM billing_records WHERE id = $1`, [
+      pending.billing_record_id,
+    ]);
+    billing = rows[0] || null;
+  } catch {
+    billing = null;
+  }
+  let providerState = 'unknown';
+  let expiresAt = null;
+  try {
+    const { getCheckoutSession, checkoutStatus } = await import('./paymongoService.js');
+    if (pending.paymongo_checkout_session_id) {
+      const body = await getCheckoutSession(pending.paymongo_checkout_session_id);
+      providerState = checkoutStatus(body);
+      const attrs = body?.data?.attributes || body?.attributes || {};
+      expiresAt = attrs.expires_at || attrs.expiresAt || null;
+    } else {
+      providerState = 'unknown';
+    }
+  } catch {
+    providerState = 'unknown';
+  }
+  if (providerState === 'paid') {
+    const applied = await applyUpgradeChange({ change: pending, source: 'reconcile' });
+    return { state: 'applied', applied, billing };
+  }
+  if (providerState === 'failed' || providerState === 'expired') {
+    const targetStatus = providerState === 'expired' ? 'expired' : 'failed';
+    try {
+      await pool.query(`UPDATE subscription_changes SET status = $1 WHERE id = $2`, [targetStatus, pending.id]);
+    } catch {}
+    try {
+      if (billing) {
+        await pool.query(`UPDATE billing_records SET status = $1 WHERE id = $2`, [targetStatus, billing.id]);
+      }
+    } catch {}
+    return { state: targetStatus, billing };
+  }
+  return { state: providerState === 'unknown' ? 'unknown' : 'pending', billing, expiresAt };
+}
+
+/**
+ * Cancel an unpaid pending upgrade. Verifies ownership, pending status, and
+ * that PayMongo has NOT been paid (paid → apply instead; never cancel paid).
+ * Marks change + billing row canceled; subscription itself never changes.
+ */
+export async function cancelPendingUpgrade({ sellerId, changeId = null }) {
+  let pending = null;
+  if (changeId) {
+    pending = await getSubscriptionChangeById(changeId, sellerId);
+  } else {
+    pending = await getPendingUpgrade(sellerId);
+  }
+  if (!pending || pending.status !== 'pending_payment') {
+    const err = new Error('No pending upgrade to cancel.');
+    err.statusCode = 404;
+    err.code = 'NO_PENDING_UPGRADE';
+    throw err;
+  }
+  const reconciled = await reconcilePendingChange(sellerId, pending);
+  if (reconciled.state === 'applied') {
+    const err = new Error('Payment already succeeded — the upgrade has been applied and cannot be canceled.');
+    err.statusCode = 409;
+    err.code = 'UPGRADE_ALREADY_PAID';
+    throw err;
+  }
+  if (reconciled.state === 'failed' || reconciled.state === 'expired') {
+    return { cancelled: false, reconciled: reconciled.state, change: pending };
+  }
+  const { rows } = await pool.query(
+    `UPDATE subscription_changes
+     SET status = 'canceled', canceled_at = now()
+     WHERE id = $1 AND status = 'pending_payment'
+     RETURNING *`,
+    [pending.id]
+  );
+  if (!rows.length) {
+    const err = new Error('Pending upgrade could not be canceled.');
+    err.statusCode = 409;
+    err.code = 'PLAN_CHANGE_CONFLICT';
+    throw err;
+  }
+  try {
+    const billing = reconciled.billing;
+    if (billing && ['pending', 'processing'].includes(String(billing.status))) {
+      await pool.query(`UPDATE billing_records SET status = 'cancelled' WHERE id = $1`, [billing.id]);
+    }
+  } catch {}
+  await writeAuditLog({
+    userId: sellerId,
+    action: 'upgrade_canceled',
+    entityType: 'subscription_change',
+    entityId: pending.id,
+    details: { target_plan: pending.target_plan_code },
+  });
+  return { cancelled: true, change: rows[0] };
 }
 
 export async function cancelScheduledChange({ sellerId }) {

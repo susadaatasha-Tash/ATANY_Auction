@@ -50,7 +50,7 @@ export function PurchaseHeader({ globalQuery, onGlobalQuerySubmit, liveLots }) {
         value={globalQuery}
         onChange={(e) => onGlobalQuerySubmit?.(e.target.value, { live: true })}
         placeholder="Search lots, branches..."
-        aria-label="Search lots and branches"
+        
       />
     </form>
   );

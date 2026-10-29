@@ -23,6 +23,51 @@ export function formatLongDate(d) {
   return date.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 }
 
+/** Exact deadline rendering: "Oct 22, 2026 · 3:45 PM" (local display only). */
+export function formatDeadlineDateTime(d) {
+  if (!d) return '—';
+  const date = new Date(d);
+  if (isNaN(date.getTime())) return String(d);
+  const day = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  return `${day} · ${time}`;
+}
+
+/** 1 = original winner, 2+ = fallback winner currently holding the assignment. */
+export function winnerRank(order) {
+  const raw = Number(order?.winner_rank);
+  return Number.isFinite(raw) && raw >= 1 ? raw : 1;
+}
+
+/**
+ * This customer is the CURRENT eligible winner because the previous holder's
+ * window lapsed and the item was reassigned to them. Informational only —
+ * they are a normal winner, not a "second place" type of winner.
+ */
+export function isFallbackWinner(order) {
+  return winnerRank(order) > 1;
+}
+
+export function getFallbackNotice(order) {
+  if (!isFallbackWinner(order)) return null;
+  return `You are now the eligible winner for this item (winner reassignment #${winnerRank(order)}).`;
+}
+
+/**
+ * True when the local clock has passed the server-stored deadline.
+ * Used only to grey out the Pay CTA while the page is open; the backend
+ * remains authoritative and re-checks the window on every payment attempt.
+ */
+export function isPaymentWindowClosed(order, now = Date.now()) {
+  const state = getPaymentDeadlineState(order, now);
+  if (!state.visible) return false;
+  return !!state.expired;
+}
+
+/** Shown when the local clock passes the deadline while the page is open. */
+export const PAYMENT_WINDOW_EXPIRED_MESSAGE =
+  'Payment window expired. Waiting for winner reassignment.';
+
 export function formatShortDate(d) {
   if (!d) return '—';
   const date = new Date(d);
@@ -64,7 +109,7 @@ export function getPaymentDeadlineState(order, now = Date.now()) {
     expired: remaining.expired,
     collapsedLabel: remaining.expired
       ? 'Payment deadline expired'
-      : `Payment due ${formatLongDate(deadline)}`,
+      : `Payment due ${formatDeadlineDateTime(deadline)}`,
   };
 }
 

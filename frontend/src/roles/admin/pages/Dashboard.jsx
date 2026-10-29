@@ -2,6 +2,7 @@
 // Admin dashboard — multi-branch focused (simplified scope)
 import { useEffect } from 'react';
 import { KpiCard } from '../../../shared/ui/Card';
+import { Skeleton, SkeletonCircle, SkeletonKpiRow, SkeletonList } from '../../../shared/ui/Skeleton';
 import { ActivityText } from '../../../shared/components/SafeHtml';
 import { useAdminData } from '../hooks/useAdminData';
 
@@ -40,13 +41,15 @@ const RevenueIcon = () => (
 );
 
 export default function AdminDashboard() {
-  const { users, txns, branches, refresh, loadAnalytics } = useAdminData();
+  // `loading` = first load (show skeletons); `refreshing` = background poll
+  // (keep existing content). The hook already fetches on mount, so we no longer
+  // fire a second identical refresh here.
+  const { users, txns, branches, refresh, loadAnalytics, loading, refreshing } = useAdminData();
 
   useEffect(() => {
-    refresh(); loadAnalytics();
     const interval = setInterval(() => { refresh(); }, 15000);
     return () => clearInterval(interval);
-  }, [refresh, loadAnalytics]);
+  }, [refresh]);
 
   const totalBranches = (branches || []).length;
   const activeBranches = (branches || []).filter(b => (b.status || 'Open') === 'Open').length;
@@ -69,18 +72,39 @@ export default function AdminDashboard() {
 
   return (
     <>
-      <div className="kpi-grid">
-        <KpiCard icon={<BranchIcon />} value={totalBranches} label="Total Branches" delta={`${activeBranches} active`} deltaDir="up" />
-        <KpiCard icon={<ShopIcon />} value={shopOwners} label="Shop Owners / Sellers" delta="active" />
-        <KpiCard icon={<UsersIcon />} value={customers} label="Total Customers" delta={`${(users || []).length} users`} />
-        <KpiCard icon={<RevenueIcon />} value={(txns || []).length} label="Orders / Transactions" delta={peso(revenue)} deltaDir="up" />
+      {/* Four KPI skeletons mirror .kpi-card (icon+label / divider / value /
+          badge) so the grid keeps identical geometry and shows no fake 0/₱0. */}
+      <div className="kpi-grid" aria-busy={loading ? 'true' : undefined}>
+        {loading ? (
+          <SkeletonKpiRow count={4} />
+        ) : (
+          <>
+            <KpiCard icon={<BranchIcon />} value={totalBranches} label="Total Branches" badge={`${activeBranches} active`} badgeVariant="positive" />
+            <KpiCard icon={<ShopIcon />} value={shopOwners} label="Shop Owners / Sellers" badge="active" badgeVariant="neutral" />
+            <KpiCard icon={<UsersIcon />} value={customers} label="Total Customers" badge={`${(users || []).length} users`} badgeVariant="neutral" />
+            <KpiCard icon={<RevenueIcon />} value={(txns || []).length} label="Orders / Transactions" badge={peso(revenue)} badgeVariant="positive" />
+          </>
+        )}
       </div>
 
       <div className="two-col">
         <div className="panel">
           <div className="panel-head"><div><h2>Branches</h2></div></div>
-          <div className="explore-branches-grid admin-branches-grid" style={{ padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '16px' }}>
-            {(branches || []).slice(0, 4).map(b => (
+          <div className="explore-branches-grid admin-branches-grid" style={{ padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: '16px' }} aria-busy={loading ? 'true' : undefined}>
+            {loading ? (
+              /* 4 branch-card skeletons: 140px image area + name/address/status */
+              [0, 1, 2, 3].map((i) => (
+                <div key={i} style={{ background: '#fff', border: '1px solid #EEE8DC', borderRadius: '12px', overflow: 'hidden' }}>
+                  <Skeleton w="100%" h={140} r={0} />
+                  <div style={{ padding: '14px 16px' }}>
+                    <Skeleton w="64%" h={14} />
+                    <Skeleton w="90%" h={11} style={{ marginTop: 8 }} />
+                    <Skeleton w="36%" h={11} style={{ marginTop: 8 }} />
+                    <Skeleton w="52%" h={11} style={{ marginTop: 12 }} />
+                  </div>
+                </div>
+              ))
+            ) : (branches || []).slice(0, 4).map(b => (
               <div key={b.id} style={{ background: '#fff', border: '1px solid #EEE8DC', borderRadius: '12px', overflow: 'hidden', boxShadow: '0 1px 3px rgba(22,43,77,0.06)' }}>
                 <div style={{ height: '140px', overflow: 'hidden', background: '#F7F3EA' }}>
                   <img src={getBranchImage(b)} alt={b.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -95,14 +119,30 @@ export default function AdminDashboard() {
                 </div>
               </div>
             ))}
-            {!(branches || []).length && <div className="empty-state" style={{ gridColumn: '1/-1' }}><p>No branches found.</p></div>}
+            {/* Confirmed-empty only — never while the request is in flight. */}
+            {!loading && !(branches || []).length && (
+              <div className="empty-state" style={{ gridColumn: '1/-1' }}><p>No branches found.</p></div>
+            )}
           </div>
         </div>
 
         <div className="panel">
           <div className="panel-head"><div><h2>Recent Activity</h2></div></div>
-          <div className="activity-list">
-            {activity.length ? activity.map((a, i) => (
+          <div className="activity-list" aria-busy={loading ? 'true' : undefined}>
+            {loading ? (
+              <SkeletonList
+                count={6}
+                render={() => (
+                  <>
+                    <SkeletonCircle size={30} />
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <Skeleton w="84%" h={12} />
+                      <Skeleton w="32%" h={10} style={{ marginTop: 6 }} />
+                    </span>
+                  </>
+                )}
+              />
+            ) : activity.length ? activity.map((a, i) => (
               <div key={i} className="activity-item">
                 <div className="activity-dot" aria-hidden="true">
                   {a.type === 'user' ? '👤' : a.type === 'sale' ? '💰' : '🏪'}
@@ -123,7 +163,16 @@ export default function AdminDashboard() {
           <table>
             <thead><tr><th>Transaction ID</th><th>Customer</th><th>Item</th><th>Branch</th><th>Amount</th><th>Status</th><th>Date</th></tr></thead>
             <tbody>
-              {(txns || []).slice(0, 6).map(t => (
+              {loading ? (
+                /* Rows live inside the real <table> so column widths match. */
+                Array.from({ length: 6 }).map((_, i) => (
+                  <tr key={`skel-${i}`} aria-hidden="true">
+                    {['18%', '22%', '20%', '16%', '12%', '10%', '12%'].map((w, j) => (
+                      <td key={j}><Skeleton w={w} h={13} /></td>
+                    ))}
+                  </tr>
+                ))
+              ) : (txns || []).slice(0, 6).map(t => (
                 <tr key={t.id}>
                   <td className="cell-main">{t.id?.slice ? t.id.slice(0, 8) : t.id}</td>
                   <td>{t.customer}</td>
@@ -134,7 +183,9 @@ export default function AdminDashboard() {
                   <td>{t.date ? new Date(t.date).toLocaleDateString() : '—'}</td>
                 </tr>
               ))}
-              {!(txns || []).length && <tr><td colSpan={7}><div className="empty-state"><p>No transactions recorded yet.</p></div></td></tr>}
+              {!loading && !(txns || []).length && (
+                <tr><td colSpan={7}><div className="empty-state"><p>No transactions recorded yet.</p></div></td></tr>
+              )}
             </tbody>
           </table>
         </div>

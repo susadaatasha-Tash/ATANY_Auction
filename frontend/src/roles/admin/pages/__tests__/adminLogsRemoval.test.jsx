@@ -112,8 +112,25 @@ describe('Audit Logs + Chatbot Logs removal — Admin UI', () => {
     expect(screen.getByTestId('nav-Branches')).toBeInTheDocument();
     expect(screen.getByTestId('nav-Users & Roles')).toBeInTheDocument();
     expect(screen.getByTestId('nav-Orders')).toBeInTheDocument();
-    expect(screen.getByTestId('nav-Jewelry')).toBeInTheDocument();
-    expect(screen.getByTestId('nav-Auctions')).toBeInTheDocument();
+  });
+
+  // Branch-centric monitoring moved Jewelry + Auctions under Branches, so the
+  // standalone sidebar entries are gone and their URLs redirect to /admin/branches.
+  it('sidebar no longer lists standalone Jewelry or Auctions', () => {
+    render(
+      <MemoryRouter initialEntries={['/admin']}>
+        <AdminLayout />
+      </MemoryRouter>
+    );
+    expect(screen.queryByTestId('nav-Jewelry')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('nav-Auctions')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('section-INVENTORY & AUCTIONS')).not.toBeInTheDocument();
+    expect(screen.getByTestId('nav-Branches')).toBeInTheDocument();
+
+    const redirects = adminRoutes.filter((r) => r.element?.type?.name === 'Navigate');
+    ['jewelry', 'products', 'auctions'].forEach((p) => {
+      expect(redirects.some((r) => r.path === p && r.element.props.to === '/admin/branches')).toBe(true);
+    });
   });
 
   it('admin routes do NOT register Audit Logs or Chatbot Logs', () => {

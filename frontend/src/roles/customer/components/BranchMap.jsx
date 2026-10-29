@@ -20,6 +20,15 @@ export function BranchMap({
   onSelectBranch,
   initialCenter = [7.07, 125.6],
   onMapReady,
+  // Pass `null` to hand map sizing to CSS (used by the public locator, whose
+  // height is responsive). Omitting it keeps the historical 620px inline floor,
+  // so the landing-page map is unchanged.
+  minHeight = 620,
+  // Leaflet captures the mouse wheel while the pointer is over the map, which
+  // makes a public page feel trapped: the user scrolls and only the map zooms.
+  // Wheel zoom is therefore off; the +/− controls, dragging, double-click and
+  // touch pinch all still work. Markers, popups and selection are untouched.
+  scrollWheelZoom = false,
 }) {
   const mapRef = useRef(null);
   const leafletRef = useRef(null);
@@ -30,7 +39,7 @@ export function BranchMap({
   useEffect(() => {
     if (!mapRef.current || leafletRef.current) return;
 
-    const map = L.map(mapRef.current).setView(initialCenter, 12);
+    const map = L.map(mapRef.current, { scrollWheelZoom }).setView(initialCenter, 12);
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors',
       maxZoom: 18,
@@ -134,5 +143,11 @@ export function BranchMap({
     // User location handling could be expanded here if needed
   }, [userLocation, mapInitialized]);
 
-  return <div ref={mapRef} style={{ width: '100%', height: '100%', minHeight: 620 }} />;
+  return (
+    <div
+      ref={mapRef}
+      className="branch-map__canvas"
+      style={minHeight === null ? { width: '100%', height: '100%' } : { width: '100%', height: '100%', minHeight }}
+    />
+  );
 }

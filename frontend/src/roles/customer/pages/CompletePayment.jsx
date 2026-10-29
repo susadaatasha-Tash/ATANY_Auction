@@ -47,7 +47,12 @@ export default function CompletePayment() {
         window.location.href = res.checkout_url || `/customer/orders/${id}/success`;
       }
     } catch (e) {
-      const msg = e.message || 'Payment could not be started. Please try again.';
+      // Backend is authoritative: a closed window is a business state, not a crash.
+      // Show the human message, never raw server/SQL text.
+      const expired = e.code === 'PAYMENT_WINDOW_EXPIRED';
+      const msg = expired
+        ? 'Your payment window has expired. This item may now be offered to the next eligible bidder.'
+        : (e.message || 'Payment could not be started. Please try again.');
       showToast(msg);
       // Refresh order state to reflect any backend changes (e.g., expired, reassigned)
       try {

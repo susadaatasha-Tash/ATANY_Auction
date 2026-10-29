@@ -1,3 +1,4 @@
+import { isPaymentWindowClosed } from './paymentDeadline';
 // frontend/src/roles/customer/lib/purchaseStatus.js
 // Single normalization layer for My Purchases order/payment states.
 // Backend remains authoritative; this maps API values → UI states only.
@@ -139,12 +140,25 @@ export function getPurchaseProgress(order) {
 
 export function getPurchaseActions(order) {
   const state = normalizePurchaseStatus(order);
-  const canPay = state === PURCHASE_STATES.PAYMENT_PENDING && !order?.is_expired;
+  // Local clock check against the SERVER-SUPPLIED payment_deadline. Purely a
+  // UX guard: the backend re-validates the window on every payment attempt.
+  const windowClosed = isPaymentWindowClosed(order);
+  const canPay = state === PURCHASE_STATES.PAYMENT_PENDING && !order?.is_expired && !windowClosed;
   const hasBranch = !!(order?.branch || order?.branch_address || (order?.branch_lat != null && order?.branch_lng != null));
   const actions = [];
 
   if (canPay) {
     actions.push({ key: 'pay', label: 'Pay now', variant: 'gold', to: `/customer/orders/${order.id}` });
+  }
+  if (!canPay && state === PURCHASE_STATES.PAYMENT_PENDING && windowClosed) {
+    // Not an error state — the winner chain is simply being resolved.
+    actions.push({
+      key: 'window-closed',
+      label: 'Payment window expired',
+      variant: 'outline',
+      disabled: true,
+      note: 'Payment window expired. Waiting for winner reassignment.',
+    });
   }
   if (state !== PURCHASE_STATES.CANCELLED) {
     actions.push({

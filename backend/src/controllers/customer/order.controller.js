@@ -1,4 +1,7 @@
 import { pool } from '../../db/pool.js';
+import {
+  MANUAL_PROVIDER, recordManualPayment, advanceOrderTo, PAYMENT_WINDOW_EXPIRED,
+} from '../../services/manualPayment.js';
 export const getOrders = async (req, res) => {
   try {
     const { rows: orders } = await pool.query('SELECT * FROM orders WHERE buyer_id=$1 ORDER BY created_at DESC', [req.user.id]);
@@ -45,7 +48,7 @@ export const getOrders = async (req, res) => {
         date: o.created_at,
         winner_confirmed_at: winnerConfirmedAt,
         payment_deadline: paymentDeadline,
-        winner_rank: o.winner_rank || 1,
+        winner_rank: o.winner_rank ?? 1,
         is_expired: isExpired || false,
         // Display fields already stored on the order/auction — no invented codes.
         auction_code: a.auction_code || null,
@@ -70,22 +73,56 @@ export const getOrders = async (req, res) => {
   }
 };
 export const payOrder = async (req, res) => {
-  // LEGACY: Pay at Branch Counter only. Online payments must use PayMongo checkout via POST /customer/orders/:id/payment
+  // Counter / manual payment. LEGACY UI path: online payments must use PayMongo
+  // checkout via POST /customer/orders/:id/payment.
   const { payment_method = 'counter' } = req.body;
   const ONLINE_METHODS = ['gcash', 'card', 'paymaya', 'maya', 'grab_pay', 'qrph', 'billease', 'bank', 'bank_transfer'];
   if (ONLINE_METHODS.includes(String(payment_method).toLowerCase())) {
     return res.status(400).json({ message: 'Online payments must use PayMongo checkout. Use POST /customer/orders/:id/payment' });
   }
-  // Only counter / branch-counter allowed here
   if (payment_method !== 'counter' && payment_method !== 'branch_counter') {
     return res.status(400).json({ message: 'Invalid payment method for this endpoint. Use PayMongo checkout for online payments.' });
   }
-  const { rows } = await pool.query("UPDATE orders SET status='ready_pickup', payment_method=$1 WHERE id=$2 AND buyer_id=$3 AND status='pending' RETURNING *", [payment_method, req.params.id, req.user.id]);
-  if (!rows.length) return res.status(404).json({ message: 'Order not found or not pending' });
+
+  // 1) Record the money as an authoritative payment record. This is what makes a
+  //    counter sale financially equivalent to a gateway sale: revenueRule
+  //    recognizes it and winner-expiration stops treating it as unpaid.
+  const recorded = await recordManualPayment({
+    orderId: req.params.id,
+    actorId: req.user.id,
+    paymentMethod: payment_method,
+    provider: MANUAL_PROVIDER,
+    source: 'customer_counter',
+    expectedBuyerId: req.user.id, // cross-user access guard
+  });
+  if (!recorded.ok) {
+    if (recorded.reason === PAYMENT_WINDOW_EXPIRED) {
+      // The winner's 7-day window closed. Stable, business-level contract — the
+      // UI shows a human message and never surfaces raw server text.
+      return res.status(410).json({
+        message: 'Your payment window has expired. This item may now be offered to the next eligible bidder.',
+        error: { code: PAYMENT_WINDOW_EXPIRED },
+        reason: PAYMENT_WINDOW_EXPIRED,
+        payment_deadline: recorded.deadline || null,
+      });
+    }
+    const status = recorded.reason === 'ORDER_NOT_FOUND' ? 404 : recorded.reason === 'BUYER_MISMATCH' ? 403 : 400;
+    return res.status(status).json({ message: 'Order not found or not payable', reason: recorded.reason });
+  }
+
+  // 2) Fulfillment is a SEPARATE state machine. Move the order forward through
+  //    its legal steps (pending → preparing → ready_pickup), each one validated
+  //    and payment-gated, instead of writing 'ready_pickup' blindly.
+  const advanced = await advanceOrderTo(req.params.id, 'ready_pickup');
+  if (!advanced.ok) {
+    return res.status(400).json({ message: 'Payment recorded but fulfillment could not advance', reason: advanced.reason });
+  }
+  const rows = [advanced.order];
+
   const msg = `Order ${rows[0].id} is ready for pickup — bring valid ID + order number within 7 days.`;
   const { shouldDeliverNotification } = await import('../../services/notificationPreference.js');
   if (await shouldDeliverNotification(req.user.id, 'payout', msg)) {
     await pool.query("INSERT INTO notifications (user_id, type, message) VALUES ($1,'payout',$2)", [req.user.id, msg]);
   }
-  res.json(rows[0]);
+  res.json({ ...rows[0], payment_status: 'paid', paid_at: recorded.payment?.paid_at || null });
 };

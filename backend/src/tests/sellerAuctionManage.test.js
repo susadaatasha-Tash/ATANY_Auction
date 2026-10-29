@@ -149,14 +149,21 @@ describe('seller auction management — ownership & counts', () => {
     }
   });
 
-  it('watcher count is batch and correct', async () => {
+  it('watcher count is live presence (watchlists kept separately as saved_count)', async () => {
     setupManageMocks();
+    const { joinWatcher, __resetPresence } = await import('../services/auctionPresence.js');
+    __resetPresence();
+    joinWatcher({ auctionId: AUCTION_LIVE, userId: 'watcher-1', socketId: 's1' });
+    joinWatcher({ auctionId: AUCTION_LIVE, userId: 'watcher-2', socketId: 's2' });
     const req = { user: { id: SELLER }, query: {} };
     const res = mockRes();
     await manageModule.manageAuctions(req, res);
     const { auctions } = res.json.mock.calls[0][0];
     const live = auctions.find(a => a.id === AUCTION_LIVE);
-    expect(live.watcher_count).toBe(1);
+    expect(live.watcher_count).toBe(2);
+    expect(live.watchers).toBe(2);
+    expect(live.saved_count).toBe(1);
+    __resetPresence();
   });
 
   it('blocked when shop not found', async () => {

@@ -3,6 +3,7 @@ import Dashboard from './pages/Dashboard';
 import MyListings from './pages/MyListings';
 import MyAuctions from './pages/MyAuctions';
 import SalesPayouts from './pages/SalesPayouts';
+import WonLotsOrders from './pages/WonLotsOrders';
 import Billing from './pages/Billing';
 import BillingSuccess from './pages/BillingSuccess';
 import Notifications from './pages/Notifications';
@@ -14,6 +15,7 @@ export const shopOwnerRoutes = [
   { path: 'listings', element: <MyListings /> },
   { path: 'auctions', element: <MyAuctions /> },
   { path: 'sales', element: <SalesPayouts /> },
+  { path: 'orders', element: <WonLotsOrders /> },
   { path: 'billing/success', element: <BillingSuccess /> },
   { path: 'billing', element: <Billing /> },
   { path: 'messages', element: <MessagesPage role="seller" /> },

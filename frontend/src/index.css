@@ -2218,41 +2218,137 @@ section { padding: 55px 0; }
 .branch-info { display: grid; gap: 9px; margin-bottom: 22px; }
 .branch-info div { display: flex; gap: 9px; align-items: center; font-size: 11px; color: #4f5865; }
 
-/* CTA */
+/* ── Landing CTA ─────────────────────────────────────────────────────────
+ * One strong navy card, full container width. Title/copy stay secondary to
+ * the single action. Spacing to the footer comes from the section's own block
+ * padding (55px) plus the footer's padding-top (54px) — no extra margin, which
+ * previously stacked into a 165px void. */
 .cta-box {
   background: var(--navy);
-  border-radius: var(--radius);
-  min-height: 100px;
-  padding: 24px 30px;
+  border-radius: 16px;
+  padding: 32px 34px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 25px;
-  color: white;
+  gap: 28px;
+  color: #fff;
 }
 
-.cta-title { display: flex; align-items: center; gap: 14px; }
-.cta-icon { width: 38px; height: 38px; color: var(--gold-light); }
-.cta h2 { font-size: 24px; line-height: 1; margin-bottom: 4px; }
-.cta p { color: rgba(255,255,255,.6); font-size: 10px; }
-.cta .btn { background: #fffefa; color: var(--navy); min-width: 150px; }
+.cta-title { display: block; min-width: 0; }
+.cta h2 {
+  color: #fff;
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.18;
+  letter-spacing: -.2px;
+  margin-bottom: 7px;
+}
+.cta p {
+  color: rgba(255, 255, 255, .66);
+  font-size: 14px;
+  line-height: 1.55;
+  max-width: 52ch;
+}
 
-/* Footer */
-footer { background: #f0eee8; border-top: 1px solid var(--line); }
-.footer-main { padding: 42px 0 32px; display: grid; grid-template-columns: 1.4fr repeat(3, 1fr); gap: 45px; }
-.footer-brand p { max-width: 290px; color: var(--muted); font-size: 11px; margin-top: 12px; }
-.footer h3 { color: var(--navy); font-size: 11px; margin-bottom: 13px; }
-.footer a { display: block; color: #69707a; font-size: 10px; margin: 7px 0; }
-.footer a:hover { color: var(--navy); }
+.cta-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-width: 172px;
+  min-height: 50px;
+  padding: 0 26px;
+  background: #fffefa;
+  color: var(--navy);
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+  transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
+}
+.cta-btn:hover { background: #fff; color: var(--navy); transform: translateX(2px); box-shadow: 0 8px 22px rgba(0, 0, 0, .22); }
+.cta-btn:focus-visible { outline: 3px solid var(--gold-light); outline-offset: 3px; }
+.cta-btn svg { transition: transform .18s ease; }
+.cta-btn:hover svg { transform: translateX(3px); }
+
+/* ── Landing footer ───────────────────────────────────────────────────────
+ * Scoped to .site-footer: the previous `footer h3` / `footer a` selectors were
+ * dead because the element carried no class, so headings and links rendered
+ * with browser defaults and the Quick Links ran together inline. */
+.site-footer {
+  background: #f0eee8;
+  border-top: 1px solid var(--line);
+  padding-top: 54px;
+}
+
+.footer-main {
+  display: grid;
+  grid-template-columns:
+    minmax(260px, 1.3fr)
+    minmax(160px, .9fr)
+    minmax(150px, .8fr)
+    minmax(220px, 1fr);
+  column-gap: 64px;
+  row-gap: 40px;
+  padding-bottom: 44px;
+}
+
+.footer-brand { min-width: 0; }
+.footer-logo {
+  display: inline-block;
+  font-size: 23px;
+  font-weight: 800;
+  color: var(--navy);
+  letter-spacing: .4px;
+  text-decoration: none;
+  transition: color .18s ease;
+}
+.footer-logo:hover { color: var(--gold); }
+.footer-logo:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 4px; }
+.footer-brand p {
+  max-width: 34ch;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.footer-col { min-width: 0; }
+.footer-col h3 {
+  color: var(--navy);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: .1px;
+  margin-bottom: 18px;
+}
+
+/* Stacked, real list semantics — never concatenated inline text. */
+.footer-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 11px; }
+.footer-list a {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  color: #5c6470;
+  font-size: 14px;
+  line-height: 1.5;
+  text-decoration: none;
+  transition: color .18s ease;
+}
+.footer-list a:hover { color: var(--gold); }
+.footer-list a:focus-visible { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 4px; }
+.footer-list svg { flex: none; color: var(--gold); }
 
 .footer-bottom {
   border-top: 1px solid var(--line);
-  min-height: 55px;
+  padding: 24px 0 26px;
+  margin-top: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   color: #7b8088;
-  font-size: 9px;
+  font-size: 13px;
 }
 
 /* Landing modal */
@@ -2356,13 +2452,13 @@ footer { background: #f0eee8; border-top: 1px solid var(--line); }
   padding-bottom: 60px;
 }
 
+/* No nested vertical scroller: the document owns the scroll and this column
+   grows naturally, so it still works if Admin adds many more branches. */
 .branch-list {
   background: var(--ivory);
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow);
-  max-height: 620px;
-  overflow-y: auto;
 }
 
 .branch-card {
@@ -2471,6 +2567,10 @@ footer { background: #f0eee8; border-top: 1px solid var(--line); }
   box-shadow: var(--shadow);
   overflow: hidden;
   position: relative;
+  /* The grid row grows with the (now uncapped) branch list. Without this the map
+     would stretch to the full height of a long list; the page should grow
+     instead, while the map keeps its own bounded height. */
+  align-self: start;
 }
 
 .atany-pin { background: transparent; border: none; }
@@ -2499,8 +2599,31 @@ footer { background: #f0eee8; border-top: 1px solid var(--line); }
 .locator-page {
   padding: 24px 0 60px;
   background: var(--cream);
+  /* min-height, never a fixed height: the page grows with its content.
+     dvh keeps iOS Safari from clipping against a stale URL-bar viewport. */
   min-height: 100vh;
+  min-height: 100dvh;
 }
+
+/* ── Public Branch Locator page scroll ─────────────────────────────────────
+ * `body { overflow: hidden; height: 100% }` is a deliberate global lock for the
+ * app-shell portals (customer / seller / admin), whose layouts scroll internally.
+ * A standalone public page therefore has to unlock the document or its content
+ * below the fold is unreachable — which is exactly what happened on /branches.
+ *
+ * The landing page already does this with `body:has(#root > .public-page)`; the
+ * locator needed the same treatment. The DIRECT-child selector is deliberate:
+ * this identical component is ALSO mounted at /customer/branch-locator inside the
+ * customer shell, where `.locator-page` is nested (not a direct child of #root).
+ * Without the `>` the portal would also unlock the document and grow a second
+ * scrollbar next to the shell's own. Only the public /branches page matches. */
+body:has(#root > .locator-page) {
+  height: auto;
+  min-height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+body:has(#root > .locator-page) #root { height: auto; min-height: 100%; }
 
 .locator-page .container {
   max-width: 1200px;
@@ -2561,8 +2684,13 @@ footer { background: #f0eee8; border-top: 1px solid var(--line); }
 .map-panel > div {
   width: 100%;
   height: 100%;
-  min-height: 620px;
 }
+
+/* Locator map height: substantial on desktop, finite and stacked-friendly on
+   mobile. Never 100vh inside an already-tall page. */
+.locator-page .branch-map__canvas { min-height: clamp(520px, 68vh, 620px); }
+@media (max-width: 900px) { .locator-page .branch-map__canvas { min-height: 380px; } }
+@media (max-width: 480px) { .locator-page .branch-map__canvas { min-height: 320px; } }
 
 /* ================================================================
    CHATBOT
@@ -2762,7 +2890,6 @@ footer { background: #f0eee8; border-top: 1px solid var(--line); }
   .jewelry-grid { grid-template-columns: repeat(3, 1fr) !important; }
   .locator-layout { grid-template-columns: 1fr; }
   #map { height: 380px; }
-  .branch-list { max-height: none; }
 
   .branch-banner { height: auto; padding: 18px 20px; flex-wrap: wrap; gap: 14px; background-size: cover; }
   .branch-banner-name { font-size: 17px; }
@@ -2799,10 +2926,8 @@ footer { background: #f0eee8; border-top: 1px solid var(--line); }
   .collection-grid { grid-template-columns: repeat(2, 1fr); }
   .jewelry-grid { grid-template-columns: repeat(2, 1fr) !important; }
   .steps { grid-template-columns: 1fr; gap: 22px; }
-  .cta-box { padding: 24px 20px; align-items: flex-start; flex-direction: column; }
-  .footer-main { grid-template-columns: 1fr 1fr; gap: 30px; }
-  .footer-brand { grid-column: 1 / -1; }
-  .footer-bottom { padding: 13px 0; flex-direction: column; justify-content: center; gap: 5px; }
+  .cta-box { padding: 28px 22px; flex-direction: column; align-items: flex-start; }
+  .cta-btn { width: 100%; }
 }
 
 /* Mobile extra small */
@@ -2839,7 +2964,6 @@ footer { background: #f0eee8; border-top: 1px solid var(--line); }
   .collection-grid { grid-template-columns: 1fr; }
   .jewelry-grid { grid-template-columns: repeat(2, 1fr) !important; }
   .landing-steps { grid-template-columns: 1fr !important; gap: 18px !important; }
-  .footer-main { grid-template-columns: 1fr; }
 }
 
 /* ================================================================
@@ -3198,11 +3322,20 @@ footer { background: #f0eee8; border-top: 1px solid var(--line); }
    CREATE AUCTION LOT WIZARD (shop owner)
    ================================================================ */
 .modal-box.auction-wizard-modal {
-  width: min(640px, 100%);
+  width: min(820px, calc(100% - 24px));
   max-height: 90vh;
   overflow: hidden;
   display: flex;
   flex-direction: column;
+}
+.modal-eyebrow {
+  display: block;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--gold);
+  margin-bottom: 2px;
 }
 .modal-box.auction-wizard-modal .modal-box-head {
   flex-shrink: 0;
@@ -3223,9 +3356,8 @@ footer { background: #f0eee8; border-top: 1px solid var(--line); }
 
 .wizard-steps {
   list-style: none;
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
+  display: flex;
+  align-items: flex-start;
   margin: 0 -20px 4px;
   padding: 10px 20px;
   position: sticky;
@@ -3234,6 +3366,16 @@ footer { background: #f0eee8; border-top: 1px solid var(--line); }
   background: var(--ivory);
   border-bottom: 1px solid var(--line);
 }
+.wizard-step { flex: none; min-width: 0; }
+.step-connector {
+  flex: 1;
+  height: 2px;
+  min-width: 12px;
+  margin: 17px 2px 0;
+  border-radius: 2px;
+  background: var(--line);
+}
+.step-connector.is-done { background: var(--success); }
 
 .wizard-step-btn {
   width: 100%;
@@ -3262,6 +3404,14 @@ footer { background: #f0eee8; border-top: 1px solid var(--line); }
   transition: all .15s var(--ease);
 }
 
+.wizard-step-copy { display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.wizard-step-eyebrow {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
 .wizard-step-name {
   font-size: 10.5px;
   font-weight: 700;
@@ -3269,6 +3419,7 @@ footer { background: #f0eee8; border-top: 1px solid var(--line); }
   text-align: center;
   letter-spacing: .02em;
 }
+.wizard-step.active .wizard-step-eyebrow { color: var(--gold); }
 
 .wizard-step.done .wizard-step-num { background: var(--success); border-color: var(--success); color: #fff; }
 .wizard-step.done .wizard-step-name { color: var(--navy); }
@@ -3596,6 +3747,26 @@ footer { background: #f0eee8; border-top: 1px solid var(--line); }
   background: var(--gold);
   color: #fff;
 }
+.sched-cal-note {
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--warn);
+  background: var(--warn-bg);
+  border: 1px solid rgba(160, 124, 58, .25);
+  border-radius: 8px;
+  padding: 7px 10px;
+}
+/* Today-press emphasis: brief expanding ring + focus, then persistent marker.
+   Guarantees every Today press is observable, even on the current month. */
+.sched-cal-day.is-ping {
+  animation: sched-today-ping 1.15s ease;
+}
+@keyframes sched-today-ping {
+  0% { box-shadow: 0 0 0 0 rgba(196, 162, 101, .85); }
+  70% { box-shadow: 0 0 0 9px rgba(196, 162, 101, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(196, 162, 101, 0); }
+}
 
 /* Time picker */
 .sched-time { display: flex; flex-direction: column; gap: 6px; }
@@ -3755,7 +3926,10 @@ footer { background: #f0eee8; border-top: 1px solid var(--line); }
 }
 
 @media (max-width: 560px) {
-  .wizard-steps { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .wizard-steps { gap: 2px; }
+  .wizard-step-name { font-size: 9px; }
+  .wizard-step-eyebrow { font-size: 8px; }
+  .step-connector { min-width: 6px; }
   .wizard-review-grid { grid-template-columns: 1fr; }
   .wizard-review-body { flex-direction: column; }
   .modal-box-foot:has(.wizard-foot-meta) { flex-direction: column; align-items: stretch; }
@@ -3789,4 +3963,72 @@ body:has(#root > .public-page) #root { height: auto; min-height: 100%; }
 .nav-links .mobile-auth-link { display: none; }
 @media (max-width: 580px) {
   .nav-links.open .mobile-auth-link { display: block; }
+}
+
+/* ── Landing page: anchor targets must clear the sticky 71px header ──────────
+ * Applies to every landing section so nav clicks and :target jumps land in the
+ * same place. No per-section magic numbers. */
+main section[id] {
+  scroll-margin-top: 86px;
+}
+
+/* Real-data loading states (statistics strip, branch blocks). Shaped like the
+   content they replace so the layout does not shift. */
+.stat-skeleton {
+  display: inline-block;
+  width: 84px;
+  height: 30px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, rgba(20, 42, 74, .08) 25%, rgba(20, 42, 74, .16) 37%, rgba(20, 42, 74, .08) 63%);
+  background-size: 400% 100%;
+  animation: atany-skeleton 1.4s ease-in-out infinite;
+  vertical-align: middle;
+}
+.branch-skeleton {
+  height: 68px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, rgba(20, 42, 74, .08) 25%, rgba(20, 42, 74, .16) 37%, rgba(20, 42, 74, .08) 63%);
+  background-size: 400% 100%;
+  animation: atany-skeleton 1.4s ease-in-out infinite;
+}
+@keyframes atany-skeleton {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+.branch-map__placeholder {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  min-height: 260px;
+  font-size: 12px;
+  color: var(--muted);
+  background: repeating-linear-gradient(135deg, rgba(20,42,74,.04) 0 12px, rgba(20,42,74,.02) 12px 24px);
+}
+/* The landing map now hosts a real Leaflet map — give it a height. */
+.branch-map .leaflet-container { height: 100%; min-height: 260px; border-radius: 12px; }
+
+
+/* ── CTA + footer responsive ─────────────────────────────────────────────
+ * Tablet: two columns (ATANY/Quick Links, Account/Contact).
+ * Mobile: single column, CTA stacks with a full-width action. */
+@media (max-width: 900px) {
+  .footer-main { grid-template-columns: 1fr 1fr; column-gap: 42px; row-gap: 38px; }
+  .footer-brand { grid-column: 1 / -1; }
+  .footer-brand p { max-width: 46ch; }
+}
+
+@media (max-width: 640px) {
+  /* CTA stacks here (not at 580px) so the title keeps a comfortable measure
+     and the action stays a full-width target at the tablet/mobile boundary. */
+  .cta-box { padding: 28px 24px; flex-direction: column; align-items: flex-start; }
+  .cta-btn { width: 100%; }
+  .footer-main { grid-template-columns: 1fr; column-gap: 0; row-gap: 32px; padding-bottom: 34px; }
+  .site-footer { padding-top: 44px; }
+  .footer-col h3 { font-size: 16px; margin-bottom: 14px; }
+  .footer-bottom { flex-direction: column; align-items: flex-start; justify-content: center; gap: 6px; padding: 20px 0 24px; }
+}
+
+/* Keep the floating chatbot clear of the footer's contact links and legal row. */
+@media (max-width: 900px) {
+  .site-footer { padding-bottom: 76px; }
 }

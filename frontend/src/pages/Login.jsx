@@ -16,7 +16,7 @@ export default function Login() {
   const [busy, setBusy] = useState(false);
   const showToast = useToast();
   const navigate = useNavigate();
-  const { user, role, preferredBranchId, loading } = useAuth();
+  const { user, role, status, preferredBranchId, loading } = useAuth();
   const navigationRef = useRef(false);
   const [searchParams] = useSearchParams();
   const redirect = searchParams.get('redirect') || '/customer';
@@ -38,6 +38,12 @@ export default function Login() {
     }
     if (!user || navigationRef.current || !role) return;
     navigationRef.current = true;
+    // AUTHORIZATION: authentication succeeded, but this ATANY account is not
+    // active. Never route them into the customer portal.
+    if (status === 'suspended') {
+      navigate('/account-suspended', { replace: true });
+      return;
+    }
     if (redirect !== '/customer') {
       navigate(redirect, { replace: true });
     } else if (role === 'admin') {
@@ -49,7 +55,7 @@ export default function Login() {
     } else {
       navigate('/customer', { replace: true });
     }
-  }, [user, role, preferredBranchId, redirect, navigate, loading]);
+  }, [user, role, status, preferredBranchId, redirect, navigate, loading]);
 
   const handle = async (e) => {
     e.preventDefault();

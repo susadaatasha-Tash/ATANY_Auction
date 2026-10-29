@@ -97,7 +97,22 @@ export default function Auctions({ auctions: propAuctions }) {
     e?.stopPropagation?.();
     setDetailId(null);
     setDetailAuction(null);
+    if (searchParams.get('auction')) {
+      const next = new URLSearchParams(searchParams);
+      next.delete('auction');
+      setSearchParams(next, { replace: true });
+    }
   };
+  // Deep link: /customer/auctions?auction=<id> opens that auction's detail modal.
+  // This makes the customer auction page addressable from outside (e.g. the
+  // landing page bid CTA and post-login redirects) WITHOUT adding a second page
+  // or duplicating any bidding logic. Stale ids are cleared once the list loads.
+  useEffect(() => {
+    const wanted = searchParams.get('auction');
+    if (wanted && wanted !== detailId) setDetailId(wanted);
+    if (!wanted && detailId) { setDetailId(null); setDetailAuction(null); }
+  }, [searchParams, detailId]);
+
   useEffect(() => {
     if (!detailId) { setDetailAuction(null); return; }
     const base = auctions.find((a) => a.id === detailId);

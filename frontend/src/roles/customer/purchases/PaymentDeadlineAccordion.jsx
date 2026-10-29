@@ -1,6 +1,11 @@
 // frontend/src/roles/customer/purchases/PaymentDeadlineAccordion.jsx
 import { useId, useState } from 'react';
-import { getPaymentDeadlinePolicyText, getPaymentDeadlineState } from '../lib/paymentDeadline';
+import {
+  PAYMENT_WINDOW_EXPIRED_MESSAGE,
+  getFallbackNotice,
+  getPaymentDeadlinePolicyText,
+  getPaymentDeadlineState,
+} from '../lib/paymentDeadline';
 
 export function PaymentDeadlineAccordion({ order }) {
   const panelId = useId();
@@ -9,6 +14,8 @@ export function PaymentDeadlineAccordion({ order }) {
   if (!state.visible) return null;
 
   const tone = state.remaining.expired ? 'expired' : state.remaining.tone === 'soft' ? 'soft' : 'warn';
+  // Reassignment is informational: the holder IS the current eligible winner.
+  const fallbackNotice = getFallbackNotice(order);
 
   return (
     <div className={`mp-deadline mp-deadline-${tone}`}>
@@ -19,9 +26,7 @@ export function PaymentDeadlineAccordion({ order }) {
         aria-controls={panelId}
         onClick={() => setOpen(v => !v)}
       >
-        <span className="mp-deadline-icon" aria-hidden="true">
-          {state.expired ? '⚠' : '⚠'}
-        </span>
+        <span className="mp-deadline-icon" aria-hidden="true">⚠</span>
         <span className="mp-deadline-title">{state.collapsedLabel}</span>
         <span className={`mp-deadline-pill mp-pill-${state.remaining.tone}`}>{state.remaining.text}</span>
         <span className={`mp-deadline-chevron${open ? ' is-open' : ''}`} aria-hidden="true">▾</span>
@@ -32,17 +37,21 @@ export function PaymentDeadlineAccordion({ order }) {
         hidden={!open}
       >
         <div className="mp-deadline-panel-inner">
+          {fallbackNotice && (
+            <p className="mp-deadline-fallback" role="status">{fallbackNotice}</p>
+          )}
+
           <div className="mp-deadline-policy-label">PAYMENT DEADLINE POLICY</div>
           <p className="mp-deadline-policy-text">{getPaymentDeadlinePolicyText(state.expired)}</p>
+
+          {/* The collapsed row above already shows the exact deadline from the
+              server's payment_deadline; these are the supporting facts.
+              Nothing here recomputes created_at + 7 days. */}
           <div className="mp-deadline-facts">
             <div className="mp-deadline-fact">
-              <span className="mp-deadline-fact-label">Won on</span>
-              <span className="mp-deadline-fact-value">{state.wonOn ? new Date(state.wonOn).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '—'}</span>
-            </div>
-            <div className="mp-deadline-fact">
-              <span className="mp-deadline-fact-label">Payment deadline</span>
+              <span className="mp-deadline-fact-label">Winner confirmed on</span>
               <span className="mp-deadline-fact-value">
-                {state.deadline ? new Date(state.deadline).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '—'}
+                {state.wonOn ? new Date(state.wonOn).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : '—'}
               </span>
             </div>
             <div className="mp-deadline-fact">
@@ -50,6 +59,10 @@ export function PaymentDeadlineAccordion({ order }) {
               <span className={`mp-deadline-fact-value mp-pill-inline mp-pill-${state.remaining.tone}`}>{state.remaining.text}</span>
             </div>
           </div>
+
+          {state.expired && (
+            <p className="mp-deadline-expired-note" role="status">{PAYMENT_WINDOW_EXPIRED_MESSAGE}</p>
+          )}
         </div>
       </div>
     </div>

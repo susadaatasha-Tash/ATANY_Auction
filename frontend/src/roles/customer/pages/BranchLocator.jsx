@@ -29,7 +29,9 @@ export default function BranchLocator({ branches: propBranches }) {
 
   useEffect(() => {
     if (propBranches) return;
-    apiFetch('/branches').then(setFetched).catch(() => setFetched([]));
+    // PUBLIC page: /branches needs no session. Without { public: true } apiClient
+    // fails closed with AUTH_REQUIRED and the visitor sees an empty map.
+    apiFetch('/branches', { public: true }).then(setFetched).catch(() => setFetched([]));
   }, [propBranches]);
 
   const locate = useCallback(() => {
@@ -144,6 +146,11 @@ export default function BranchLocator({ branches: propBranches }) {
                 onSelectBranch={handleMapBranchSelect}
                 initialCenter={DAVAO_CENTER}
                 onMapReady={handleMapReady}
+                /* Sizing comes from CSS (.locator-page .branch-map__canvas) so it
+                   stays responsive; wheel zoom is explicitly off so the map never
+                   captures the wheel and traps page scrolling. */
+                minHeight={null}
+                scrollWheelZoom={false}
               />
             ) : (
               <div className="map-loading">Loading map…</div>

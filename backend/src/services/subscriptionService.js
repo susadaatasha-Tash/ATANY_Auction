@@ -391,8 +391,82 @@ export async function notifyPaymentFailed(billing) {
 /**
  * Create (or reuse) a PayMongo checkout session for a billing record.
  * Amount always comes from the billing row / plan catalog — never from the client.
+ *
+ * opts.paymentMethodTypes — optional string allowlist key. A single method
+ * ('gcash', 'card', 'qrph', 'maya') restricts the hosted checkout to that
+ * method only. Anything else defaults to the full method picker. Validated
+ * server-side against the allowlist; every other type — including GrabPay,
+ * ShopeePay, UnionBank and other wallets/banks PayMongo supports but ATANY
+ * does not offer — is rejected with 400 INVALID_PAYMENT_METHOD_TYPE.
+ *
+ * BNPL (BillEase) is env-gated: PAYMONGO_ENABLE_BILLEASE === 'true' must be
+ * set or billease is rejected / excluded from the default picker.
  */
-export async function createBillingCheckoutSession(billing, { actorRole = 'shop_owner' } = {}) {
+
+/** PayMongo checkout_sessions payment_method_types values (provider ids). */
+const FULL_METHOD_SET = ['gcash', 'card', 'paymaya', 'qrph'];
+const BILLEASE_TYPE = 'billease';
+
+/** True only when the PayMongo account truly has BillEase enabled. */
+export function isBilleaseEnabled() {
+  return String(process.env.PAYMONGO_ENABLE_BILLEASE || '').trim().toLowerCase() === 'true';
+}
+
+/**
+ * Canonical allowlist keys → PayMongo hosted-checkout payment_method_types.
+ * Aliases (paymaya) are accepted too. billease only when enabled.
+ */
+function buildCheckoutMethodTypeSets() {
+  const sets = {
+    gcash: ['gcash'],
+    card: ['card'],
+    qrph: ['qrph'],
+    maya: ['paymaya'],
+    paymaya: ['paymaya'],
+  };
+  if (isBilleaseEnabled()) sets.billease = [BILLEASE_TYPE];
+  return sets;
+}
+
+function resolveCheckoutMethodTypes(paymentMethodTypes) {
+  if (paymentMethodTypes == null || paymentMethodTypes === '') {
+    return isBilleaseEnabled() ? [...FULL_METHOD_SET, BILLEASE_TYPE] : [...FULL_METHOD_SET];
+  }
+  const key = String(paymentMethodTypes).trim().toLowerCase();
+  const set = buildCheckoutMethodTypeSets()[key];
+  if (!set) {
+    const err = new Error(
+      key === BILLEASE_TYPE
+        ? 'BNPL (BillEase) is not available on this account.'
+        : 'Unsupported payment_method.'
+    );
+    err.statusCode = 400;
+    err.code = 'INVALID_PAYMENT_METHOD_TYPE';
+    throw err;
+  }
+  return set;
+}
+
+/**
+ * Provider capability map for GET /billing/paymongo-config — drives which
+ * payment-method rows the frontend renders. Never invents unsupported methods.
+ */
+export function getPaymentMethodsCapability() {
+  return {
+    qrph: true,
+    card: true,
+    wallets: [
+      { id: 'gcash', label: 'GCash', checkout_type: 'gcash' },
+      { id: 'maya', label: 'Maya', checkout_type: 'paymaya' },
+    ],
+    bnpl: isBilleaseEnabled() ? [{ id: 'billease', label: 'BillEase', checkout_type: BILLEASE_TYPE }] : [],
+  };
+}
+
+export async function createBillingCheckoutSession(
+  billing,
+  { actorRole = 'shop_owner', paymentMethodTypes = null } = {}
+) {
   if (!billing) throw new Error('Billing record required');
   if (!isPayableStatus(billing.status)) {
     const err = new Error(
@@ -402,6 +476,9 @@ export async function createBillingCheckoutSession(billing, { actorRole = 'shop_
     throw err;
   }
 
+  const methodTypes = resolveCheckoutMethodTypes(paymentMethodTypes);
+  const paymentChannel = methodTypes.length === 1 ? methodTypes[0] : null;
+
   const plan = resolvePlanForRecord(billing);
   const amount = Number(billing.amount) || Number(plan?.monthly_price) || 0;
   if (!amount || amount <= 0) {
@@ -410,12 +487,16 @@ export async function createBillingCheckoutSession(billing, { actorRole = 'shop_
     throw err;
   }
 
-  // Reuse an existing active checkout when still valid
+  // Reuse an existing active checkout when still valid — but only when it was
+  // created for the same method-type intent (a GCash request must not reuse a
+  // generic hosted checkout and vice versa).
   if (billing.paymongo_checkout_session_id) {
+    const sameChannelIntent =
+      (paymentChannel || null) === (billing.payment_method_type || null);
     const updatedRecently =
       billing.updated_at &&
       Date.now() - new Date(billing.updated_at).getTime() < 30 * 60 * 1000;
-    if (updatedRecently || ['pending', 'processing'].includes(billing.status)) {
+    if (sameChannelIntent && (updatedRecently || ['pending', 'processing'].includes(billing.status))) {
       try {
         const checkout = await getCheckoutSession(billing.paymongo_checkout_session_id);
         const url = checkout?.data?.attributes?.checkout_url;
@@ -428,7 +509,7 @@ export async function createBillingCheckoutSession(billing, { actorRole = 'shop_
 
   const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5178').replace(/\/$/, '');
   const successUrl = `${frontendUrl}/shop/billing/success?billing_id=${billing.id}`;
-  const cancelUrl = `${frontendUrl}/shop/billing`;
+  const cancelUrl = `${frontendUrl}/shop/billing?payment=cancelled`;
   const planLabel = plan?.name ? `${plan.name} — ` : '';
   const description = `ATANY ${planLabel}${billing.billing_period}`;
 
@@ -456,7 +537,7 @@ export async function createBillingCheckoutSession(billing, { actorRole = 'shop_
               quantity: 1,
             },
           ],
-          payment_method_types: ['gcash', 'card', 'paymaya', 'grab_pay', 'qrph', 'billease'],
+          payment_method_types: methodTypes,
           send_email_receipt: false,
           show_description: true,
           show_line_items: true,
@@ -479,8 +560,12 @@ export async function createBillingCheckoutSession(billing, { actorRole = 'shop_
   const checkoutId = body.data.id;
   const checkoutUrl = body.data.attributes.checkout_url;
   await pool.query(
-    `UPDATE billing_records SET paymongo_checkout_session_id = $1, updated_at = now() WHERE id = $2`,
-    [checkoutId, billing.id]
+    `UPDATE billing_records
+        SET paymongo_checkout_session_id = $1,
+            payment_method_type = $3,
+            updated_at = now()
+      WHERE id = $2`,
+    [checkoutId, billing.id, paymentChannel]
   );
   await writeAuditLog({
     userId: billing.seller_id,

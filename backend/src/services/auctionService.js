@@ -123,6 +123,7 @@ export async function listAuctions({ shopId, branchId, status } = {}) {
       productId: a.product_id,
       startPrice: a.start_price,
       currentBid: a.current_bid,
+      minimum_bid_increment: Number(a.minimum_bid_increment) > 0 ? Number(a.minimum_bid_increment) : 1000,
       bids: bidCounts[a.id] || 0,
       participants: participantCounts[a.id] || 0,
       status: computedStatus,

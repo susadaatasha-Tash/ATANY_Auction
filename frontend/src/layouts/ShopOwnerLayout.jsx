@@ -18,7 +18,8 @@ const titles = {
   '/shop': ['Dashboard'],
   '/shop/listings': ['My Listings'],
   '/shop/auctions': ['My Auctions'],
-  '/shop/sales': ['Won Lots & Orders'],
+  '/shop/sales': ['Sales & Payouts'],
+  '/shop/orders': ['Won Lots & Orders'],
   '/shop/billing': ['Subscription'],
   '/shop/messages': ['Messages'],
   '/shop/notifications': ['Notifications'],
@@ -116,7 +117,7 @@ export default function ShopOwnerLayout() {
       items: [
         { to: '/shop/listings', name: 'My Listings', icon: <Gem size={15} />, badge: listingCount || undefined },
         { to: '/shop/auctions', name: 'My Auctions', icon: <Gavel size={15} />, badge: auctionCount || undefined },
-        { to: '/shop/sales', name: 'Won Lots & Orders', icon: <Receipt size={15} />, badge: orderCount || undefined },
+        { to: '/shop/orders', name: 'Won Lots & Orders', icon: <Receipt size={15} />, badge: orderCount || undefined },
       ],
     },
     {
