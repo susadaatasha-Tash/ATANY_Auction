@@ -33,6 +33,9 @@ vi.mock('../../../../shared/hooks/useBranch', () => ({
 vi.mock('../../../../shared/components/NotificationBell', () => ({
   NotificationBell: () => <div data-testid="notification-bell" />,
 }));
+vi.mock('../../../../shared/components/Toast', () => ({
+  useToast: () => vi.fn(),
+}));
 
 import MyPurchases from '../MyPurchases';
 
@@ -146,5 +149,26 @@ describe('MyPurchases redesign', () => {
       expect(screen.getByText('No purchases yet')).toBeInTheDocument();
     });
     expect(screen.getByText(/Explore Auctions/)).toBeInTheDocument();
+  });
+
+  it('shows hamburger menu, removes top-header search, keeps page search', async () => {
+    apiFetch.mockImplementation((path) => {
+      if (path === '/customer/orders') return Promise.resolve(orders);
+      if (path === '/customer/auctions?status=live') return Promise.resolve([]);
+      return Promise.resolve([]);
+    });
+
+    renderPage(<MyPurchases />);
+
+    // Hamburger menu on the left of the header, reuses the sidebar toggle
+    expect(screen.getByRole('button', { name: 'Open navigation menu' })).toBeInTheDocument();
+
+    // Page-level search preserved (renders once orders load)
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Search your purchases...')).toBeInTheDocument();
+    });
+
+    // Top-header search removed
+    expect(screen.queryByPlaceholderText('Search lots, branches...')).not.toBeInTheDocument();
   });
 });

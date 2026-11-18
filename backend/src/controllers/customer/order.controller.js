@@ -1,3 +1,5 @@
+import { cancelOrderSafely, sendPaymentSafetyError, cancellationSnapshot } from '../../services/orderPaymentSafety.js';
+import { readCancellationActor } from '../../services/cancellationRead.js';
 import { pool } from '../../db/pool.js';
 import {
   MANUAL_PROVIDER, recordManualPayment, advanceOrderTo, PAYMENT_WINDOW_EXPIRED,
@@ -54,17 +56,21 @@ export const getOrders = async (req, res) => {
         auction_code: a.auction_code || null,
         auction_end: a.end_time || null,
         payment_method: o.payment_method || null,
+        cancellation_reason:o.cancellation_reason || null,cancelled_at:o.cancelled_at || null,cancelled_by:o.cancelled_by || null,
       };
     });
     // attach latest payment status per order (REST-compatible: separate simple queries)
     for (const r of rows) {
       try {
-        const { rows: pay } = await pool.query(`SELECT * FROM payments WHERE order_id=$1 ORDER BY created_at DESC LIMIT 1`, [r.id]);
-        const payment = pay[0] || null;
+        const { rows: pay } = await pool.query(`SELECT * FROM payments WHERE order_id=$1 ORDER BY created_at DESC`, [r.id]);
+        const payment = pay.find(p=>p.status==='paid') || pay[0] || null;
         r.payment_status = payment?.status || null;
         r.payment_method = payment?.payment_method || r.payment_method || null;
         r.paid_at = payment?.paid_at || null;
       } catch { r.payment_status = null; }
+      if(r.payment_status==='paid')r.is_expired=false;
+      r.cancellation_actor=await readCancellationActor(r);
+      Object.assign(r,await cancellationSnapshot(r));
     }
     res.json(rows);
   } catch (e) {
@@ -72,6 +78,30 @@ export const getOrders = async (req, res) => {
     res.status(500).json({ message: 'Failed to load orders' });
   }
 };
+/**
+ * PATCH /customer/orders/:id/cancel — Customer cancels their own unpaid order.
+ *
+ * Business rules (all enforced server-side):
+ *   1. Authenticated Customer only (requireAuth + requireRole('customer') on the route).
+ *   2. Order must belong to the caller — buyer_id derived from req.user, never trusted from client.
+ *   3. Only unpaid orders: order.status must be 'pending' and no 'paid' or
+ *      'processing' payment may exist for the order.
+ *   4. Already-cancelled orders are rejected.
+ *   5. A non-empty cancellation reason is mandatory.
+ *   6. Race-safe: takes SELECT … FOR UPDATE on the order row — the same lock
+ *      every payment settlement path (settlePaidPaymentWithOrderLock) and the
+ *      winner-expiration cron hold — so payment and cancellation can never
+ *      interleave.
+ *   7. No refunds, no commission reversals, no winner reassignment: cancellation
+ *      only flips order.status to 'cancelled' and persists reason/timestamp/actor.
+ */
+export const cancelOrder = async (req, res) => {
+  try {
+    const order = await cancelOrderSafely({ orderId:req.params.id,actorId:req.user.id,role:'customer',reason:req.body?.reason });
+    res.status(200).json({ ...order,message:'Order cancelled.' });
+  } catch(error) { return sendPaymentSafetyError(res,error); }
+};
+
 export const payOrder = async (req, res) => {
   // Counter / manual payment. LEGACY UI path: online payments must use PayMongo
   // checkout via POST /customer/orders/:id/payment.

@@ -5,6 +5,7 @@ import { PortalPageHeader } from '../../../shared/components/PortalPageHeader';
 import { NotificationBell } from '../../../shared/components/NotificationBell';
 import { useAuth } from '../../../shared/hooks/useAuth';
 import { useBranch } from '../../../shared/hooks/useBranch';
+import { useSidebar } from '../../../shared/hooks/useSidebar';
 
 function getDisplayName(user) {
   if (!user) return 'Customer';
@@ -28,32 +29,13 @@ function getUserInitials(name, email) {
   return parts.slice(0, 2).map(p => p.charAt(0).toUpperCase()).join('');
 }
 
-export function PurchaseHeader({ globalQuery, onGlobalQuerySubmit, liveLots }) {
+export function PurchaseHeader({ liveLots }) {
   const navigate = useNavigate();
+  const { toggle, sidebarCollapsed, toggleCollapsed } = useSidebar();
   const { user } = useAuth();
   const { branchName } = useBranch();
   const displayName = getDisplayName(user);
   const initials = getUserInitials(displayName, user?.email);
-
-  const search = (
-    <form
-      className="mp-header-search portal-search"
-      onSubmit={(e) => {
-        e.preventDefault();
-        onGlobalQuerySubmit?.(globalQuery);
-      }}
-      role="search"
-    >
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m21 21-4.3-4.3" /></svg>
-      <input
-        type="search"
-        value={globalQuery}
-        onChange={(e) => onGlobalQuerySubmit?.(e.target.value, { live: true })}
-        placeholder="Search lots, branches..."
-        
-      />
-    </form>
-  );
 
   const actions = (
     <>
@@ -74,7 +56,9 @@ export function PurchaseHeader({ globalQuery, onGlobalQuerySubmit, liveLots }) {
     <PortalPageHeader
       title="My Purchases"
       role="customer"
-      search={search}
+      onMenuToggle={toggle}
+      sidebarCollapsed={sidebarCollapsed}
+      onSidebarToggle={toggleCollapsed}
       actions={actions}
       user={{ initials, name: displayName, role: branchName || 'Customer' }}
       settingsTo="/customer/account"

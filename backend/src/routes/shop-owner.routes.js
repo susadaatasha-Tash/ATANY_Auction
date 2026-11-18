@@ -2,7 +2,7 @@
 import { Router } from 'express';
 import { listListings, createListing, resubmitListing, updateListing, deleteListing } from '../controllers/shop-owner/listing.controller.js';
 import { listAuctions, createAuction, updateAuction, deleteAuction } from '../controllers/shop-owner/auction.controller.js';
-import { listSales, updateOrderStatus, getSalesSummary } from '../controllers/shop-owner/sales.controller.js';
+import { listSales, updateOrderStatus, cancelOrder, getSalesSummary } from '../controllers/shop-owner/sales.controller.js';
 import { getShop, updateShop, branchImageUploadUrl, updateBranchImage } from '../controllers/shop-owner/shop.controller.js';
 import { listNotifications as listShopNotifications, markAllRead as markShopRead, markOneRead as markShopOneRead } from '../controllers/shop-owner/notification.controller.js';
 import { listActivity } from '../controllers/shop-owner/activity.controller.js';
@@ -53,6 +53,7 @@ router.delete('/auctions/:id', deleteAuction); // cancel own scheduled auction (
 router.get('/sales', listSales);
 router.get('/sales/summary', getSalesSummary);
 router.patch('/orders/:id/status', updateOrderStatus);
+router.patch('/orders/:id/cancel', cancelOrder); // Shop Owner cancels own unpaid order with reason
 router.get('/shop', getShop);
 router.put('/shop', updateShop);
 router.post('/shop/branch-image/upload-url', branchImageUploadUrl);

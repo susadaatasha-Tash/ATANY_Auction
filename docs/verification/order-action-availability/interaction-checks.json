@@ -1,0 +1,108 @@
+{
+  "checks": [
+    {
+      "name": "desktop: lower details inert",
+      "passed": true
+    },
+    {
+      "name": "desktop: no mutation controls",
+      "passed": true
+    },
+    {
+      "name": "desktop: payment focus restored",
+      "passed": true
+    },
+    {
+      "name": "desktop: cancellation not requested",
+      "passed": true
+    },
+    {
+      "name": "desktop: refresh remains read-only",
+      "passed": true
+    },
+    {
+      "name": "desktop: cancellation focus restored",
+      "passed": true
+    },
+    {
+      "name": "desktop: lower active after close",
+      "passed": true
+    },
+    {
+      "name": "desktop: no dialog overflow",
+      "passed": true
+    },
+    {
+      "name": "mobile: lower details inert",
+      "passed": true
+    },
+    {
+      "name": "mobile: no mutation controls",
+      "passed": true
+    },
+    {
+      "name": "mobile: payment focus restored",
+      "passed": true
+    },
+    {
+      "name": "mobile: cancellation not requested",
+      "passed": true
+    },
+    {
+      "name": "mobile: refresh remains read-only",
+      "passed": true
+    },
+    {
+      "name": "mobile: cancellation focus restored",
+      "passed": true
+    },
+    {
+      "name": "mobile: lower active after close",
+      "passed": true
+    },
+    {
+      "name": "mobile: no dialog overflow",
+      "passed": true
+    }
+  ],
+  "errors": [],
+  "apiCalls": [
+    {
+      "path": "/customer/notifications",
+      "method": "GET"
+    },
+    {
+      "path": "/customer/orders",
+      "method": "GET"
+    },
+    {
+      "path": "/customer/auctions?status=live",
+      "method": "GET"
+    },
+    {
+      "path": "/customer/orders/fixture-1",
+      "method": "GET"
+    },
+    {
+      "path": "/customer/reminders",
+      "method": "GET"
+    },
+    {
+      "path": "/customer/reminders",
+      "method": "GET"
+    },
+    {
+      "path": "/customer/reminders",
+      "method": "GET"
+    },
+    {
+      "path": "/customer/orders/fixture-1",
+      "method": "GET"
+    },
+    {
+      "path": "/customer/orders",
+      "method": "GET"
+    }
+  ],
+  "fixtureIO": true
+}

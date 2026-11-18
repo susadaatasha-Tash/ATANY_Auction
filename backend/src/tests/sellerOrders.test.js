@@ -6,9 +6,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const poolQuery = vi.hoisted(() => vi.fn());
-vi.mock('../db/pool.js', () => ({ pool: { query: poolQuery } }));
+const poolConnect = vi.hoisted(() => vi.fn());
+vi.mock('../db/pool.js', () => ({ pool: { query: poolQuery, connect: poolConnect } }));
 
-import { listSales, updateOrderStatus } from '../controllers/shop-owner/sales.controller.js';
+import { listSales, updateOrderStatus, cancelOrder } from '../controllers/shop-owner/sales.controller.js';
 
 const SHOP = 'shop-1';
 const OWN_SHOP = 'shop-2';
@@ -18,6 +19,19 @@ function mockRes() {
   r.status = vi.fn().mockReturnValue(r);
   r.json = vi.fn().mockReturnValue(r);
   return r;
+}
+
+let activeOperation;
+function makeClient() {
+  const query = vi.fn(async (sql, params = []) => {
+    if (/INSERT INTO payment_operations/.test(sql)) { activeOperation=params[0]; return {rows:[]}; }
+    if (/SELECT \* FROM payment_operations/.test(sql)) return {rows:[]};
+    if (/SELECT id FROM payment_operations/.test(sql)) return {rows:[{id:activeOperation}]};
+    if (/UPDATE payment_operations/.test(sql)) return {rows:[]};
+    return poolQuery(sql,params);
+  });
+  const release = vi.fn();
+  return { query, release };
 }
 
 /** SQL-routing mock. `ownShop` flips which shop the session resolves to. */
@@ -30,8 +44,12 @@ function seed({ ownShop = true, orders = null, payments = [], branches = [] } = 
     },
   ];
   const orderRows = orders || defaultOrders;
-  poolQuery.mockImplementation(async (sql) => {
+  poolQuery.mockImplementation(async (sql, params = []) => {
     const s = String(sql);
+    if (/SELECT s.id FROM shops s JOIN products/.test(s)) return {rows:ownShop ? [{id:SHOP}] : []};
+    if (/^\s*BEGIN/i.test(s)) return { rows: [], rowCount: 0 };
+    if (/^\s*COMMIT/i.test(s)) return { rows: [], rowCount: 0 };
+    if (/^\s*ROLLBACK/i.test(s)) return { rows: [], rowCount: 0 };
     if (/FROM shops WHERE user_id/.test(s)) return { rows: [{ id: ownShop ? SHOP : OWN_SHOP }] };
     if (/FROM products WHERE shop_id/.test(s)) return { rows: [{ id: 'p1' }, { id: 'p2' }] };
     if (/FROM auctions WHERE product_id IN/.test(s)) return { rows: [{ id: 'a1', product_id: 'p1' }] };
@@ -48,6 +66,19 @@ function seed({ ownShop = true, orders = null, payments = [], branches = [] } = 
       const found = orderRows.find((o) => o.id === 'o1');
       return { rows: found ? [{ id: found.id, status: found.status, auction_id: found.auction_id }] : [] };
     }
+    // Cancel endpoint: SELECT * FROM orders WHERE id=$1 FOR UPDATE
+    if (/SELECT \* FROM orders WHERE id=\$1 FOR UPDATE/.test(s)) {
+      const found = orderRows.find((o) => o.id === 'o1');
+      return { rows: found ? [{ ...found }] : [] };
+    }
+    // Cancel endpoint: payment eligibility check (paid or processing blocks cancellation)
+    if (/FROM payments WHERE order_id=\$1 ORDER BY created_at/.test(s)) {
+      return { rows: payments.filter((p) => p.status === 'paid' || p.status === 'processing') };
+    }
+    // Cancel endpoint: UPDATE orders SET status='cancelled', cancellation_reason=...
+    if (/UPDATE\s+orders\s+SET\s+status='cancelled'/.test(s)) {
+      return { rows: ownShop ? [{ id: 'o1', status: 'cancelled', cancellation_reason: 'Item no longer available', cancelled_at: new Date().toISOString(), cancelled_by: 'seller' }] : [] };
+    }
     if (/FROM payments WHERE order_id=\$1 AND status='paid'/.test(s)) {
       return { rows: payments.some((x) => x.status === 'paid') ? [{ id: 'pay1' }] : [] };
     }
@@ -62,9 +93,14 @@ function seed({ ownShop = true, orders = null, payments = [], branches = [] } = 
   });
 }
 
-beforeEach(() => { poolQuery.mockReset(); });
+beforeEach(() => { poolQuery.mockReset(); poolConnect.mockReset(); poolConnect.mockResolvedValue(makeClient()); });
 
 describe('GET /shop-owner/sales (list)', () => {
+  test('returns the same persisted cancellation record the buyer sees',async()=>{
+    seed({orders:[{id:'o1',auction_id:'a1',buyer_id:'b1',amount:71000,status:'cancelled',cancelled_by:'b1',cancelled_at:'2026-11-01T06:00:00Z',cancellation_reason:'Stored customer reason'}]});
+    const res=mockRes();await listSales({user:{id:'seller'}},res);
+    expect(res.json.mock.calls[0][0][0]).toMatchObject({status:'cancelled',cancelled_by:'b1',cancellation_reason:'Stored customer reason',cancelled_at:'2026-11-01T06:00:00Z'});
+  });
   test('returns real records with backend-authoritative commission/payout', async () => {
     seed({
       payments: [{ order_id: 'o1', status: 'paid', payment_method: 'gcash', paid_at: '2026-10-11T03:00:00Z', created_at: '2026-10-11T03:00:00Z' }],
@@ -112,8 +148,11 @@ describe('GET /shop-owner/sales (list)', () => {
   });
 
   test('shop with no products returns an empty list (no crash)', async () => {
-    poolQuery.mockImplementation(async (sql) => {
+    poolQuery.mockImplementation(async (sql, params = []) => {
       const s = String(sql);
+      if (/^\s*BEGIN/i.test(s)) return { rows: [], rowCount: 0 };
+      if (/^\s*COMMIT/i.test(s)) return { rows: [], rowCount: 0 };
+      if (/^\s*ROLLBACK/i.test(s)) return { rows: [], rowCount: 0 };
       if (/FROM shops WHERE user_id/.test(s)) return { rows: [{ id: SHOP }] };
       if (/FROM products WHERE shop_id/.test(s)) return { rows: [] };
       return { rows: [] };
@@ -192,6 +231,89 @@ describe('PATCH /shop-owner/orders/:id/status', () => {
   });
 });
 
+describe('PATCH /shop-owner/orders/:id/cancel', () => {
+  test('empty cancellation reason rejected with 400', async () => {
+    seed({ payments: [] });
+    const res = mockRes();
+    await cancelOrder({ user: { id: 'seller' }, params: { id: 'o1' }, body: { reason: '' } }, res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].code).toBe('CANCELLATION_REASON_REQUIRED');
+  });
+
+  test('whitespace-only cancellation reason rejected with 400', async () => {
+    seed({ payments: [] });
+    const res = mockRes();
+    await cancelOrder({ user: { id: 'seller' }, params: { id: 'o1' }, body: { reason: '   ' } }, res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].code).toBe('CANCELLATION_REASON_REQUIRED');
+  });
+
+  test('paid order cannot be cancelled', async () => {
+    seed({ payments: [{ order_id: 'o1', status: 'paid' }] });
+    const res = mockRes();
+    await cancelOrder({ user: { id: 'seller' }, params: { id: 'o1' }, body: { reason: 'Changed my mind' } }, res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].code).toBe('PAYMENT_NOT_CANCELLABLE');
+    // No cancellation UPDATE issued
+    expect(poolQuery.mock.calls.some(([sql]) => /cancellation_reason/.test(String(sql)))).toBe(false);
+  });
+
+  test('processing payment means order cannot be cancelled', async () => {
+    seed({ payments: [{ order_id: 'o1', status: 'processing' }] });
+    const res = mockRes();
+    await cancelOrder({ user: { id: 'seller' }, params: { id: 'o1' }, body: { reason: 'Changed my mind' } }, res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].code).toBe('PAYMENT_NOT_CANCELLABLE');
+  });
+
+  test('already cancelled order rejected with 409', async () => {
+    seed({
+      orders: [{ id: 'o1', auction_id: 'a1', buyer_id: 'b1', amount: 71000, status: 'cancelled', branch_id: 'br1', payment_method: null, created_at: '2026-10-11T02:24:00Z', transaction_code: 'TXN-9009' }],
+    });
+    const res = mockRes();
+    await cancelOrder({ user: { id: 'seller' }, params: { id: 'o1' }, body: { reason: 'Duplicate' } }, res);
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json.mock.calls[0][0].code).toBe('ALREADY_CANCELLED');
+  });
+
+  test('non-pending order (e.g. completed) cannot be cancelled', async () => {
+    seed({
+      orders: [{ id: 'o1', auction_id: 'a1', buyer_id: 'b1', amount: 71000, status: 'completed', branch_id: 'br1', payment_method: null, created_at: '2026-10-11T02:24:00Z', transaction_code: 'TXN-9009' }],
+      payments: [],
+    });
+    const res = mockRes();
+    await cancelOrder({ user: { id: 'seller' }, params: { id: 'o1' }, body: { reason: 'Changed my mind' } }, res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json.mock.calls[0][0].code).toBe('ORDER_NOT_CANCELLABLE');
+  });
+
+  test('foreign seller order → 404 and no cancellation UPDATE', async () => {
+    seed({ ownShop: false, payments: [] });
+    const res = mockRes();
+    await cancelOrder({ user: { id: 'seller' }, params: { id: 'o1' }, body: { reason: 'Changed my mind' } }, res);
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json.mock.calls[0][0].message).toBe('Order not found');
+    expect(poolQuery.mock.calls.some(([sql]) => /cancellation_reason/.test(String(sql)))).toBe(false);
+  });
+
+  test('eligible unpaid order can be cancelled with reason persisted', async () => {
+    seed({ payments: [] });
+    const res = mockRes();
+    await cancelOrder(
+      { user: { id: 'seller' }, params: { id: 'o1' }, body: { reason: 'Item no longer available' } },
+      res
+    );
+    expect(res.status).toHaveBeenCalledWith(200);
+    const update = poolQuery.mock.calls.find(([sql]) => /cancellation_reason/.test(String(sql)));
+    expect(update).toBeTruthy();
+    expect(update[0]).toMatch(/s.user_id=\$3/); // ownership inside the statement
+    expect(update[1]).toEqual(['o1', 'Item no longer available', 'seller']);
+    expect(res.json.mock.calls[0][0].status).toBe('cancelled');
+    expect(res.json.mock.calls[0][0].cancellation_reason).toBe('Item no longer available');
+    expect(res.json.mock.calls[0][0].cancelled_by).toBe('seller');
+  });
+});
+
 describe('seller orders security contract', () => {
   const src = fs.readFileSync(
     path.join(__dirname, '../controllers/shop-owner/sales.controller.js'),
@@ -203,6 +325,7 @@ describe('seller orders security contract', () => {
   test('routes stay behind auth + shop_owner role', () => {
     expect(routesSrc).toMatch(/router\.get\('\/sales', listSales\)/);
     expect(routesSrc).toMatch(/router\.patch\('\/orders\/:id\/status', updateOrderStatus\)/);
+    expect(routesSrc).toMatch(/router\.patch\('\/orders\/:id\/cancel', cancelOrder\)/);
     expect(indexSrc).toMatch(/app\.use\('\/shop-owner', requireAuth, requireRole\('shop_owner'\)/);
   });
 

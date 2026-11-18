@@ -149,7 +149,8 @@
   .app.customer-app.sidebar-collapsed .sidebar { display: none !important; }
 }
 @media (min-width: 768px) and (max-width: 1199px) {
-  .customer-app { grid-template-columns: 260px 1fr !important; }
+  .app.customer-app { grid-template-columns: 260px 1fr !important; }
+  .customer-app .menu-toggle { display: none !important; }
   .customer-app.sidebar-collapsed { grid-template-columns: 68px 1fr !important; }
   .customer-app.sidebar-collapsed .sidebar,
   .app.customer-app.sidebar-collapsed .sidebar {

@@ -1,0 +1,504 @@
+{
+  "date": "2026-11-19",
+  "scope": "offline recovery and permission verification against the captured source snapshot",
+  "source_connections_this_phase": 0,
+  "source_changes": 0,
+  "provider_requests": 0,
+  "migrations_037_038_039_executed": false,
+  "original_restore_failure": "supabase_vault 0.3.1 absent from the generic local PostgreSQL installation",
+  "vault": {
+    "managed_schema": "vault",
+    "source_vault_secret_rows": 0,
+    "public_dependent_objects": 0,
+    "tracked_dependency_closure_count": 28,
+    "native_source": "https://github.com/supabase/vault/tree/v0.3.1",
+    "vendor_archive_sha256": "344edb590e574cc94937d5665f696b4b04c3af5ae9431cc9050da657ab563b11",
+    "vendor_sql_and_c_modified": false,
+    "global_extension_install": false,
+    "original_managed_key_recovered": false,
+    "synthetic_local_key_roundtrip_verified": true
+  },
+  "retention": {
+    "encrypted_archive": "/Users/honeycar/ATANY_Backups/2026-11-19/target-audit-d3Aw9E/database.dump.aesgcm",
+    "encrypted_sha256": "3b05aef9947984aaf8f1ca2241569dcb2d63b5c2bb62a313d493d4b89a7ac634",
+    "checksum_matches_original": true,
+    "authenticated_decryption_verified": true,
+    "key_stored_separately": true,
+    "original_retained": true,
+    "directory_mode": "0700",
+    "file_mode": "0600",
+    "off_machine_copy_verified": false
+  },
+  "recovery": {
+    "archive_restore": "passed",
+    "source_postgres": "17.6",
+    "local_postgres": "18.6 (Homebrew)",
+    "extension_versions": [
+      {
+        "extname": "pg_stat_statements",
+        "extversion": "1.11",
+        "schema": "extensions"
+      },
+      {
+        "extname": "pgcrypto",
+        "extversion": "1.3",
+        "schema": "extensions"
+      },
+      {
+        "extname": "plpgsql",
+        "extversion": "1.0",
+        "schema": "pg_catalog"
+      },
+      {
+        "extname": "supabase_vault",
+        "extversion": "0.3.1",
+        "schema": "vault"
+      },
+      {
+        "extname": "uuid-ossp",
+        "extversion": "1.1",
+        "schema": "extensions"
+      }
+    ],
+    "object_exclusions": [],
+    "tables_matched": 71,
+    "sequences_matched": 4,
+    "public_constraints_matched": 68,
+    "public_column_contracts_matched": 198,
+    "pg18_additional_not_null_catalog_entries": 115,
+    "public_indexes_matched": 67,
+    "public_enum_labels_matched": 51,
+    "public_policies_matched": 33,
+    "public_functions_matched": 3,
+    "public_triggers_matched": 2,
+    "public_role_privileges_matched": 92,
+    "row_verification": {
+      "auth.audit_log_entries": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "auth.custom_oauth_providers": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "auth.flow_state": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "auth.identities": {
+        "rows": 15,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "auth.instances": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "auth.mfa_amr_claims": {
+        "rows": 9,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "auth.mfa_challenges": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "auth.mfa_factors": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "auth.mfa_recovery_code_sets": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "auth.mfa_recovery_codes": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "auth.oauth_authorizations": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "auth.oauth_client_states": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "auth.oauth_clients": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "auth.oauth_consents": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "auth.one_time_tokens": {
+        "rows": 2,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "auth.refresh_tokens": {
+        "rows": 57,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "auth.saml_providers": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "auth.saml_relay_states": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "auth.schema_migrations": {
+        "rows": 84,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "auth.scim_tokens": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "auth.scim_users": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "auth.sessions": {
+        "rows": 9,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "auth.sso_domains": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "auth.sso_providers": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "auth.users": {
+        "rows": 15,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "auth.webauthn_challenges": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "auth.webauthn_credentials": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "public.auction_reminders": {
+        "rows": 18,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "public.auction_viewers": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "public.auctions": {
+        "rows": 28,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "public.audit_logs": {
+        "rows": 241,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "public.bids": {
+        "rows": 31,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "public.billing_records": {
+        "rows": 14,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "public.branches": {
+        "rows": 3,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "public.chatbot_messages": {
+        "rows": 326,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "public.chatbot_sessions": {
+        "rows": 23,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "public.favorites": {
+        "rows": 7,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "public.notifications": {
+        "rows": 2717,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "public.orders": {
+        "rows": 15,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "public.payments": {
+        "rows": 24,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "public.product_reviews": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "public.products": {
+        "rows": 25,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "public.schema_migrations": {
+        "rows": 36,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "public.security_alerts": {
+        "rows": 28,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "public.seller_payment_methods": {
+        "rows": 1,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "public.shops": {
+        "rows": 8,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "public.subscription_changes": {
+        "rows": 9,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "public.support_requests": {
+        "rows": 8,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "public.users": {
+        "rows": 12,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "public.watchlists": {
+        "rows": 3,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "realtime.messages": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "realtime.messages_2026_11_15": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "realtime.messages_2026_11_16": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "realtime.messages_2026_11_17": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "realtime.messages_2026_11_18": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "realtime.messages_2026_11_19": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "realtime.messages_2026_11_20": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "realtime.messages_2026_11_21": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "realtime.schema_migrations": {
+        "rows": 97,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "realtime.subscription": {
+        "rows": 1,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "storage.bucket_lifecycle_states": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "storage.buckets": {
+        "rows": 2,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "storage.buckets_analytics": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "storage.buckets_vectors": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "storage.lifecycle_abandoned_artifacts": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "storage.migrations": {
+        "rows": 81,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "storage.objects": {
+        "rows": 58,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "storage.s3_multipart_uploads": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "storage.s3_multipart_uploads_parts": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "storage.vector_indexes": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      },
+      "vault.secrets": {
+        "rows": 0,
+        "count_matches": true,
+        "hash_matches": true
+      }
+    },
+    "migration_history_rows": 36,
+    "application_database_recovery": "verified",
+    "full_supabase_project_recovery": "not_verified",
+    "local_servers_stopped": true
+  },
+  "permissions": {
+    "as_of_captured_snapshot": "2026-11-18T18:55:34.287Z",
+    "default_creator_roles": [
+      "postgres",
+      "supabase_admin"
+    ],
+    "affected_client_roles": [
+      "anon",
+      "authenticated"
+    ],
+    "affected_public_tables": [
+      "auction_reminders",
+      "auction_viewers",
+      "auctions",
+      "audit_logs",
+      "bids",
+      "billing_records",
+      "branches",
+      "chatbot_messages",
+      "chatbot_sessions",
+      "favorites",
+      "notifications",
+      "orders",
+      "payments",
+      "product_reviews",
+      "products",
+      "schema_migrations",
+      "security_alerts",
+      "seller_payment_methods",
+      "shops",
+      "subscription_changes",
+      "support_requests",
+      "users",
+      "watchlists"
+    ],
+    "missing_users_guard": true,
+    "authenticated_updatable_user_columns": [
+      "id",
+      "name",
+      "email",
+      "password_hash",
+      "role",
+      "status",
+      "created_at",
+      "totp_secret",
+      "totp_enabled",
+      "preferred_branch_id",
+      "phone",
+      "suspension_reason"
+    ],
+    "self_promotion_canary": {
+      "admin_before": false,
+      "updated_rows": 1,
+      "admin_after": true,
+      "fixture_removed": true,
+      "transaction_rolled_back": true
+    },
+    "backend_role": {
+      "rolname": "postgres",
+      "rolsuper": false,
+      "rolbypassrls": true,
+      "rolcreaterole": true,
+      "rolcreatedb": true
+    }
+  },
+  "overall_recommendation": "NO-GO for existing-project changes, payment activation or full-project disaster-recovery readiness",
+  "application_data_recovery_recommendation": "GO for restoring and verifying this captured logical database snapshot in the tested isolated environment"
+}

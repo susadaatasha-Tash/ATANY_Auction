@@ -1,7 +1,8 @@
 // frontend/src/roles/admin/routes.jsx
 import Dashboard from './pages/Dashboard';
 import Users from './pages/Users';
-import Transactions from './pages/Transactions';
+import Orders from './pages/Orders';
+import PaymentReconciliations from './pages/PaymentReconciliations';
 import Analytics from './pages/Analytics';
 import SecurityAlerts from './pages/SecurityAlerts';
 import AdminBranches from './pages/Branches';
@@ -22,8 +23,13 @@ export const adminRoutes = [
   { path: 'products/:id', element: <Navigate to="/admin/branches" replace /> },
   { path: 'auctions', element: <Navigate to="/admin/branches" replace /> },
   { path: 'auctions/:id', element: <Navigate to="/admin/branches" replace /> },
+  // The Orders page lives at /admin/orders and consumes the existing
+  // GET /admin/transactions endpoint. /admin/transactions redirects here so
+  // existing links/bookmarks keep working.
+  { path: 'transactions', element: <Navigate to="/admin/orders" replace /> },
+  { path: 'orders', element: <Orders /> },
+  { path: 'payment-reconciliations', element: <PaymentReconciliations /> },
   { path: 'users', element: <Users /> },
-  { path: 'transactions', element: <Transactions /> },
   { path: 'billing', element: <AdminBilling /> },
   { path: 'analytics', element: <Analytics /> },
   { path: 'security', element: <SecurityAlerts /> },

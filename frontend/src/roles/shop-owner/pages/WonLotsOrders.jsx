@@ -91,6 +91,18 @@ function actionFor(s) {
   return { label: null };
 }
 
+/**
+ * Cancellation eligibility — mirrors backend rules:
+ *   - order.status must be 'pending' (unfulfilled)
+ *   - payment must not be 'paid' or 'processing' (authoritative payment check)
+ *   - already-cancelled orders are excluded
+ */
+function canCancel(s) {
+  const paid = s.payment_status === 'paid';
+  const processing = s.payment_status === 'processing';
+  return s.can_request_cancellation !== false && s.status === 'pending' && !paid && !processing;
+}
+
 function orderRef(s) { return s.transaction_code || String(s.id || '').slice(0, 8).toUpperCase(); }
 
 export default function WonLotsOrders() {
@@ -109,6 +121,10 @@ export default function WonLotsOrders() {
   const [details, setDetails] = useState(null); // selected order id (never a stale snapshot)
   const [menuFor, setMenuFor] = useState(null);
   const [confirm, setConfirm] = useState(null); // { id, nextStatus, title, body }
+  const [cancelFor, setCancelFor] = useState(null); // order id being cancelled
+  const [cancelReason, setCancelReason] = useState(''); // cancellation reason text
+  const [cancelSuggestedReason, setCancelSuggestedReason] = useState(null); // selected suggested reason
+  const [cancelBusy, setCancelBusy] = useState(false); // submission lock
   const [updating, setUpdating] = useState(null);
   const showToast = useToast();
   const reqSeq = useRef(0);
@@ -131,6 +147,12 @@ export default function WonLotsOrders() {
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
+  useEffect(()=>{
+    const update=()=>refresh({background:true});
+    window.addEventListener('focus',update);
+    return ()=>window.removeEventListener('focus',update);
+  },[refresh]);
+  useEffect(()=>{if(details)refresh({background:true});},[details,refresh]);
 
   const handleStatus = async () => {
     if (!confirm) return;
@@ -155,6 +177,34 @@ export default function WonLotsOrders() {
       showToast(e.message || 'Unable to update this order. Please try again.');
     } finally {
       setUpdating(null);
+    }
+  };
+
+  // ── cancellation ───────────────────────────────────────────────────────
+  const handleCancel = async () => {
+    if (!cancelFor) return;
+    const reason = cancelReason.trim();
+    if (!reason) {
+      showToast('A cancellation reason is required.');
+      return;
+    }
+    setCancelBusy(true);
+    try {
+      await apiFetch(`/shop-owner/orders/${cancelFor.id}/cancel`, {
+        method: 'PATCH',
+        body: JSON.stringify({ reason }),
+      });
+      showToast(`Order ${orderRef(cancelFor)} cancelled.`);
+      setCancelFor(null);
+      setCancelReason('');
+      setCancelSuggestedReason(null);
+      // Background revalidate: keep existing rows visible (no full skeleton flash).
+      await refresh({ background: true });
+    } catch (e) {
+      // Preserve the entered reason on failure so the seller does not retype it.
+      showToast(e.message || 'Unable to cancel this order. Please try again.');
+    } finally {
+      setCancelBusy(false);
     }
   };
 
@@ -438,6 +488,21 @@ export default function WonLotsOrders() {
                                     ) : (
                                       <span role="menuitem" aria-disabled="true" className="is-disabled">No actions available</span>
                                     )}
+                                    {/* Cancel Order — only for eligible unpaid orders */}
+                                    {canCancel(s) && (
+                                      <button
+                                        type="button"
+                                        role="menuitem"
+                                        className="wlo-menu__cancel"
+                                        onClick={() => {
+                                          setCancelFor(s);
+                                          setCancelReason('');
+                                          setMenuFor(null);
+                                        }}
+                                      >
+                                        Cancel Order
+                                      </button>
+                                    )}
                                   </span>
                                 )}
                               </span>
@@ -548,6 +613,11 @@ export default function WonLotsOrders() {
                     <div><dt>Payment method</dt><dd>{selectedOrder.payment_method}</dd></div>
                   )}
                   <div><dt>Order status</dt><dd>{statusLabel(selectedOrder.status)}</dd></div>
+                  {selectedOrder.status==='cancelled'&&<>
+                    <div><dt>Cancelled By</dt><dd>{selectedOrder.cancellation_actor?.role==='customer'?'Customer':selectedOrder.cancellation_actor?.role==='shop_owner'?'Shop Owner (Seller)':'Not recorded'}{selectedOrder.cancellation_actor?.name?` · ${selectedOrder.cancellation_actor.name}`:''}</dd></div>
+                    <div><dt>Cancellation Reason</dt><dd>{selectedOrder.cancellation_reason || 'Not recorded'}</dd></div>
+                    <div><dt>Cancelled At</dt><dd>{selectedOrder.cancelled_at?new Date(selectedOrder.cancelled_at).toLocaleString('en-PH',{timeZone:'Asia/Manila'}):'Not recorded'}</dd></div>
+                  </>}
                   {selectedOrder.branch_name && (
                     <div><dt>Pickup branch</dt><dd>{selectedOrder.branch_name}</dd></div>
                   )}
@@ -576,6 +646,132 @@ export default function WonLotsOrders() {
             }
           >
             <p style={{ fontSize: 13, color: 'var(--text)', lineHeight: 1.5 }}>{confirm?.body}</p>
+          </Modal>
+
+          {/* ── cancellation confirmation ────────────────────────────────── */}
+          <Modal
+            open={!!cancelFor}
+            onClose={() => { setCancelFor(null); setCancelReason(''); }}
+            title="Cancel Order"
+            footer={
+              <>
+                <button
+                  className="btn btn-outline"
+                  onClick={() => { setCancelFor(null); setCancelReason(''); }}
+                  disabled={cancelBusy}
+                >
+                  Keep Order
+                </button>
+                <button
+                  className="btn btn-primary"
+                  onClick={handleCancel}
+                  disabled={cancelBusy}
+                >
+                  {cancelBusy ? 'Cancelling…' : 'Confirm Cancellation'}
+                </button>
+              </>
+            }
+          >
+            {cancelFor && (
+              <div className="wlo-cancel-modal">
+                <p>
+                  <strong>Order:</strong> {orderRef(cancelFor)} — {cancelFor.item || '—'}
+                </p>
+                <p style={{ fontSize: 12.5, color: 'var(--muted)', margin: '8px 0' }}>
+                  This action will cancel the selected unpaid order. It cannot be undone.
+                </p>
+                <div className="wlo-cancel-form">
+                  <label className="wlo-cancel-label">
+                    Reason for Cancellation <span style={{ color: 'var(--danger)' }}>*</span>
+                  </label>
+                  <div className="wlo-cancel-suggested">
+                    <label className="wlo-cancel-radio">
+                      <input
+                        type="radio"
+                        name="cancelReason"
+                        value="Item is no longer available"
+                        checked={cancelSuggestedReason === 'Item is no longer available'}
+                        onChange={(e) => {
+                          setCancelSuggestedReason(e.target.value);
+                          setCancelReason(e.target.value);
+                        }}
+                        disabled={cancelBusy}
+                      />
+                      Item is no longer available
+                    </label>
+                    <label className="wlo-cancel-radio">
+                      <input
+                        type="radio"
+                        name="cancelReason"
+                        value="Item was damaged"
+                        checked={cancelSuggestedReason === 'Item was damaged'}
+                        onChange={(e) => {
+                          setCancelSuggestedReason(e.target.value);
+                          setCancelReason(e.target.value);
+                        }}
+                        disabled={cancelBusy}
+                      />
+                      Item was damaged
+                    </label>
+                    <label className="wlo-cancel-radio">
+                      <input
+                        type="radio"
+                        name="cancelReason"
+                        value="Incorrect item information"
+                        checked={cancelSuggestedReason === 'Incorrect item information'}
+                        onChange={(e) => {
+                          setCancelSuggestedReason(e.target.value);
+                          setCancelReason(e.target.value);
+                        }}
+                        disabled={cancelBusy}
+                      />
+                      Incorrect item information
+                    </label>
+                    <label className="wlo-cancel-radio">
+                      <input
+                        type="radio"
+                        name="cancelReason"
+                        value="Unable to fulfill the order"
+                        checked={cancelSuggestedReason === 'Unable to fulfill the order'}
+                        onChange={(e) => {
+                          setCancelSuggestedReason(e.target.value);
+                          setCancelReason(e.target.value);
+                        }}
+                        disabled={cancelBusy}
+                      />
+                      Unable to fulfill the order
+                    </label>
+                    <label className="wlo-cancel-radio">
+                      <input
+                        type="radio"
+                        name="cancelReason"
+                        value="Other"
+                        checked={cancelSuggestedReason === 'Other'}
+                        onChange={(e) => {
+                          setCancelSuggestedReason(e.target.value);
+                        }}
+                        disabled={cancelBusy}
+                      />
+                      Other — Write my own reason
+                    </label>
+                    <textarea
+                      className="wlo-cancel-reason"
+                      value={cancelReason}
+                      onChange={(e) => {
+                        setCancelReason(e.target.value);
+                        setCancelSuggestedReason('Other');
+                      }}
+                      placeholder="Explain why you are cancelling this order..."
+                      rows={3}
+                      disabled={cancelBusy}
+                    />
+                  </div>
+                  {!cancelReason.trim() && cancelBusy === false && (
+                    <p className="wlo-cancel-error">Please select or enter a cancellation reason.</p>
+                  )}
+                </div>
+              </div>
+            )}
           </Modal>
         </>
       )}

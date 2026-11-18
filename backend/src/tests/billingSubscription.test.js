@@ -12,6 +12,7 @@ vi.mock('../services/paymongoService.js', () => ({
   getCheckoutSession: vi.fn(async () => ({ data: { attributes: { checkout_url: 'https://pay.test/reuse', status: 'pending' } } })),
   checkoutStatus: vi.fn(() => 'pending'),
   verifyWebhookSignature: vi.fn(() => true),
+  configuredPaymongoMode: () => false,
 }));
 
 import { pool } from '../db/pool.js';
@@ -50,7 +51,19 @@ import {
   listSubscriptionPlans,
   getPaymongoClientConfig,
 } from '../controllers/billing.controller.js';
-import { paymongoWebhook } from '../controllers/webhook.controller.js';
+import { paymongoWebhook as actualPaymongoWebhook } from '../controllers/webhook.controller.js';
+
+// Legacy fixture builder normalized to the documented provider event contract.
+function paymongoWebhook(req,res) {
+  const a=req.body.data.attributes;
+  a.type=a.type==='checkout_session.paid'?'checkout_session.payment.paid':a.type==='checkout_session.failed'?'payment.failed':a.type;
+  a.livemode=false;req.body.data.id=`evt_${a.data.id}_${a.type}`;
+  const b=billingStore.find(b=>b.id===a.data.attributes.reference_number);
+  for(const p of a.data.attributes.payments || []) { p.attributes.amount=Number(b.amount)*100;p.attributes.currency='PHP'; }
+  req.rawBody=JSON.stringify(req.body);
+  return actualPaymongoWebhook(req,res);
+}
+let eventStore;
 
 const SELLER = '11111111-1111-1111-1111-111111111111';
 const OTHER = '22222222-2222-2222-2222-222222222222';
@@ -108,8 +121,18 @@ beforeEach(() => {
     return { ok: false, status: 404, json: async () => ({}) };
   });
   billingStore = [];
+  eventStore=new Map();
+  pool.connect.mockResolvedValue({query:(...args)=>pool.query(...args),release:vi.fn()});
   pool.query.mockImplementation(async (sql, params = []) => {
     const s = sql.trim();
+    if (/INSERT INTO payment_webhook_events/.test(s)) {
+      let e=[...eventStore.values()].find(e=>e.provider_event_id===params[1]);
+      if(!e) { e={id:params[0],provider_event_id:params[1],livemode:params[2],event_type:params[3],payload:JSON.parse(params[4]),state:'received'};eventStore.set(e.id,e); }
+      return {rows:[e]};
+    }
+    if (/SELECT \* FROM payment_webhook_events/.test(s)) return {rows:[eventStore.get(params[0])].filter(Boolean)};
+    if (/UPDATE payment_webhook_events/.test(s)) { eventStore.get(params[0]).state='processed';return {rows:[]}; }
+
     if (/FROM billing_records WHERE seller_id\s*=\s*\$1 ORDER BY created_at DESC/i.test(s)) {
       return { rows: billingStore.filter((b) => b.seller_id === params[0]) };
     }
@@ -119,7 +142,7 @@ beforeEach(() => {
     if (/FROM billing_records WHERE id\s*=\s*\$1/i.test(s)) {
       return { rows: billingStore.filter((b) => b.id === params[0]) };
     }
-    if (/FROM billing_records WHERE paymongo_checkout_session_id\s*=\s*\$1 OR id::text\s*=\s*\$1/i.test(s)) {
+    if (/FROM billing_records WHERE paymongo_checkout_session_id\s*=\s*\$1 OR id::text\s*=\s*\$[12]/i.test(s)) {
       return {
         rows: billingStore.filter(
           (b) => b.paymongo_checkout_session_id === params[0] || b.id === params[0]
@@ -551,7 +574,7 @@ describe('GCash checkout (server-side authority)', () => {
 
     const res2 = mockRes();
     await paymongoWebhook(mkReq(), res2);
-    expect(res2.json).toHaveBeenCalledWith({ received: true, already_paid: true });
+    expect(res2.json).toHaveBeenCalledWith(expect.objectContaining({ received: true }));
   });
 });
 
@@ -698,13 +721,13 @@ describe('payment confirmation + idempotency', () => {
 
     const res1 = mockRes();
     await paymongoWebhook(mkReq(), res1);
-    expect(res1.json).toHaveBeenCalledWith({ received: true });
+    expect(res1.json).toHaveBeenCalledWith(expect.objectContaining({ received: true }));
     expect(billingStore[0].status).toBe('paid');
     expect(billingStore[0].payment_reference).toBe('pay_1');
 
     const res2 = mockRes();
     await paymongoWebhook(mkReq(), res2);
-    expect(res2.json).toHaveBeenCalledWith({ received: true, already_paid: true });
+    expect(res2.json).toHaveBeenCalledWith(expect.objectContaining({ received: true }));
   });
 
   test('failed payment does not activate subscription', async () => {

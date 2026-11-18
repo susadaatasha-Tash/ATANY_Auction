@@ -15,6 +15,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { joinWatcher, leaveWatcher, removeSocket, isValidAuctionId, onPresenceChange } from './services/auctionPresence.js';
 import cron from 'node-cron';
+import { recoverPaymentEvents, recoverPaymentOperations, reconcileCheckoutAttempts } from './services/paymentEvidence.js';
 import { createSocketAuth } from './services/socketAuth.js';
 import { closeExpiredAuctions } from './services/auctionCloser.js';
 import { startScheduledAuctions } from './services/auctionStarter.js';
@@ -147,10 +148,13 @@ app.post('/api/public/contact', rateLimit({ name: 'public-contact', windowMs: 60
 // Storage via the returned signed URL — they never traverse this server.
 app.post('/api/public/contact/attachment', rateLimit({ name: 'public-contact-upload', windowMs: 600_000, max: 10 }), createPublicContactUpload);
 app.post('/chat', rateLimit({ name: 'chat', windowMs: 60_000, max: 20 }), optionalAuth, async (req, res) => {
-  const { query, message, history, mode, userId } = req.body;
+  const { query, message, history, mode, userId, orderId } = req.body;
   const text = query || message;
   // mode: 'customer' or 'seller' — from frontend page context (Landing/Login/Signup/Customer vs Shop Owner)
-  const result = await chatbotReply(text, { userId: req.user?.id, mode: mode || 'customer', history: history || [] });
+  const result = await chatbotReply(text, { userId: req.user?.id, mode: mode || 'customer', history: history || [], orderId: orderId || null });
+  if (result?.error === 'ORDER_NOT_AUTHORIZED') {
+    return res.status(403).json({ message: 'You are not authorized to access this order.', code: 'ORDER_NOT_AUTHORIZED' });
+  }
   // Chatbot conversation persistence (internal). Failure-safe: logging must
   // never break the chatbot response, so errors are swallowed inside the service.
   // userId is client-supplied (route is public); the service validates it against
@@ -246,6 +250,9 @@ const onceAtATime = (name, fn) => {
 };
 
 // Spec 5.2: cron closes auctions every minute, creates orders pending
+cron.schedule('5 * * * * *', onceAtATime('paymentEvidenceRecovery', () =>
+  runExclusiveJob('payment_evidence', async () => { await recoverPaymentEvents(); await recoverPaymentOperations(); await reconcileCheckoutAttempts(); })
+));
 // H2 multi-instance: PostgreSQL advisory lock + atomic auction claim
 // Staggered by seconds: all four jobs firing at second 0 bursts the pg pool
 // (4 lock clients + per-item clients at once → 'timeout exceeded' → false

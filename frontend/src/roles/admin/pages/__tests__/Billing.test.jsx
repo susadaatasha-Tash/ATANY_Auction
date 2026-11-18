@@ -1,8 +1,14 @@
 // frontend/src/roles/admin/pages/__tests__/Billing.test.jsx
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import React from 'react';
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-10T04:00:00.000Z'));
+});
+afterEach(() => vi.useRealTimers());
 
 // Mock scrollIntoView for jsdom
 Element.prototype.scrollIntoView = vi.fn();

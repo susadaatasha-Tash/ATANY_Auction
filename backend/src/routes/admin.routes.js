@@ -1,6 +1,7 @@
 // backend/src/routes/admin.routes.js
 // Full CRUD — mounted as app.use('/admin', requireAuth, requireRole(['admin']), adminRoutes)
 import { Router } from 'express';
+import { listPaymentReconciliations } from '../services/paymentEvidence.js';
 import { crud as productCrud } from '../controllers/admin/product.controller.js';
 import { crud as auctionCrud } from '../controllers/admin/auction.controller.js';
 import { listUsers, createUser, updateUser, suspendUser } from '../controllers/admin/user.controller.js';
@@ -12,6 +13,7 @@ import * as branchMonitor from '../controllers/admin/branchMonitor.controller.js
 import { listHistory, markAllRead, markOneRead, deleteNotification } from '../controllers/admin/notification.controller.js';
 
 const router = Router();
+router.get('/payment-reconciliations', listPaymentReconciliations);
 // Products — approve/reject is part of update (status pending->approved/rejected, spec 4.3)
 router.get('/products', productCrud.list); router.get('/products/:id', productCrud.get); router.post('/products', productCrud.create); router.post('/products/bulk', productCrud.bulk); router.put('/products/:id', productCrud.update); router.delete('/products/:id', productCrud.remove);
 // Auctions — monitor-only (shop owners create/manage their own via /shop-owner/auctions)

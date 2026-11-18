@@ -1,0 +1,65 @@
+{
+  "metrics": [
+    {
+      "name": "active",
+      "dialog": {
+        "x": 352.5,
+        "y": 19.015625,
+        "width": 880,
+        "height": 953.96875
+      },
+      "horizontalOverflow": false,
+      "title": "Order Details",
+      "purchasesMounted": true
+    },
+    {
+      "name": "cancelled",
+      "dialog": {
+        "x": 392.5,
+        "y": 10,
+        "width": 800,
+        "height": 972
+      },
+      "horizontalOverflow": false,
+      "title": "Order Details",
+      "purchasesMounted": true
+    },
+    {
+      "name": "expired",
+      "dialog": {
+        "x": 352.5,
+        "y": 10,
+        "width": 880,
+        "height": 972
+      },
+      "horizontalOverflow": false,
+      "title": "Order Details",
+      "purchasesMounted": true
+    },
+    {
+      "name": "invoice",
+      "dialog": {
+        "x": 412.5,
+        "y": 132.328125,
+        "width": 760,
+        "height": 727.328125
+      },
+      "horizontalOverflow": false,
+      "title": "Invoice",
+      "purchasesMounted": true
+    },
+    {
+      "name": "mobile",
+      "dialog": {
+        "x": 8,
+        "y": 8,
+        "width": 374,
+        "height": 828
+      },
+      "horizontalOverflow": false,
+      "title": "Order Details",
+      "purchasesMounted": true
+    }
+  ],
+  "errors": []
+}

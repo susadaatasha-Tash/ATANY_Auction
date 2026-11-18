@@ -27,6 +27,7 @@ export function NotificationBell() {
 
 export function AssistantWidget({ mode: propMode, userId }) {
   const [open, setOpen] = useState(false);
+  const [highlightOrderId, setHighlightOrderId] = useState(null);
   const bodyRef = useRef(null);
   const navigate = useNavigate();
 
@@ -38,7 +39,19 @@ export function AssistantWidget({ mode: propMode, userId }) {
     return 'customer';
   })();
 
-  const { messages, sendMessage, quickReplies, loading, clearHistory } = useChatbot(detectedMode, userId);
+  const { messages, sendMessage, quickReplies, loading, clearHistory } = useChatbot(detectedMode, userId, highlightOrderId);
+
+  // Listen for external open-chat events (e.g., from winning notification click)
+  useEffect(() => {
+    const handler = (e) => {
+      setOpen(true);
+      if (e.detail?.orderId) {
+        setHighlightOrderId(e.detail.orderId);
+      }
+    };
+    window.addEventListener('atany:open-chat', handler);
+    return () => window.removeEventListener('atany:open-chat', handler);
+  }, []);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {

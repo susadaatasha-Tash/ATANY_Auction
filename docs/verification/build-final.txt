@@ -1,0 +1,12 @@
+computing gzip size...
+dist/index.html                                        1.42 kB │ gzip:   0.71 kB
+dist/assets/landing-page-background-BEime_34.webp     69.72 kB
+dist/assets/Login_bg-B4Cizs-y.jpg                    105.54 kB
+dist/assets/customer-banner-ring-DWax2c-u.jpg      1,471.07 kB
+dist/assets/seller-banner-jewelry-BYnutkOj.jpg     1,884.43 kB
+dist/assets/index-DZLBPIyx.css                       322.25 kB │ gzip:  59.06 kB
+dist/assets/vendor-BBNsCnv5.js                       164.64 kB │ gzip:  53.71 kB
+dist/assets/supabase-3Te545q_.js                     227.01 kB │ gzip:  58.86 kB
+dist/assets/charts-CVwmPd94.js                       406.66 kB │ gzip: 109.76 kB
+dist/assets/index--gSsSzYm.js                        863.18 kB │ gzip: 225.90 kB
+✓ built in 3.17s

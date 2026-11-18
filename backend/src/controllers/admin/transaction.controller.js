@@ -1,4 +1,5 @@
 import { pool } from '../../db/pool.js';
+import { readCancellationActor } from '../../services/cancellationRead.js';
 import {
   MANUAL_PROVIDER, ALLOWED_TRANSITIONS, PAYMENT_GATED_STATUSES,
   recordManualPayment, applyOrderTransition, PAYMENT_WINDOW_EXPIRED,
@@ -20,6 +21,16 @@ export const listTransactions = async (_req, res) => {
       const { rows: branches } = await pool.query(`SELECT * FROM branches WHERE id IN (${branchIds.map((_,i)=>`$${i+1}`).join(',')})`, branchIds);
       branchMap = Object.fromEntries(branches.map(b => [b.id, b.name]));
     }
+    // Cancelling shop owner names (for cancellation display in Admin Orders).
+    let cancellerMap = {};
+    try {
+      const { rows: allOrders } = await pool.query('SELECT id, cancelled_by FROM orders WHERE cancelled_by IS NOT NULL');
+      const cancellerIds = [...new Set(allOrders.map(o => o.cancelled_by).filter(Boolean))];
+      if (cancellerIds.length) {
+        const { rows: cancellers } = await pool.query(`SELECT id, name FROM users WHERE id IN (${cancellerIds.map((_,i)=>`$${i+1}`).join(',')})`, cancellerIds);
+        cancellerMap = Object.fromEntries(cancellers.map(u => [u.id, u.name]));
+      }
+    } catch { /* canceller names are optional display info */ }
     // Payment truth for the winner label: an unpaid winner is an ELIGIBLE
     // winner, not a settled one. Single query, no per-row cost.
     let paymentByOrder = {};
@@ -58,6 +69,10 @@ export const listTransactions = async (_req, res) => {
           branch: branchMap[o.branch_id] || null,
           status: o.status,
           date: o.created_at,
+          // Cancellation info (Shop Owner-initiated, read-only for Admin).
+          cancellation_reason: o.cancellation_reason || null,
+          cancelled_at: o.cancelled_at || null,
+          cancelled_by: cancellerMap[o.cancelled_by] || null,
           // Current eligible-winner state for the 7-day rule. An unpaid winner is
           // "Eligible Winner", not a settled winner.
           buyer_id: o.buyer_id,
@@ -68,6 +83,7 @@ export const listTransactions = async (_req, res) => {
           paid_at: paymentByOrder[o.id]?.paid_at || null,
         };
       });
+      for(const row of result){const original=orders.find(o=>o.id===row.id);row.cancellation_actor=await readCancellationActor(original);}
       return res.json(result);
     }
     // Fallback if no auctions
@@ -80,6 +96,10 @@ export const listTransactions = async (_req, res) => {
       branch: branchMap[o.branch_id] || null,
       status: o.status,
       date: o.created_at,
+      // Cancellation info (Shop Owner-initiated, read-only for Admin).
+      cancellation_reason: o.cancellation_reason || null,
+      cancelled_at: o.cancelled_at || null,
+      cancelled_by: cancellerMap[o.cancelled_by] || null,
       buyer_id: o.buyer_id,
       payment_deadline: o.payment_deadline || null,
       winner_confirmed_at: o.winner_confirmed_at || null,
@@ -87,6 +107,7 @@ export const listTransactions = async (_req, res) => {
       payment_status: paymentByOrder[o.id]?.status || null,
       paid_at: paymentByOrder[o.id]?.paid_at || null,
     }));
+    for(const row of result){const original=orders.find(o=>o.id===row.id);row.cancellation_actor=await readCancellationActor(original);}
     res.json(result);
   } catch (e) {
     console.error('[admin/transactions:list]', e.message);

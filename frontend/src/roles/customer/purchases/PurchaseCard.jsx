@@ -31,7 +31,7 @@ const IconLot = () => (
   <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
 );
 
-export function PurchaseCard({ order }) {
+export function PurchaseCard({ order, onCancel }) {
   const navigate = useNavigate();
   const status = getPurchaseStatusBadge(order);
   const payment = getPaymentStatusBadge(order);
@@ -56,7 +56,7 @@ export function PurchaseCard({ order }) {
               <span className="mp-lot">{order.auction_code}</span>
             )}
             <StatusBadge label={status.label} tone={status.tone} />
-            <StatusBadge label={payment.label} tone={payment.tone} />
+            {payment.label!==status.label&&<StatusBadge label={payment.label} tone={payment.tone} />}
           </div>
 
           <h3 className="mp-card-title">{order.item || 'Auction purchase'}</h3>
@@ -103,6 +103,18 @@ export function PurchaseCard({ order }) {
                   </button>
                 );
               }
+              if (a.key === 'cancel') {
+                return (
+                  <button
+                    key={a.key}
+                    type="button"
+                    className={`mp-btn mp-btn-${a.variant}`}
+                    onClick={() => onCancel?.(order)}
+                  >
+                    {a.label}
+                  </button>
+                );
+              }
               if (a.disabled) {
                 return (
                   <button
@@ -121,7 +133,7 @@ export function PurchaseCard({ order }) {
                   key={a.key}
                   type="button"
                   className={`mp-btn mp-btn-${a.variant}`}
-                  onClick={() => navigate(a.to)}
+                  onClick={() => navigate(a.to,{state:{purchaseModal:['invoice','details','pay'].includes(a.key)}})}
                 >
                   {a.label}
                 </button>
@@ -129,6 +141,18 @@ export function PurchaseCard({ order }) {
             })}
             {methodLabel && (order.payment_status === 'paid' || ['preparing', 'ready_pickup', 'completed'].includes(order.status)) && (
               <p className="mp-pay-method">Paid via {methodLabel}</p>
+            )}
+            {order.cancellation_reason && (
+              <>
+                <div className="mp-card-meta-line">
+                  <MetaRow icon={<IconDoc />} title="Cancelled by">{order.cancellation_actor?.name || (order.cancellation_actor?.role==='customer'?'Customer':order.cancellation_actor?.role==='shop_owner'?'Shop Owner (Seller)':'Not recorded')}</MetaRow>
+                  <span className="mp-meta-sep" aria-hidden="true">·</span>
+                  <MetaRow icon={<IconCal />} title="Cancelled at">{formatShortDate(order.cancelled_at)}</MetaRow>
+                </div>
+                <div className="mp-card-meta-line">
+                  <MetaRow icon={<IconDoc />} title="Cancellation reason">{order.cancellation_reason}</MetaRow>
+                </div>
+              </>
             )}
           </div>
         </div>

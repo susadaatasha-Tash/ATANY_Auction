@@ -200,8 +200,18 @@ describe('5. admin mark-paid requires real payment evidence', () => {
     expect(sqlOf(/INSERT INTO payments/)).toHaveLength(0);
   });
 
-  test('expired is the only state that cannot take a payment', () => {
+  test('manual payment is rejected for a cancelled order — no payment record written', async () => {
+    seed({ order: orderRow({ status: 'cancelled' }) });
+    const res = await recordManualPayment({ orderId: 'order-1', actorId: BUYER, paymentMethod: 'counter' });
+    expect(res.ok).toBe(false);
+    expect(res.reason).toBe('ORDER_CANCELLED');
+    expect(sqlOf(/INSERT INTO payments/)).toHaveLength(0);
+    expect(sqlOf(/UPDATE payments/)).toHaveLength(0);
+  });
+
+  test('expired and cancelled orders cannot take a payment', () => {
     expect(canAcceptManualPayment({ status: 'expired' }).ok).toBe(false);
+    expect(canAcceptManualPayment({ status: 'cancelled' }).ok).toBe(false);
     ['pending', 'preparing', 'ready_pickup', 'completed'].forEach((st) => {
       expect(canAcceptManualPayment({ status: st }).ok).toBe(true);
     });
@@ -324,7 +334,7 @@ describe('10. the PayMongo flow is unchanged', () => {
     const src = fs.readFileSync(path.join(__dirname, '../controllers/customer/payment.controller.js'), 'utf8');
     expect(src).not.toMatch(/recordManualPayment|manualPayment/);
     // gateway rows are still created pending, then claimed by the webhook
-    expect(src).toMatch(/INSERT INTO payments \(order_id, customer_id, amount, currency, payment_method, status\) VALUES \(\$1,\$2,\$3,'PHP',\$4,'pending'\)/);
+    expect(src).toMatch(/createOrderCheckoutSafely/);
   });
 });
 

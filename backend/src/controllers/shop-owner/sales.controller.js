@@ -1,3 +1,5 @@
+import { cancelOrderSafely, sendPaymentSafetyError } from '../../services/orderPaymentSafety.js';
+import { readCancellationActor } from '../../services/cancellationRead.js';
 // backend/src/controllers/shop-owner/sales.controller.js
 // Spec 4.4/4.7: sales are orders where product's shop_id matches. Payout = 90% per original mock
 // REST-compatible: decomposes JOINs into simple queries for Supabase REST fallback
@@ -32,7 +34,7 @@ export const listSales = async (req, res) => {
     const auctionMap = Object.fromEntries(auctions.map(a => [a.id, a.product_id]));
     const auctionIds = auctions.map(a => a.id);
     const { rows: orders } = await pool.query(
-      `SELECT id, auction_id, buyer_id, amount, status, branch_id, payment_method, created_at, transaction_code, winner_confirmed_at, payment_deadline, winner_rank FROM orders WHERE auction_id IN (${auctionIds.map((_, i) => `$${i + 1}`).join(',')}) ORDER BY created_at DESC`,
+      `SELECT * FROM orders WHERE auction_id IN (${auctionIds.map((_, i) => `$${i + 1}`).join(',')}) ORDER BY created_at DESC`,
       auctionIds
     );
     if (!orders.length) return res.json([]);
@@ -61,12 +63,14 @@ export const listSales = async (req, res) => {
     // KPI totals can never disagree about the same order.
     const orderIds = orders.map(o => o.id);
     let paymentByOrder = {};
+    const cancellationBlocked = new Set();
     try {
       const { rows: payments } = await pool.query(
-        `SELECT order_id, status, payment_method, paid_at, created_at FROM payments WHERE order_id IN (${orderIds.map((_, i) => `$${i + 1}`).join(',')}) ORDER BY created_at DESC`,
+        `SELECT order_id, status, payment_method, paid_at, created_at, provider,checkout_session_id,metadata FROM payments WHERE order_id IN (${orderIds.map((_, i) => `$${i + 1}`).join(',')}) ORDER BY created_at DESC`,
         orderIds
       );
       for (const pay of payments) {
+        if(['paid','processing'].includes(pay.status) || (pay.provider==='paymongo' && !pay.checkout_session_id && pay.metadata?.checkout_creation_rejected!==true))cancellationBlocked.add(pay.order_id);
         if (!paymentByOrder[pay.order_id]) paymentByOrder[pay.order_id] = pay;
       }
       for (const pay of payments) {
@@ -74,7 +78,11 @@ export const listSales = async (req, res) => {
           paymentByOrder[pay.order_id] = pay; // paid wins
         }
       }
-    } catch { paymentByOrder = {}; }
+    } catch { paymentByOrder = {};orderIds.forEach(id=>cancellationBlocked.add(id)); }
+    try {
+      const {rows:operations}=await pool.query(`SELECT order_id FROM payment_operations WHERE order_id IN (${orderIds.map((_,i)=>`$${i+1}`).join(',')}) AND state IN ('running','unknown')`,orderIds);
+      operations.forEach(op=>cancellationBlocked.add(op.order_id));
+    } catch {orderIds.forEach(id=>cancellationBlocked.add(id));}
 
     // Branch name for pickup details (batched, shop branch scope).
     const branchIds = [...new Set(orders.map(o => o.branch_id).filter(Boolean))];
@@ -106,6 +114,7 @@ export const listSales = async (req, res) => {
         commission,
         payout: calculateSellerPayout(o.amount),
         status: o.status,
+        can_request_cancellation:o.status==='pending'&&!cancellationBlocked.has(o.id),
         payment_status: payment?.status || null,
         payment_method: o.payment_method || payment?.payment_method || null,
         paid_at: payment?.paid_at || null,
@@ -117,6 +126,10 @@ export const listSales = async (req, res) => {
         winner_confirmed_at: o.winner_confirmed_at || null,
         payment_deadline: o.payment_deadline || null,
         winner_rank: o.winner_rank ?? 1,
+        cancellation_reason:o.cancellation_reason || null,
+        cancelled_at:o.cancelled_at || null,
+        cancelled_by:o.cancelled_by || null,
+        cancellation_actor:await readCancellationActor(o),
       });
     }
     res.json(rows);
@@ -211,4 +224,29 @@ export const updateOrderStatus = async (req, res) => {
     console.error('[shop-owner/orders:status]', e.message);
     res.status(500).json({ message: 'Failed to update order status' });
   }
+};
+
+/**
+ * PATCH /shop-owner/orders/:id/cancel — Shop Owner cancels their own unpaid order.
+ *
+ * Business rules (all enforced server-side):
+ *   1. Authenticated Shop Owner only (requireAuth + requireRole('shop_owner') on the route).
+ *   2. Order must belong to the caller's shop — ownership derived from req.user,
+ *      never trusted from the client.
+ *   3. Only unpaid orders: order.status must be 'pending' and no 'paid' or
+ *      'processing' payment may exist for the order.
+ *   4. Already-cancelled orders are rejected.
+ *   5. A non-empty cancellation reason is mandatory.
+ *   6. Race-safe: takes SELECT … FOR UPDATE on the order row — the same lock
+ *      every payment settlement path (settlePaidPaymentWithOrderLock) and the
+ *      winner-expiration cron hold — so payment and cancellation can never
+ *      interleave.
+ *   7. No refunds, no commission reversals, no winner reassignment: cancellation
+ *      only flips order.status to 'cancelled' and persists reason/timestamp/actor.
+ */
+export const cancelOrder = async (req, res) => {
+  try {
+    const order = await cancelOrderSafely({ orderId:req.params.id,actorId:req.user.id,role:'shop_owner',reason:req.body?.reason });
+    res.status(200).json({ ...order,message:'Order cancelled.' });
+  } catch(error) { return sendPaymentSafetyError(res,error); }
 };

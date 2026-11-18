@@ -1,0 +1,349 @@
+{
+  "scope": "authorized read-only existing-project audit; stopped after local restore failure",
+  "audit_finished_utc": "2026-11-18T18:55:34.287Z",
+  "backup_finished_utc": "2026-11-18T19:02:11.519Z",
+  "identity_matches": true,
+  "connection": {
+    "kind": "session_pooler",
+    "server_version": "17.6",
+    "successful_samples": 3,
+    "sample_ms": [
+      1420,
+      1430,
+      1453
+    ],
+    "read_only_verified": true,
+    "tls": {
+      "client_encrypted": true,
+      "client_certificate_authorized": true,
+      "server_reported_ssl": false
+    },
+    "long_term_stability_verified": false
+  },
+  "migration_history": {
+    "baseline_entries": 32,
+    "comparisons": [
+      {
+        "filename": "001_seed_branches.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "002_seed_demo.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "003_shop_branches_single_select.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "004_transaction_code.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "005_auction_code.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "006_fix_rls_insecure_user_metadata.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "007_fix_search_path_triggers.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "008_fix_is_admin_rls_advisory.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "009_fix_is_admin_advisory.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "010_support_requests.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "011_auction_reminders.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "012_new_tables_and_features.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "013_remove_manager_role.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "014_davao_branch_setup.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "015_order_payment_flow.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "016_billing_paymongo_checkout.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "017_billing_subscription_periods.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "018_branch_image_url.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "019_favorites.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "020_orders_unique_auction.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "021_auction_winner_payment_deadline.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "022_notifications_auction_id.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "023_chatbot_sessions.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "024_chatbot_sessions_realtime.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "025_billing_plan_code.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "026_subscription_plan_change.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "027_subscription_hardening.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "028_users_privilege_guard.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "029_products_proposed_schedule.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "030_auction_pause_support.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "031_auction_minimum_bid_increment.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "032_auction_viewers.sql",
+        "recorded_checksum": "baseline",
+        "comparison": "baseline_not_verifiable"
+      },
+      {
+        "filename": "033_billing_payment_method_type.sql",
+        "recorded_checksum": "ff70240b71689384",
+        "comparison": "match"
+      },
+      {
+        "filename": "034_winner_fallback_hardening.sql",
+        "recorded_checksum": "d117cca2283e0a30",
+        "comparison": "match"
+      },
+      {
+        "filename": "035_customer_profile_phone.sql",
+        "recorded_checksum": "adf2b3ffa0a5180c",
+        "comparison": "match"
+      },
+      {
+        "filename": "036_support_request_attachment.sql",
+        "recorded_checksum": "6998c7abe0d7ea74",
+        "comparison": "match"
+      }
+    ],
+    "current_files_recorded": [],
+    "old_conflicting_files_recorded": [],
+    "current_local_sha256": {
+      "037_order_cancellation_enum.sql": "238ccd0fd48910386d7e975210f37ebf059cd9909944a0a24665931d244c1e8a",
+      "038_order_cancellation.sql": "eb2f014b9e42ccae6c322209a13bbcb10901f513b1e974cd0d10f27b97e7da65",
+      "039_payment_safety.sql": "a6d0c9bd721b64bbda7b69994ac7afa301f5bec1405b21fa4dfd0d6e39f67c29"
+    }
+  },
+  "order_status_values": [
+    "pending",
+    "ready_pickup",
+    "completed",
+    "preparing",
+    "expired"
+  ],
+  "missing_cancellation_columns": [
+    "cancelled_by",
+    "cancelled_at",
+    "cancellation_reason"
+  ],
+  "missing_safety_tables": [
+    "payment_operations",
+    "payment_webhook_events",
+    "provider_collections",
+    "payment_reconciliations"
+  ],
+  "missing_payment_provider_checked_at": true,
+  "invalid_public_indexes": [],
+  "unvalidated_public_constraints": [],
+  "runtime_role": {
+    "rolname": "postgres",
+    "rolsuper": false,
+    "rolinherit": true,
+    "rolcreaterole": true,
+    "rolcreatedb": true,
+    "rolcanlogin": true,
+    "rolbypassrls": true
+  },
+  "public_default_table_acl": [
+    {
+      "role": "postgres",
+      "schema": "public",
+      "defaclobjtype": "r",
+      "defaclacl": "{postgres=arwdDxtm/postgres,anon=arwdDxtm/postgres,authenticated=arwdDxtm/postgres,service_role=arwdDxtm/postgres}"
+    },
+    {
+      "role": "supabase_admin",
+      "schema": "public",
+      "defaclobjtype": "r",
+      "defaclacl": "{postgres=arwdDxtm/supabase_admin,anon=arwdDxtm/supabase_admin,authenticated=arwdDxtm/supabase_admin,service_role=arwdDxtm/supabase_admin}"
+    }
+  ],
+  "core_policies": [
+    {
+      "schemaname": "public",
+      "tablename": "orders",
+      "policyname": "orders: buyer or admin",
+      "permissive": "PERMISSIVE",
+      "roles": "{public}",
+      "cmd": "SELECT",
+      "qual": "((auth.uid() = buyer_id) OR is_admin())",
+      "with_check": null
+    },
+    {
+      "schemaname": "public",
+      "tablename": "payments",
+      "policyname": "payments_select_admin",
+      "permissive": "PERMISSIVE",
+      "roles": "{public}",
+      "cmd": "ALL",
+      "qual": "is_admin()",
+      "with_check": null
+    },
+    {
+      "schemaname": "public",
+      "tablename": "payments",
+      "policyname": "payments_select_own",
+      "permissive": "PERMISSIVE",
+      "roles": "{public}",
+      "cmd": "SELECT",
+      "qual": "((auth.uid() = customer_id) OR is_admin())",
+      "with_check": null
+    },
+    {
+      "schemaname": "public",
+      "tablename": "users",
+      "policyname": "users: self can update own name",
+      "permissive": "PERMISSIVE",
+      "roles": "{public}",
+      "cmd": "UPDATE",
+      "qual": "(auth.uid() = id)",
+      "with_check": null
+    },
+    {
+      "schemaname": "public",
+      "tablename": "users",
+      "policyname": "users: self or admin can read",
+      "permissive": "PERMISSIVE",
+      "roles": "{public}",
+      "cmd": "SELECT",
+      "qual": "((auth.uid() = id) OR is_admin())",
+      "with_check": null
+    }
+  ],
+  "user_guard_trigger_present": false,
+  "legacy_aggregate_flags": {
+    "unknown_gateway_attempts": 18,
+    "pending_missing_deadline": 0,
+    "duplicate_checkout_groups": 0,
+    "duplicate_paid_groups": 0
+  },
+  "backup": {
+    "status": "archive integrity verified; recovery verification blocked",
+    "table_fingerprints": 71,
+    "archive_bytes": 700535,
+    "encryption": "AES-256-GCM",
+    "encrypted_sha256": "3b05aef9947984aaf8f1ca2241569dcb2d63b5c2bb62a313d493d4b89a7ac634",
+    "file_permissions": "0600; parent 0700",
+    "key_stored_separately": true,
+    "plaintext_intermediate_removed": true
+  },
+  "restore": {
+    "status": "failed",
+    "missing_extension": "supabase_vault",
+    "source_version": "17.6",
+    "local_version": "18.6",
+    "single_transaction": true,
+    "local_server_stopped": true,
+    "post_restore_comparison": "not reached"
+  },
+  "payment_configuration": {
+    "secret_present": true,
+    "mode": "test",
+    "test_key_shape": true,
+    "webhook_secret_present": true,
+    "frontend_loopback": true,
+    "provider_requests_made": false
+  },
+  "verdict": "NO-GO",
+  "project_data_or_schema_modified": false,
+  "migrations_applied": false,
+  "provider_transactions": false
+}

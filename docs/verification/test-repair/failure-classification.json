@@ -1,0 +1,433 @@
+{
+  "total_resolved": 42,
+  "categories": {
+    "A": "Outdated test fixture",
+    "B": "Missing test environment dependency",
+    "C": "Incorrect mock or provider setup",
+    "D": "Date/time-dependent test expectation",
+    "E": "Actual application regression",
+    "F": "Other verified cause"
+  },
+  "failures": [
+    {
+      "file": "src/tests/subscriptionHardening.test.js",
+      "test": "proration edge cases (integer centavos, never negative) > same plan monthly \u2192 annual is an upgrade with positive proration",
+      "classification": "D",
+      "root_cause": "Date/time-dependent expectation: fixed paid period had ended on the real test-run date.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "backend-all-unrestricted.log and backend-final-all.log (same proration failures before this repair)"
+    },
+    {
+      "file": "src/tests/subscriptionPlanChange.test.js",
+      "test": "previewPlanChange > upgrade preview computes server-side proration amount",
+      "classification": "D",
+      "root_cause": "Date/time-dependent expectation: fixed paid period had ended on the real test-run date.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "backend-all-unrestricted.log and backend-final-all.log (same proration failures before this repair)"
+    },
+    {
+      "file": "src/layouts/__tests__/CustomerSidebar.test.jsx",
+      "test": "Purchases sidebar integration > opens and closes the layout drawer from the Purchases hamburger",
+      "classification": "C",
+      "root_cause": "Incorrect provider setup: integration fixture omitted the real ToastProvider required by MyPurchases.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/layouts/__tests__/CustomerSidebar.test.jsx",
+      "test": "Purchases sidebar integration > closes the drawer through the existing backdrop",
+      "classification": "C",
+      "root_cause": "Incorrect provider setup: integration fixture omitted the real ToastProvider required by MyPurchases.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/layouts/__tests__/CustomerSidebar.test.jsx",
+      "test": "Purchases sidebar integration > uses the layout desktop collapse state without opening a backdrop",
+      "classification": "C",
+      "root_cause": "Incorrect provider setup: integration fixture omitted the real ToastProvider required by MyPurchases.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/layouts/__tests__/CustomerSidebar.test.jsx",
+      "test": "Purchases sidebar integration > supports Enter and Space on the native menu button",
+      "classification": "C",
+      "root_cause": "Incorrect provider setup: integration fixture omitted the real ToastProvider required by MyPurchases.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/layouts/__tests__/CustomerSidebar.test.jsx",
+      "test": "Purchases sidebar integration > closes on navigation and keeps the other customer header synchronized",
+      "classification": "C",
+      "root_cause": "Incorrect provider setup: integration fixture omitted the real ToastProvider required by MyPurchases.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/components/__tests__/RelistWizard.test.jsx",
+      "test": "exactly 2 steps: Schedule then Review (no Lot Details/Bidding Rules)",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/components/__tests__/RelistWizard.test.jsx",
+      "test": "Schedule reuses calendar (Today/prev/next) and time pickers",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/components/__tests__/RelistWizard.test.jsx",
+      "test": "Today selects today in the wizard calendar",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/components/__tests__/RelistWizard.test.jsx",
+      "test": "Continue with valid schedule moves to Review",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/components/__tests__/RelistWizard.test.jsx",
+      "test": "Review shows inherited item, price, increment; Edit schedule only",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/components/__tests__/RelistWizard.test.jsx",
+      "test": "Edit schedule returns to Step 1 preserving values",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/components/__tests__/RelistWizard.test.jsx",
+      "test": "submit shows Relisting\u2026 and blocks duplicates",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/components/__tests__/RelistWizard.test.jsx",
+      "test": "failure keeps wizard open with schedule preserved",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/components/__tests__/RelistWizard.test.jsx",
+      "test": "success clears the namespaced draft (not create draft)",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/components/__tests__/RelistWizard.test.jsx",
+      "test": "draft saves on edit and restores per-source schedule",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/components/__tests__/WizardBidIncrement.test.jsx",
+      "test": "increment input renders with default 1000",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/components/__tests__/WizardBidIncrement.test.jsx",
+      "test": "seller can change increment to 2000",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/components/__tests__/WizardBidIncrement.test.jsx",
+      "test": "seller can change increment to 2500",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/components/__tests__/WizardBidIncrement.test.jsx",
+      "test": "invalid  rejected with exact message",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/components/__tests__/WizardBidIncrement.test.jsx",
+      "test": "invalid 0 rejected with exact message",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/components/__tests__/WizardBidIncrement.test.jsx",
+      "test": "invalid -100 rejected with exact message",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/components/__tests__/WizardBidIncrement.test.jsx",
+      "test": "invalid 10.5 rejected with exact message",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/components/__tests__/WizardBidIncrement.test.jsx",
+      "test": "draft autosaves and restores increment (not reset to 1000)",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/components/__tests__/WizardBidIncrement.test.jsx",
+      "test": "restored draft keeps saved increment",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/components/__tests__/WizardBidIncrement.test.jsx",
+      "test": "Review displays the increment",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/components/__tests__/WizardBidIncrement.test.jsx",
+      "test": "final create request includes numeric increment",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/components/__tests__/WizardBidIncrement.test.jsx",
+      "test": "ATANY design intact (eyebrow, input styling hooks)",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/components/__tests__/WizardStepper.test.jsx",
+      "test": "four steps render with connector lines between them",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/components/__tests__/WizardStepper.test.jsx",
+      "test": "current step is gold, completed shows check, upcoming muted",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/components/__tests__/WizardStepper.test.jsx",
+      "test": "Continue moves forward, Back moves backward, aria-current updates",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/components/__tests__/WizardStepper.test.jsx",
+      "test": "wizard header uses ATANY eyebrow + title",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/components/__tests__/WizardTodayRepro.test.jsx",
+      "test": "wizard schedule: Today returns from another month",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/admin/lib/__tests__/subscriptionSelectors.test.js",
+      "test": "subscription selectors > computes metrics from real rows",
+      "classification": "D",
+      "root_cause": "Date/time-dependent expectation: fixed paid period had ended on the real test-run date.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/admin/lib/__tests__/subscriptionSelectors.test.js",
+      "test": "subscription selectors > keeps scheduled downgrades out of current plan counts until applied",
+      "classification": "D",
+      "root_cause": "Date/time-dependent expectation: fixed paid period had ended on the real test-run date.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/admin/pages/__tests__/Billing.test.jsx",
+      "test": "Admin Subscriptions redesign > renders KPI metrics, plan tiers, and real subscriber rows from API data",
+      "classification": "D",
+      "root_cause": "Date/time-dependent expectation: fixed paid period had ended on the real test-run date.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/subscription/__tests__/SellerBilling.test.jsx",
+      "test": "seller subscription selectors > prefers active paid period over later pending renewal row",
+      "classification": "D",
+      "root_cause": "Date/time-dependent expectation: fixed paid period had ended on the real test-run date.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/subscription/__tests__/SellerBilling.test.jsx",
+      "test": "Seller Subscription page > renders real current plan, features, usage, next payment, compare, history",
+      "classification": "D",
+      "root_cause": "Date/time-dependent expectation: fixed paid period had ended on the real test-run date.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/pages/__tests__/MyAuctionsResultRelist.test.jsx",
+      "test": "View result opens themed modal with real data",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/pages/__tests__/MyAuctionsResultRelist.test.jsx",
+      "test": "Relist opens 2-step wizard; success auto-closes, filters Scheduled, shows new lot",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    },
+    {
+      "file": "src/roles/shop-owner/pages/__tests__/MyAuctionsResultRelist.test.jsx",
+      "test": "Relist failure keeps wizard open",
+      "classification": "B",
+      "root_cause": "Missing browser test environment dependency: Node Web Storage globals shadowed native jsdom Storage in Vitest 1.",
+      "reproduced_before_fix": true,
+      "result": "passed",
+      "application_regression_identified": false,
+      "baseline_evidence": "frontend-all-baseline.log (40 failures before modal implementation)"
+    }
+  ]
+}

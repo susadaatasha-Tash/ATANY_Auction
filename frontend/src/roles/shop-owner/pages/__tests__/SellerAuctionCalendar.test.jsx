@@ -1,6 +1,5 @@
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { vi, afterEach } from 'vitest';
-import MyAuctions from '../MyAuctions';
 import SellerAuctionCalendar from '../../components/SellerAuctionCalendar';
 import { apiFetch } from '../../../../shared/lib/apiClient';
 import { socket } from '../../../../shared/lib/socketClient';
@@ -57,24 +56,6 @@ beforeEach(() => {
   });
 });
 afterEach(() => cleanup());
-
-function toCalendar() {
-  fireEvent.click(screen.getByRole('button', { name: 'Calendar view' }));
-}
-
-test('Calendar toggle switches mode on the same page', async () => {
-  render(<MyAuctions />);
-  await screen.findByText('Ruby Halo Engagement Ring');
-  expect(screen.queryByText('Upcoming timeline')).toBeNull();
-  toCalendar();
-  await screen.findByText('Upcoming timeline');
-  // List sections hidden, not unmounted alongside
-  expect(screen.queryByText('Live now')).toBeNull();
-  // Back to List restores
-  fireEvent.click(screen.getByRole('button', { name: /List/ }));
-  await screen.findByText('Ruby Halo Engagement Ring');
-  expect(screen.queryByText('Upcoming timeline')).toBeNull();
-});
 
 test('renders current month, week headers, month count', async () => {
   render(<SellerAuctionCalendar auctions={auctions} />);
@@ -150,38 +131,6 @@ test('upcoming is future-only, ascending, with real fields', async () => {
   expect(screen.getByText('LOT-4050')).toBeInTheDocument();
   // Date tiles show real day numbers + month abbrev
   expect(screen.getByText('Mermaid Diamond Pendant')).toBeInTheDocument();
-});
-
-test('timeline click returns to List and focuses the lot', async () => {
-  render(<MyAuctions />);
-  await screen.findByText('Ruby Halo Engagement Ring');
-  toCalendar();
-  const item = await screen.findByRole('button', { name: /Ruby Halo/ });
-  fireEvent.click(item);
-  await screen.findByText('Ruby Halo Engagement Ring');
-  expect(screen.queryByText('Upcoming timeline')).toBeNull();
-});
-
-test('Create handler reused in calendar mode', async () => {
-  render(<MyAuctions />);
-  await screen.findByText('Ruby Halo Engagement Ring');
-  toCalendar();
-  await screen.findByText('Upcoming timeline');
-  expect(screen.getByRole('button', { name: /Create Auction/ })).toBeInTheDocument();
-});
-
-test('realtime scheduled→live removes marker and timeline item', async () => {
-  render(<MyAuctions />);
-  await screen.findByText('Ruby Halo Engagement Ring');
-  toCalendar();
-  await screen.findByText('Mermaid Diamond Pendant');
-  // Server truth flips first (fetchAll reconciliation), then the event arrives.
-  const s2 = auctions.find((a) => a.id === 's2');
-  s2.status = 'live'; s2.stored_status = 'live';
-  socketHandlers.get('auction:update')?.({ auction_id: 's2', status: 'live', current_bid: 0 });
-  await waitFor(() => {
-    expect(screen.queryByText('Mermaid Diamond Pendant')).not.toBeInTheDocument();
-  });
 });
 
 test('empty states + info bar, no mock data', async () => {

@@ -28,7 +28,6 @@
   font-size: 13px; font-weight: 600; color: var(--navy, #142a4a); padding: 0 10px;
 }
 /* Action button shares the row's height so all three controls line up */
-.mls-btn--toolbar { height: 44px; width: 144px; flex: none; padding: 0 12px; white-space: nowrap; }
 
 /* Grid — 4 up on wide desktop, then 3 / 2 / 1 as content width shrinks.
    minmax(0, 1fr) prevents overflow; cards never get narrower than the
@@ -88,6 +87,13 @@
 .mls-btn--icon { padding: 8px 10px; flex: none; }
 .mls-btn--danger { border-color: #e5b4b4; color: #b45252; }
 .mls-btn--danger:hover { background: rgba(180, 82, 82, 0.07); }
+.mls-btn--icon.mls-btn--danger {
+  width: 40px; height: 40px; padding: 0;
+  background: #fef2f2; border-color: #fecaca; color: #b91c1c;
+  transition: background-color 160ms ease, border-color 160ms ease;
+}
+.mls-btn--icon.mls-btn--danger:hover:not(:disabled) { background: #fee2e2; border-color: #fca5a5; }
+.mls-btn--icon.mls-btn--danger:focus-visible { outline: 2px solid #b91c1c; outline-offset: 2px; }
 .mls-btn--danger-solid { background: #fff; border-color: #b45252; color: #b45252; }
 .mls-btn--danger-solid:hover { background: rgba(180, 82, 82, 0.07); }
 
@@ -161,5 +167,4 @@
   /* Reset the row flex-basis: in a column layout it would become a HEIGHT. */
   .mls-search { width: 100%; flex: 0 0 auto; }
   .mls-filter { width: 100%; }
-  .mls-btn--toolbar { width: 100%; }
 }

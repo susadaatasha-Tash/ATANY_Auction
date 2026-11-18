@@ -27,19 +27,12 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-// Load backend/.env BEFORE importing the pool (it reads DATABASE_URL at import).
-const envPath = path.join(__dirname, '../../.env');
-if (fs.existsSync(envPath)) {
-  for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
-    if (!line.includes('=') || line.trim().startsWith('#')) continue;
-    const k = line.slice(0, line.indexOf('=')).trim();
-    const v = line.slice(line.indexOf('=') + 1).trim().replace(/^["']|["']$/g, '');
-    if (!process.env[k]) process.env[k] = v;
-  }
-}
-
-const DATABASE_URL = process.env.DATABASE_URL;
-const live = DATABASE_URL ? describe : describe.skip;
+// Never infer a writable test database from application credentials.
+// This legacy suite additionally requires explicit opt-in and an isolated socket.
+const DATABASE_URL = process.env.ATANY_WINNER_TEST_DATABASE_URL;
+const isolated = DATABASE_URL && DATABASE_URL.includes('/private/tmp/atany-') && process.env.ATANY_ALLOW_WINNER_DB_TESTS === '1';
+const live = isolated ? describe : describe.skip;
+if (isolated) process.env.DATABASE_URL = DATABASE_URL;
 
 const DAY = 24 * 60 * 60 * 1000;
 const TAG = `QA_WINNER_${Date.now().toString(36).toUpperCase()}`;

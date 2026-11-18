@@ -2,7 +2,8 @@ import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Trash2 } from 'lucide-react';
 import { useNotifications } from '../hooks/useNotifications';
-import { resolveCustomerDestination } from '../../../shared/lib/notificationDestination';
+import { resolveCustomerDestination, extractTransactionCode } from '../../../shared/lib/notificationDestination';
+import { apiFetch } from '../../../shared/lib/apiClient';
 
 export default function Notifications() {
   const { notifications, unread, markAllRead, markOneRead, remove, error } = useNotifications();
@@ -39,6 +40,48 @@ export default function Notifications() {
 
   const handleNotificationClick = async (n) => {
     markOneRead(n.id);
+    // Check if this could be a winning notification.
+    // Inspect both title and message for win indicators.
+    const msg = String(n.message || '');
+    const title = String(n.title || n.subject || '');
+    const combined = `${title} ${msg}`.toLowerCase();
+    const isPotentialWin = combined.includes('you won') || combined.includes('eligible winner') ||
+                          combined.includes('winner') || (n.type === 'auction' && n.auction_id);
+
+    if (isPotentialWin) {
+      try {
+        // Try backend resolver first (most reliable)
+        const result = await apiFetch(`/customer/notifications/${n.id}/resolve-order`);
+        if (result?.resolved && result?.orderId) {
+          navigate(`/customer/assistant/orders/${result.orderId}`);
+          return;
+        }
+        // If unresolved, fall through to normal navigation
+        if (result?.code === 'ORDER_UNRESOLVED') {
+          // Show a message instead of navigating wrong
+          alert(result.message || 'Unable to resolve this notification to a specific order.');
+          return;
+        }
+      } catch {
+        // Backend resolver failed — try frontend resolution
+      }
+
+      // Frontend fallback: extract transaction code from message
+      try {
+        const code = extractTransactionCode(msg);
+        if (code) {
+          const orders = await apiFetch('/customer/orders');
+          const list = Array.isArray(orders) ? orders : [];
+          const match = list.find((o) => o.transaction_code === code || String(o.id) === code);
+          if (match) {
+            navigate(`/customer/assistant/orders/${match.id}`);
+            return;
+          }
+        }
+      } catch {}
+    }
+
+    // Default: preserve existing navigation for non-winning notifications
     try {
       const destination = await resolveCustomerDestination(n);
       if (destination) navigate(destination);

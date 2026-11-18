@@ -34,7 +34,8 @@ export function normalizePurchaseStatus(order) {
   if (raw === 'preparing') return PURCHASE_STATES.PREPARING;
   if (raw === 'pending') {
     if (isPaidPayment(order)) return PURCHASE_STATES.PAID;
-    if (pay === 'processing' || pay === 'pending') return PURCHASE_STATES.PAYMENT_PENDING;
+    if (pay === 'processing') return PURCHASE_STATES.PAYMENT_PROCESSING;
+    if (pay === 'pending') return PURCHASE_STATES.PAYMENT_PENDING;
     return PURCHASE_STATES.PAYMENT_PENDING;
   }
   if (pay === 'paid') return PURCHASE_STATES.PAID;
@@ -67,12 +68,15 @@ export function getPurchaseStatusBadge(order) {
 export function getPaymentStatusBadge(order) {
   const state = normalizePurchaseStatus(order);
   const pay = String(order?.payment_status || '').toLowerCase();
-  if (state === PURCHASE_STATES.COLLECTED || state === PURCHASE_STATES.READY_FOR_PICKUP || state === PURCHASE_STATES.PREPARING || state === PURCHASE_STATES.PAID) {
+  if (pay === 'paid') {
     const method = formatPaymentMethod(order?.payment_method || pay);
     return { label: method ? `Paid · ${method}` : 'Paid', tone: 'paid' };
   }
-  if (state === PURCHASE_STATES.PAYMENT_EXPIRED) return { label: 'Payment expired', tone: 'expired' };
+  if (pay === 'failed') return {label:'Payment failed',tone:'expired'};
+  if (pay === 'cancelled') return {label:'Payment cancelled',tone:'expired'};
+  if (pay === 'expired' || state === PURCHASE_STATES.PAYMENT_EXPIRED) return { label: 'Payment expired', tone: 'expired' };
   if (state === PURCHASE_STATES.PAYMENT_PROCESSING || pay === 'processing') return { label: 'Payment processing', tone: 'pending' };
+  if(state===PURCHASE_STATES.CANCELLED && !pay) return {label:'No payment recorded',tone:'pending'};
   return { label: 'Payment pending', tone: 'pending' };
 }
 
@@ -122,7 +126,7 @@ export function getPurchaseProgress(order) {
   ];
 
   // Fix payment-confirmed done flag with explicit rules
-  stages[1].done = [PURCHASE_STATES.PAID, PURCHASE_STATES.PREPARING, PURCHASE_STATES.READY_FOR_PICKUP, PURCHASE_STATES.COLLECTED].includes(state);
+  stages[1].done = isPaidPayment(order);
 
   const doneCount = stages.filter(s => s.done).length;
   // Current step = first not-done stage (or last if all done)
@@ -138,6 +142,28 @@ export function getPurchaseProgress(order) {
   };
 }
 
+export function canCancelOrder(order) {
+  if (!order) return false;
+  const raw = String(order?.status || '').toLowerCase();
+  const pay = String(order?.payment_status || '').toLowerCase();
+  return order.can_request_cancellation === true && raw === 'pending' && !order.is_expired && !isPaymentWindowClosed(order) && pay !== 'paid' && pay !== 'processing';
+}
+
+export function canPayOrder(order) {
+  return !!order && order.can_request_payment===true && order.status==='pending'
+    && !order.is_expired && !isPaymentWindowClosed(order)
+    && !['paid','processing'].includes(String(order.payment_status || '').toLowerCase());
+}
+
+export function unavailableOrderAction(order,kind) {
+  if(!order)return 'Order eligibility could not be verified. Please refresh.';
+  if(order.status!=='pending')return `This order is ${order.status}. ${kind==='payment'?'Payment':'Cancellation'} is unavailable.`;
+  if(order.payment_status==='paid')return 'Payment has been confirmed. Further payment and cancellation are unavailable.';
+  if(order.payment_status==='processing')return 'Payment is processing. Please wait for verification.';
+  if(order.is_expired || isPaymentWindowClosed(order))return 'The payment window has expired. Payment and cancellation are unavailable.';
+  return order[kind==='payment'?'payment_block_reason':'cancellation_block_reason'] || 'Order eligibility could not be verified. Please refresh or contact support.';
+}
+
 export function getPurchaseActions(order) {
   const state = normalizePurchaseStatus(order);
   // Local clock check against the SERVER-SUPPLIED payment_deadline. Purely a
@@ -148,7 +174,7 @@ export function getPurchaseActions(order) {
   const actions = [];
 
   if (canPay) {
-    actions.push({ key: 'pay', label: 'Pay now', variant: 'gold', to: `/customer/orders/${order.id}` });
+    actions.push({ key: 'pay', label: 'Pay now', variant: 'gold', to: `/customer/orders/${order.id}/payment` });
   }
   if (!canPay && state === PURCHASE_STATES.PAYMENT_PENDING && windowClosed) {
     // Not an error state — the winner chain is simply being resolved.
@@ -160,18 +186,26 @@ export function getPurchaseActions(order) {
       note: 'Payment window expired. Waiting for winner reassignment.',
     });
   }
+  if (canCancelOrder(order)) {
+    actions.push({
+      key: 'cancel',
+      label: 'Cancel order',
+      variant: 'outline',
+      to: `/customer/orders/${order.id}/cancel`,
+    });
+  }
   if (state !== PURCHASE_STATES.CANCELLED) {
     actions.push({
       key: 'invoice',
       label: 'View invoice',
       variant: canPay ? 'outline' : 'navy',
-      to: `/customer/orders/${order.id}`,
+      to: `/customer/orders/${order.id}/invoice`,
     });
   }
   if (hasBranch && state !== PURCHASE_STATES.CANCELLED) {
     actions.push({ key: 'directions', label: 'Get directions', variant: 'outline', kind: 'directions' });
   }
-  if (!canPay && state !== PURCHASE_STATES.COLLECTED) {
+  if (state !== PURCHASE_STATES.COLLECTED) {
     actions.push({ key: 'details', label: 'View details', variant: 'outline', to: `/customer/orders/${order.id}` });
   }
   if (state === PURCHASE_STATES.COLLECTED) {

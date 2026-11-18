@@ -1,7 +1,8 @@
+import { readCancellationActor } from '../../services/cancellationRead.js';
+import { createOrderCheckoutSafely, sendPaymentSafetyError, cancellationSnapshot } from '../../services/orderPaymentSafety.js';
+import { recordCheckoutObservation } from '../../services/paymentEvidence.js';
 import { pool } from '../../db/pool.js';
-import { createPayMongoCheckout, getCheckoutSession, checkoutStatus } from '../../services/paymongoService.js';
-import { assertPaymentStillPayable, markStalePayment, settlePaidPaymentWithOrderLock } from '../../services/paymentRaceGuard.js';
-import { isPastDeadline, PAYMENT_WINDOW_EXPIRED } from '../../services/winnerRules.js';
+import { getCheckoutSession } from '../../services/paymongoService.js';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -61,82 +62,28 @@ export const getOrderDetails = async (req, res) => {
     }
     // latest payment for this order
     const { rows: payments } = await pool.query(
-      `SELECT * FROM payments WHERE order_id = $1 ORDER BY created_at DESC LIMIT 1`,
+      `SELECT * FROM payments WHERE order_id = $1 ORDER BY created_at DESC`,
       [orderId]
     );
-    let payment = payments[0] || null;
+    let payment = payments.find(p=>p.status==='paid') || payments[0] || null;
 
-    // POLLING FALLBACK for localhost: if pending/processing with checkout, verify with PayMongo
-    if (payment && ['pending','processing'].includes(payment.status) && payment.checkout_session_id) {
-      try {
-        const checkout = await getCheckoutSession(payment.checkout_session_id);
-        const status = checkoutStatus(checkout);
-        if (status === 'paid' && payment.status !== 'paid') {
-          // Priority 1 / H3: polling path must also validate order still payable + buyer match
-          const raceCheck = await assertPaymentStillPayable(payment);
-          if (!raceCheck.ok) {
-            await markStalePayment(payment, { reason: raceCheck.reason, eventType: 'checkout_polling' });
-            const { rows: updStale } = await pool.query(`SELECT * FROM payments WHERE id=$1`, [payment.id]);
-            payment = updStale[0] || payment;
-          } else {
-            // H2 money path + race serialization: settle while holding the SAME
-            // order row lock winnerExpiration uses, so a payment and a rotation
-            // can never interleave.
-            const settled = await settlePaidPaymentWithOrderLock({
-              paymentId: payment.id,
-              orderId: payment.order_id,
-              customerId: payment.customer_id,
-              eventType: 'checkout_sync',
-              metadata: { checkout_sync: true, raw: checkout?.data?.attributes || checkout },
-            });
-            if (!settled.ok) {
-              const { rows: st } = await pool.query(`SELECT * FROM payments WHERE id=$1`, [payment.id]);
-              payment = st[0] || payment;
-            } else {
-              try {
-                const msg = `Payment confirmed for order ${payment.order_id} — we are preparing your jewelry.`;
-                try {
-                  await pool.query(`INSERT INTO notifications (user_id, type, message, auction_id) VALUES ($1,'payout',$2,$3)`, [payment.customer_id, msg, order.auction_id || null]);
-                } catch (insErr) {
-                  if (insErr.code !== '42703') throw insErr;
-                  await pool.query(`INSERT INTO notifications (user_id, type, message) VALUES ($1,'payout',$2)`, [payment.customer_id, msg]);
-                }
-              } catch {}
-              const { rows: upd } = await pool.query(`SELECT * FROM payments WHERE id=$1`, [payment.id]);
-              payment = upd[0] || payment;
-              console.log(`[payment-sync] payment ${payment.id} marked paid via polling for order ${payment.order_id}`);
-            }
-          }
-        } else if ((status === 'failed' || status === 'expired') && payment.status !== status) {
-          await pool.query(`UPDATE payments SET status=$1, updated_at=now(), metadata=$2 WHERE id=$3`, [status, JSON.stringify({ checkout_sync: true, raw: checkout?.data?.attributes || checkout }), payment.id]);
-          const { rows: upd } = await pool.query(`SELECT * FROM payments WHERE id=$1`, [payment.id]);
-          payment = upd[0] || payment;
-          // Definitive failure only (not mere checkout-session expiry): notify once per event.
-          // Same message shape as the webhook path so the 1-hour guard dedups across both paths.
-          if (status === 'failed') {
-            try {
-              const failMsg = `Payment for order ${order.transaction_code || orderId} was unsuccessful. Please try again before your payment deadline.`;
-              const { rows: dup } = await pool.query(
-                `SELECT id FROM notifications WHERE user_id=$1 AND message=$2 AND created_at > NOW() - INTERVAL '1 hour' LIMIT 1`,
-                [payment.customer_id, failMsg]
-              );
-              if (!dup.length) {
-                try {
-                  await pool.query(`INSERT INTO notifications (user_id, type, message, auction_id) VALUES ($1,'payout',$2,$3)`, [payment.customer_id, failMsg, order.auction_id || null]);
-                } catch (insErr) {
-                  if (insErr.code !== '42703') throw insErr;
-                  await pool.query(`INSERT INTO notifications (user_id, type, message) VALUES ($1,'payout',$2)`, [payment.customer_id, failMsg]);
-                }
-              }
-            } catch {}
-          }
-        }
-      } catch (e) {
-        console.warn(`[payment-sync] Unable to verify checkout session ${payment.checkout_session_id}: ${e.message}`);
-      }
+    // Provider truth is durably preserved even if this order was cancelled.
+    if (payment?.checkout_session_id && payment.status !== 'paid') {
+      try { await recordCheckoutObservation(await getCheckoutSession(payment.checkout_session_id)); }
+      catch { /* A failed lookup cannot establish successful payment or closure. */ }
+      const {rows: refreshed}=await pool.query('SELECT * FROM payments WHERE id=$1',[payment.id]);
+      payment=refreshed[0] || payment;
     }
 
-    res.json({ order, payment, product: { name: order.product_name, img: order.product_img, category: order.category, karat_weight: order.karat_weight, desc: order.product_desc, id: order.product_id }, branch: { name: order.branch_name, address: order.branch_address, phone: order.branch_phone, hours: order.branch_hours } });
+    order.is_expired=order.status==='expired' || (!!isExpired && payment?.status!=='paid');
+    Object.assign(order,await cancellationSnapshot(order));
+    let cancellationActor=null,customer=null;
+    const {rows:buyer}=await pool.query('SELECT id,name,email FROM users WHERE id=$1',[order.buyer_id]);
+    customer=buyer[0] || null;
+    cancellationActor=await readCancellationActor(order);
+    res.json({ order,payment,customer,cancellation_actor:cancellationActor,
+      product:{name:order.product_name,img:order.product_img,category:order.category,karat_weight:order.karat_weight,desc:order.product_desc,id:order.product_id,condition:product.condition || null,certificate:product.certificate ?? product.certificate_status ?? null},
+      branch:{name:branch.name,address:branch.address,phone:branch.phone,hours:branch.hours,lat:branch.lat,lng:branch.lng} });
   } catch (e) {
     if (e?.code === 'DB_UNAVAILABLE' || e?.statusCode === 503) {
       return res.status(503).json({ message: 'Payment service temporarily unavailable' });
@@ -176,65 +123,11 @@ export const createCheckout = async (req, res) => {
       product_img: coProductRows[0].image_url,
       branch_name: coBranch.name,
     };
-    if (order.status !== 'pending') return res.status(400).json({ message: 'Order is not payable' });
-    // 7-day window gate on INITIATION. Same helper the counter path uses, so a
-    // customer cannot start a brand-new payment after their deadline passed.
-    if (isPastDeadline(order)) {
-      return res.status(410).json({
-        message: 'Your payment window has expired. This item may now be offered to the next eligible bidder.',
-        error: { code: PAYMENT_WINDOW_EXPIRED },
-        reason: PAYMENT_WINDOW_EXPIRED,
-        payment_deadline: order.payment_deadline || null,
-      });
-    }
-
-    // check existing paid payment
-    const { rows: paid } = await pool.query(`SELECT id FROM payments WHERE order_id=$1 AND status='paid' LIMIT 1`, [orderId]);
-    if (paid.length) return res.status(400).json({ message: 'Order already paid' });
-
-    // check existing pending/processing checkout that is still active (created < 30min ago) - reuse
-    const { rows: existing } = await pool.query(
-      `SELECT * FROM payments WHERE order_id=$1 AND status IN ('pending','processing') AND created_at > NOW() - INTERVAL '30 minutes' ORDER BY created_at DESC LIMIT 1`,
-      [orderId]
-    );
-    let payment;
-    if (existing.length && existing[0].checkout_session_id) {
-      payment = existing[0];
-      // try to return existing checkout_url if stored in metadata
-      if (payment.metadata?.checkout_url) {
-        return res.json({ checkout_url: payment.metadata.checkout_url, payment });
-      }
-    }
-
-    // create pending payment record — amount from DB order, never from frontend
-    const amount = Number(order.amount);
-    if (!amount) return res.status(400).json({ message: 'Invalid order amount' });
-
-    // if no existing pending, create new
-    if (!payment) {
-      const { rows: pRows } = await pool.query(
-        `INSERT INTO payments (order_id, customer_id, amount, currency, payment_method, status) VALUES ($1,$2,$3,'PHP',$4,'pending') RETURNING *`,
-        [orderId, req.user.id, amount, payment_method || 'gcash']
-      );
-      payment = pRows[0];
-    }
-
-    // call PayMongo
-    try {
-      const { checkoutId, checkoutUrl } = await createPayMongoCheckout({ order, payment, branch: { name: order.branch_name }, product: { name: order.product_name } });
-      await pool.query(
-        `UPDATE payments SET checkout_session_id=$1, provider_reference_id=$1, metadata=$2, updated_at=now() WHERE id=$3`,
-        [checkoutId, JSON.stringify({ checkout_url: checkoutUrl, payment_method }), payment.id]
-      );
-      const { rows: upd } = await pool.query(`SELECT * FROM payments WHERE id=$1`, [payment.id]);
-      return res.json({ checkout_url: checkoutUrl, payment: upd[0] });
-    } catch (payErr) {
-      await pool.query(`UPDATE payments SET status='failed', metadata=$1, updated_at=now() WHERE id=$2`, [JSON.stringify({ error: payErr.message }), payment.id]);
-      console.error('[paymongo checkout]', payErr.message);
-      return res.status(500).json({ message: payErr.message || 'Failed to create checkout' });
-    }
+    const result = await createOrderCheckoutSafely({ orderId,actorId:req.user.id,paymentMethod:payment_method,product:{name:order.product_name},branch:{name:order.branch_name} });
+    if (result.requires_review) return res.status(409).json({message:'Order changed during checkout creation. Contact support.',code:'ORDER_CHANGED'});
+    return res.json(result);
   } catch (e) {
     console.error('[customer/createCheckout]', e.message);
-    res.status(500).json({ message: 'Failed to create payment' });
+    return sendPaymentSafetyError(res,e);
   }
 };

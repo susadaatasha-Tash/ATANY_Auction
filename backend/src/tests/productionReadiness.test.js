@@ -267,27 +267,21 @@ describe('H2 fail-closed money/job paths', () => {
     expect(src).toMatch(/BIDDING_UNAVAILABLE/);
   });
 
-  it('webhook paid path settles through the shared ORDER-LOCKED transaction', () => {
-    const src = fs.readFileSync(path.join(root, 'controllers/webhook.controller.js'), 'utf8');
-    // The paid transition is no longer an inline claim in the controller: both the
-    // webhook and the polling path delegate to one serialized settlement so a
-    // payment can never interleave with a winner rotation.
-    expect(src).toMatch(/settlePaidPaymentWithOrderLock/);
-    expect(src).not.toMatch(/UPDATE payments SET status='paid'/);
-    const guard = fs.readFileSync(path.join(root, 'services/paymentRaceGuard.js'), 'utf8');
-    // ...and that settlement is the fail-closed, atomic one it replaced.
-    expect(guard).toMatch(/requireDirectPg|isDirectPg/);
-    expect(guard).toMatch(/FROM public\.orders WHERE id = \$1 FOR UPDATE/);
-    expect(guard).toMatch(/BEGIN/);
-    expect(guard).toMatch(/status IN \('pending','processing','failed','expired','cancelled'\)/);
+  it('webhook receipt and allocation use durable direct PostgreSQL transactions', () => {
+    const src=fs.readFileSync(path.join(root,'controllers/webhook.controller.js'),'utf8');
+    expect(src).toMatch(/receivePaymentEvent/);
+    expect(src).toMatch(/processPaymentEvent/);
+    const evidence=fs.readFileSync(path.join(root,'services/paymentEvidence.js'),'utf8');
+    expect(evidence).toMatch(/lockOrder/);
+    const tx=fs.readFileSync(path.join(root,'services/paymentTransaction.js'),'utf8');
+    expect(tx).toMatch(/__restFallback/);expect(tx).toMatch(/BEGIN/);expect(tx).toMatch(/FOR UPDATE/);
   });
-
-  it('payment polling path settles through the shared ORDER-LOCKED transaction', () => {
-    const src = fs.readFileSync(path.join(root, 'controllers/customer/payment.controller.js'), 'utf8');
-    expect(src).toMatch(/settlePaidPaymentWithOrderLock/);
+  it('payment polling preserves evidence and checkout retains the deadline gate', () => {
+    const src=fs.readFileSync(path.join(root,'controllers/customer/payment.controller.js'),'utf8');
+    expect(src).toMatch(/recordCheckoutObservation/);
     expect(src).not.toMatch(/UPDATE payments SET status='paid'/);
-    // online checkout refuses to START a payment after the 7-day window closed
-    expect(src).toMatch(/PAYMENT_WINDOW_EXPIRED/);
+    const safety=fs.readFileSync(path.join(root,'services/orderPaymentSafety.js'),'utf8');
+    expect(safety).toMatch(/PAYMENT_WINDOW_EXPIRED/);expect(safety).toMatch(/isPastDeadline/);
   });
 
   it('subscription apply paths require direct pg', () => {

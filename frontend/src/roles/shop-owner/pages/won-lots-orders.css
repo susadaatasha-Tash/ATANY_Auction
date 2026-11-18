@@ -424,3 +424,87 @@
   font-size: 11px;
   color: #6b7280;
 }
+
+/* ── cancellation ──────────────────────────────────────────────────── */
+.wlo-menu__cancel {
+  color: #b45252;
+}
+.wlo-menu__cancel:hover {
+  background: #fef2f2;
+  color: #991b1b;
+}
+
+.wlo-cancel-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 13px;
+}
+.wlo-cancel-modal p {
+  margin: 0;
+  color: var(--text);
+}
+.wlo-cancel-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+.wlo-cancel-label {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--navy);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.wlo-cancel-reason {
+  width: 100%;
+  min-width: 0;
+  height: 96px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  font: inherit;
+  font-size: 13px;
+  color: var(--navy);
+  resize: vertical;
+  box-sizing: border-box;
+}
+.wlo-cancel-reason:focus {
+  border-color: var(--gold);
+  outline: 0;
+  box-shadow: 0 0 0 3px rgba(196, 162, 101, .1);
+}
+.wlo-cancel-error {
+  font-size: 11.5px;
+  color: #b45252;
+  margin: 0;
+}
+.wlo-cancel-suggested {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 6px;
+}
+.wlo-cancel-radio {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--navy);
+}
+.wlo-cancel-radio:hover {
+  background: #faf7ef;
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+.wlo-cancel-radio input[type="radio"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--gold);
+}

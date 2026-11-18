@@ -53,14 +53,12 @@ test('listeners cleaned on unmount', async () => {
   expect(socket.off).toHaveBeenCalledWith('bid:update', expect.any(Function));
 });
 
-test('calendar toggle is enabled and accessible', async () => {
+test('list view is the default and only view — no calendar toggle', async () => {
   render(<MyAuctions />);
   await screen.findByText('Live Ring');
-  const cal = screen.getByLabelText('Calendar view');
-  expect(cal).not.toBeDisabled();
-  expect(cal).toHaveAttribute('aria-pressed', 'false');
-  fireEvent.click(cal);
-  expect(cal).toHaveAttribute('aria-pressed', 'true');
+  // List view is the only view; no calendar toggle exists
+  expect(screen.queryByLabelText('Calendar view')).not.toBeInTheDocument();
+  expect(screen.getByText('☰ List')).toBeInTheDocument();
 });
 
 test('realtime event contract: auction:update patches without full refetch for trivial update', async () => {

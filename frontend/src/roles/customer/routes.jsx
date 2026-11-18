@@ -9,12 +9,10 @@ import LiveAuctions from './pages/LiveAuctions';
 import MyBids from './pages/MyBids';
 import Favorites from './pages/Favorites';
 import Watchlist from './pages/Watchlist';
-import MyPurchases from './pages/MyPurchases';
-import OrderDetails from './pages/OrderDetails';
-import CompletePayment from './pages/CompletePayment';
-import PaymentSuccess from './pages/PaymentSuccess';
+import PurchaseWorkspace from './pages/PurchaseWorkspace';
 import AccountSettings from './pages/AccountSettings';
 import Notifications from './pages/Notifications';
+import AssistantOrderChat from './pages/AssistantOrderChat';
 import BranchLocator from './pages/BranchLocator';
 import MessagesPage from '../../shared/components/MessagesPage';
 
@@ -26,12 +24,14 @@ export const customerRoutes = [
   { path: 'favorites', element: <Favorites /> },
   { path: 'watchlist', element: <Watchlist /> },
   { path: 'branch-locator', element: <BranchLocator /> },
-  { path: 'purchases', element: <MyPurchases /> },
-  { path: 'orders/:id', element: <OrderDetails /> },
-  { path: 'orders/:id/payment', element: <CompletePayment /> },
-  { path: 'orders/:id/success', element: <PaymentSuccess /> },
+  { path: 'purchases', element: <PurchaseWorkspace /> },
+  { path: 'orders/:id', element: <PurchaseWorkspace /> },
+  { path: 'orders/:id/invoice', element: <PurchaseWorkspace /> },
+  { path: 'orders/:id/payment', element: <PurchaseWorkspace /> },
+  { path: 'orders/:id/success', element: <PurchaseWorkspace /> },
   { path: 'messages', element: <MessagesPage role="customer" /> },
   { path: 'notifications', element: <Notifications /> },
+  { path: 'assistant/orders/:orderId', element: <AssistantOrderChat /> },
   { path: 'account', element: <AccountSettings /> },
   // Customer Settings was retired. Old bookmarks / deep links land on Profile
   // instead of a 404, so previously shared URLs keep working.

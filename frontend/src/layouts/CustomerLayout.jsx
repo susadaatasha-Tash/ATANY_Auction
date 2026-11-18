@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { Sidebar } from '../shared/components/Sidebar';
 import { Topbar } from '../shared/components/Topbar';
+import { SidebarProvider } from '../shared/hooks/useSidebar';
 import { AssistantWidget } from '../shared/components/AssistantWidget';
 import { NotificationBell } from '../shared/components/NotificationBell';
 import OtherBranchLivePopup from '../roles/customer/components/OtherBranchLivePopup';
@@ -126,7 +127,7 @@ function LayoutInner() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
   // My Purchases owns its page-level header (title / search / profile)
-  const isPurchases = pathname === '/customer/purchases';
+  const isPurchases = pathname === '/customer/purchases' || /^\/customer\/orders\/[^/]+(?:\/(?:invoice|payment|success))?$/.test(pathname);
   const title = titles[pathname]?.[0] || titles['/customer'][0];
   const displayName = getDisplayName(user);
   const initials = getUserInitials(displayName, user?.email);
@@ -164,7 +165,14 @@ function LayoutInner() {
             settingsTo="/customer/account"
           />
         )}
-        <div className={`content${isPurchases ? ' content-purchases' : ''}`}><Outlet /></div>
+        <SidebarProvider value={{
+          open,
+          toggle: () => setOpen((v) => !v),
+          sidebarCollapsed,
+          toggleCollapsed: () => setSidebarCollapsed((v) => !v),
+        }}>
+          <div className={`content${isPurchases ? ' content-purchases' : ''}`}><Outlet /></div>
+        </SidebarProvider>
       </div>
       <AssistantWidget mode="customer" userId={user?.id} />
       <OtherBranchLivePopup />

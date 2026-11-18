@@ -2,6 +2,7 @@
 // Spec 4.8: Groq AI is primary, rule KB is fallback — key never in frontend per spec 5.6
 // Now role-aware (customer vs seller) and history-aware, with warm conversational tone
 import { pool } from '../db/pool.js';
+import { isOrderQuery, isFollowupQuery, getCustomerOrderContext, formatOrderContext } from './orderContextService.js';
 
 const KB_CUSTOMER = [
   { keys: ['bid', 'how to bid', 'place a bid', 'auction work'], a: "To bid: open any live auction, tap \"Place Bid,\" and enter an amount above the current bid. You'll get an outbid alert if someone tops you." },
@@ -215,7 +216,7 @@ Your payout is 90% of the sale amount after the 10% commission.
 // Groq model selection per budget/speed — 8b-instant is fastest/cheapest, 70b is higher quality
 const GROQ_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-20b';
 
-export async function chatbotReply(query, { userId, mode = 'customer', history = [] } = {}) {
+export async function chatbotReply(query, { userId, mode = 'customer', history = [], orderId = null } = {}) {
   // Allow explicit mode override, otherwise infer from user role if available
   let effectiveMode = mode;
   if (userId && mode === 'customer') {
@@ -246,8 +247,35 @@ export async function chatbotReply(query, { userId, mode = 'customer', history =
   // Locator). On failure the model gets the unavailable notice instead of stale
   // hardcoded branches — it must never invent locations.
   const branchContext = (await getBranchContext()) || BRANCH_UNAVAILABLE;
-  const systemPrompt = (effectiveMode === 'seller' ? SYSTEM_PROMPT_SELLER : SYSTEM_PROMPT_CUSTOMER)
+  let systemPrompt = (effectiveMode === 'seller' ? SYSTEM_PROMPT_SELLER : SYSTEM_PROMPT_CUSTOMER)
     .replace(BRANCH_CONTEXT_PLACEHOLDER, branchContext);
+
+  // Order context: fetch real-time order data for authenticated customers
+  // when they ask about orders, status, pickup, payment, etc.
+  // Also fetch on short follow-up questions that likely refer to a previous order.
+  const needsOrderContext = effectiveMode === 'customer' && userId && (
+    isOrderQuery(query) ||
+    (isFollowupQuery(query) && history && history.length > 0) ||
+    orderId
+  );
+  if (needsOrderContext) {
+    // If orderId is specified, verify ownership BEFORE sending to AI
+    if (orderId) {
+      const { rows: check } = await pool.query(
+        'SELECT id FROM orders WHERE id=$1 AND buyer_id=$2',
+        [orderId, userId]
+      );
+      if (!check.length) {
+        return { source: 'error', reply: 'You are not authorized to access this order.', mode: effectiveMode, error: 'ORDER_NOT_AUTHORIZED' };
+      }
+    }
+    const orders = await getCustomerOrderContext(userId, orderId);
+    const orderContext = formatOrderContext(orders, orderId);
+    systemPrompt += `\n\n${orderContext}`;
+    if (orderId) {
+      systemPrompt += `\n\nThe customer clicked on a winning notification for order ${orderId}. Focus your answer on THIS specific order. If the customer asks about "my other order" or "another order", refer to the other orders listed above.`;
+    }
+  }
 
   // Build messages with history (last 4-6 turns) for context
   const historyMessages = (Array.isArray(history) ? history.slice(-6) : []).map(m => ({

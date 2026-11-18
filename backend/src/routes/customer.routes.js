@@ -7,10 +7,11 @@ import { placeBidController, listBids } from '../controllers/customer/bid.contro
 import { getWatchlist, addToWatchlist, removeFromWatchlist } from '../controllers/customer/watchlist.controller.js';
 import { getFavorites, addToFavorites, removeFromFavorites } from '../controllers/customer/favorites.controller.js';
 import { getReminders, addReminder, removeReminder } from '../controllers/customer/reminder.controller.js';
-import { getOrders, payOrder } from '../controllers/customer/order.controller.js';
+import { getOrders, payOrder, cancelOrder } from '../controllers/customer/order.controller.js';
 import { getOrderDetails, createCheckout } from '../controllers/customer/payment.controller.js';
 import { getAccount, updateAccount, getPreferredBranch, setPreferredBranch } from '../controllers/customer/account.controller.js';
 import { listNotifications, markAllRead, markOneRead, deleteNotification } from '../controllers/customer/notification.controller.js';
+import { resolveNotificationOrder } from '../controllers/customer/notification.controller.js';
 import { createCustomerSupportRequest } from '../controllers/customer/support.controller.js';
 import { createCustomerSupportUpload } from '../controllers/contactUpload.controller.js';
 import { rateLimit } from '../middleware/rateLimit.js';
@@ -32,6 +33,7 @@ router.post('/reminders', addReminder);
 router.delete('/reminders/:id', removeReminder);
 router.get('/orders', getOrders);
 router.get('/orders/:id', getOrderDetails);
+router.patch('/orders/:id/cancel', cancelOrder); // Customer cancels own unpaid order with reason
 router.post('/orders/:id/payment', createCheckout);
 router.post('/orders/:id/pay', payOrder); // legacy: Pay at Branch Counter fallback
 router.get('/account', getAccount);
@@ -47,4 +49,9 @@ router.get('/notifications', listNotifications);
 router.put('/notifications/read', markAllRead);
 router.put('/notifications/:id/read', markOneRead);
 router.delete('/notifications/:id', deleteNotification);
+// Resolve a winning notification to an authorized customer order for AI chat.
+router.get('/notifications/:id/resolve-order', resolveNotificationOrder);
 export default router;
+
+// Notification-to-order resolution for AI conversation
+// Resolves a winning notification to an authorized customer order.

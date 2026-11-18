@@ -14,6 +14,7 @@ vi.mock('../services/paymongoService.js', () => ({
   getCheckoutSession: vi.fn(async () => ({})),
   checkoutStatus: vi.fn(() => 'pending'),
   verifyWebhookSignature: vi.fn(() => true),
+  configuredPaymongoMode: () => false,
 }));
 
 import { pool } from '../db/pool.js';
@@ -47,8 +48,13 @@ function notifRowsFor(userId) {
 beforeEach(() => {
   vi.clearAllMocks();
   notifStore = [];
+  let activeOperation;
   const client = {
-    query: (...args) => pool.query(...args),
+    query: (sql,params=[]) => {
+      if(/INSERT INTO payment_operations/.test(sql)){activeOperation=params[0];return {rows:[]};}
+      if(/SELECT id FROM payment_operations/.test(sql))return {rows:[{id:activeOperation}]};
+      return pool.query(sql,params);
+    },
     release: vi.fn(),
   };
   pool.connect.mockImplementation(async () => client);
@@ -350,7 +356,7 @@ describe('customer payment notifications (7-day lifecycle)', () => {
     const res = mockRes();
     await createCheckout({ params: { id: ORDER }, body: {}, user: { id: BUYER_A } }, res);
     expect(res.status).toHaveBeenCalledWith(400);
-    expect(res.json).toHaveBeenCalledWith({ message: 'Order is not payable' });
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ code: 'ORDER_NOT_CANCELLABLE' }));
   });
 
   test('12. previous winner cannot pay after reassignment (404, buyer mismatch)', async () => {
@@ -375,6 +381,7 @@ describe('customer payment notifications (7-day lifecycle)', () => {
       if (/FROM auctions WHERE id/i.test(sql)) return { rows: [{ product_id: 'p1' }] };
       if (/FROM products WHERE id/i.test(sql)) return { rows: [{ name: 'Gold Ring' }] };
       if (/FROM payments/i.test(sql)) return { rows: [], rowCount: 0 };
+      if (/UPDATE payments SET checkout_session_id/i.test(sql)) return {rows:[{id:'pay-1',checkout_session_id:'cs_test'}]};
       if (/INSERT INTO payments/i.test(sql)) return { rows: [{ id: 'pay-1' }] };
       return { rows: [], rowCount: 0 };
     });

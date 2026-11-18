@@ -1,6 +1,6 @@
 // backend/src/tests/subscriptionPlanChange.test.js
 // Plan change, annual pricing, proration, downgrade scheduling, payment methods.
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const poolQuery = vi.fn();
 vi.mock('../db/pool.js', () => ({
@@ -76,9 +76,14 @@ function paidRecord(overrides = {}) {
 }
 
 beforeEach(() => {
+  // The fixture period is October 1–November 1; keep its midpoint deterministic.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-16T12:00:00.000Z'));
   poolQuery.mockReset();
   poolQuery.mockResolvedValue({ rows: [] });
 });
+
+afterEach(() => vi.useRealTimers());
 
 describe('annual pricing (integer centavos)', () => {
   it('bronze annual = 9960 (₱1,000 × 12 − 17%)', () => {
@@ -326,8 +331,7 @@ describe('previewPlanChange', () => {
       return { rows: [] };
     });
 
-    // Use a fixed "now" inside period via preview's use of real now —
-    // period end is future so remaining > 0
+    // At the fixed midpoint, half the ₱500 upgrade difference is due.
     const res = await previewPlanChange({
       sellerId: SELLER,
       planCode: 'gold',
@@ -338,6 +342,8 @@ describe('previewPlanChange', () => {
     expect(res.current_plan.code).toBe('bronze');
     expect(res.target_plan.code).toBe('gold');
     expect(res.amount_due_now).toBeGreaterThan(0);
+    expect(res.amount_due_now).toBe(250);
+    expect(res.proration.cents).toBe(25000);
     expect(res.effective_at).toBe('immediate');
     expect(res.next_billing_amount).toBe(1500);
   });

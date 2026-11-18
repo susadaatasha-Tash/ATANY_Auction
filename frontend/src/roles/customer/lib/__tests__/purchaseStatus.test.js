@@ -141,6 +141,16 @@ describe('buildDirectionsUrl', () => {
 });
 
 describe('getPaymentStatusBadge', () => {
+  it('keeps failed payment evidence visible for cancelled orders', () => {
+    expect(getPaymentStatusBadge({...base,status:'cancelled',payment_status:'failed'}).label).toBe('Payment failed');
+  });
+  it('never infers payment success solely from fulfillment status', () => {
+    expect(getPaymentStatusBadge({...base,status:'preparing',payment_status:'failed'}).label).toBe('Payment failed');
+  });
+  it('does not offer payment while processing or cancellation when server blocks it', () => {
+    expect(getPurchaseActions({...base,payment_status:'processing'}).some(a=>a.key==='pay')).toBe(false);
+    expect(getPurchaseActions({...base,can_request_cancellation:false}).some(a=>a.key==='cancel')).toBe(false);
+  });
   it('shows Paid when order is paid', () => {
     expect(getPaymentStatusBadge({ ...base, payment_status: 'paid', status: 'preparing', payment_method: 'gcash' }).label).toBe('Paid · GCash');
   });

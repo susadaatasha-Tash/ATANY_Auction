@@ -37,6 +37,7 @@
 //     decided nobody paid. Every other state may take a back-fill, and the
 //     payment always belongs to the order's current buyer.
 import { pool, isDirectPg } from '../db/pool.js';
+import { assertNoPaymentOperation } from './paymentTransaction.js';
 import { isPastDeadline, PAYMENT_WINDOW_EXPIRED } from './winnerRules.js';
 
 /** provider value written for money that did not pass through a gateway. */
@@ -78,6 +79,9 @@ export function canAcceptManualPayment(order) {
   if (!order) return { ok: false, reason: 'ORDER_NOT_FOUND' };
   if (String(order.status || '').toLowerCase() === 'expired') {
     return { ok: false, reason: 'ORDER_EXPIRED', status: order.status };
+  }
+  if (String(order.status || '').toLowerCase() === 'cancelled') {
+    return { ok: false, reason: 'ORDER_CANCELLED', status: order.status };
   }
   if (isPastDeadline(order)) {
     return { ok: false, reason: PAYMENT_WINDOW_EXPIRED, deadline: order.payment_deadline };
@@ -155,6 +159,11 @@ export async function recordManualPayment({
       return { ok: false, reason: payable.reason, status: payable.status, deadline: payable.deadline, order };
     }
 
+    await assertNoPaymentOperation(client, orderId);
+    if (existing.some(p => p.provider === 'paymongo' && !p.metadata?.checkout_creation_rejected && !p.metadata?.checkout_closed_at)) {
+      await client.query('ROLLBACK');
+      return { ok:false,reason:'EXTERNAL_CHECKOUT_REQUIRES_CLOSURE' };
+    }
     const amount = Number(order.amount || 0);
     if (!amount) {
       await client.query('ROLLBACK');
@@ -172,7 +181,7 @@ export async function recordManualPayment({
 
     // Prefer claiming an existing non-terminal attempt so retries do not pile up
     // rows (the schema records attempts, but 'paid' is unique per order).
-    const claimable = existing.find((p) => CLAIMABLE_PAYMENT_STATUSES.includes(String(p.status).toLowerCase()));
+    const claimable = existing.find((p) => p.provider !== 'paymongo' && !p.checkout_session_id && CLAIMABLE_PAYMENT_STATUSES.includes(String(p.status).toLowerCase()));
     if (claimable) {
       const { rows } = await client.query(
         `UPDATE payments

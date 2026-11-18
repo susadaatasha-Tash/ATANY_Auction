@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { apiFetch } from '../../../shared/lib/apiClient';
 import { supabase } from '../../../shared/lib/supabaseClient';
 import { useAuth } from '../../../shared/hooks/useAuth';
+import { useToast } from '../../../shared/components/Toast';
 import { PurchaseHeader } from '../purchases/PurchaseHeader';
 import { PurchaseStats } from '../purchases/PurchaseStats';
 import { PurchaseTabs } from '../purchases/PurchaseTabs';
@@ -20,12 +21,13 @@ import {
   sortOrders,
 } from '../lib/purchaseSelectors';
 import '../purchases/purchases.css';
+import { CancelOrderDialog } from '../purchases/CancelOrderDialog';
+import { canCancelOrder } from '../lib/purchaseStatus';
 
-export default function MyPurchases({ orders: propOrders }) {
+export default function MyPurchases({ orders: propOrders, refreshKey=0 }) {
   const [orders, setOrders] = useState(propOrders ? propOrders.map(mapOrderRow) : []);
   const [tab, setTab] = useState('all');
   const [query, setQuery] = useState('');
-  const [globalQuery, setGlobalQuery] = useState('');
   const [sort, setSort] = useState('newest');
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(!propOrders?.length);
@@ -34,6 +36,26 @@ export default function MyPurchases({ orders: propOrders }) {
   const silentRef = useRef(false);
   const { user, loading: authLoading } = useAuth();
   const userId = user?.id || null;
+  const showToast = useToast();
+  const viewUser=useRef(null);
+  useEffect(()=>{
+    if(!userId)return;
+    const key=`atany:purchase-view:${userId}`;
+    if(viewUser.current!==userId){
+      viewUser.current=userId;
+      try {
+        const view=JSON.parse(sessionStorage.getItem(key) || '{}');
+        setQuery(typeof view.query==='string'?view.query:'');
+        setSort(['newest','oldest','highest','lowest'].includes(view.sort)?view.sort:'newest');
+        setTab(['all','awaiting','ready','collected'].includes(view.tab)?view.tab:'all');
+      } catch {setQuery('');setSort('newest');setTab('all');}
+      return;
+    }
+    try{sessionStorage.setItem(key,JSON.stringify({query,sort,tab}));}catch{ /* Storage may be unavailable; in-page context remains. */ }
+  },[userId,query,sort,tab]);
+
+  const [cancelFor, setCancelFor] = useState(null); // order being cancelled
+  const currentCancelOrder=cancelFor&&orders.find(order=>order.id===cancelFor.id);
 
   const loadOrders = useCallback(async ({ silent = false } = {}) => {
     if (authLoading) return;
@@ -63,6 +85,7 @@ export default function MyPurchases({ orders: propOrders }) {
     }
   }, [authLoading, userId, propOrders]);
 
+
   useEffect(() => {
     if (propOrders?.length) {
       setOrders(propOrders.map(mapOrderRow));
@@ -71,6 +94,14 @@ export default function MyPurchases({ orders: propOrders }) {
     }
     loadOrders();
   }, [propOrders, loadOrders]);
+
+  const previousRefreshKey=useRef(refreshKey);
+  useEffect(()=>{if(previousRefreshKey.current!==refreshKey){previousRefreshKey.current=refreshKey;loadOrders({silent:true});}},[refreshKey,loadOrders]);
+  useEffect(()=>{
+    const revalidate=()=>loadOrders({silent:true});
+    window.addEventListener('focus',revalidate);window.addEventListener('pageshow',revalidate);
+    return()=>{window.removeEventListener('focus',revalidate);window.removeEventListener('pageshow',revalidate);};
+  },[loadOrders]);
 
   // Live lots badge — hide if 0 / endpoint unavailable (uses neutral Auctions endpoint)
   useEffect(() => {
@@ -124,27 +155,13 @@ export default function MyPurchases({ orders: propOrders }) {
 
   const visible = useMemo(() => {
     const byTab = filterOrdersByTab(orders, tab);
-    const byQuery = searchOrders(byTab, query || globalQuery);
+    const byQuery = searchOrders(byTab, query);
     return sortOrders(byQuery, sort);
-  }, [orders, tab, query, globalQuery, sort]);
-
-  const onGlobalQuerySubmit = useCallback((value, opts) => {
-    if (opts?.live) {
-      setGlobalQuery(value);
-      setQuery(value);
-      return;
-    }
-    setGlobalQuery(value);
-    setQuery(value);
-  }, []);
+  }, [orders, tab, query, sort]);
 
   return (
     <div className="mp-page">
-      <PurchaseHeader
-        globalQuery={globalQuery}
-        onGlobalQuerySubmit={onGlobalQuerySubmit}
-        liveLots={liveLots}
-      />
+      <PurchaseHeader liveLots={liveLots} />
 
       {loading ? (
         <>
@@ -170,7 +187,15 @@ export default function MyPurchases({ orders: propOrders }) {
 
           {visible.length ? (
             <div className="mp-list">
-              {visible.map((o) => <PurchaseCard key={o.id} order={o} />)}
+              {visible.map((o) => (
+                <PurchaseCard
+                  key={o.id}
+                  order={o}
+                  onCancel={(o) => {
+                    setCancelFor(o);
+                  }}
+                />
+              ))}
             </div>
           ) : (
             <div className="mp-empty">
@@ -184,6 +209,8 @@ export default function MyPurchases({ orders: propOrders }) {
           )}
         </>
       )}
+
+      {cancelFor&&<CancelOrderDialog order={currentCancelOrder || cancelFor} eligible={!!currentCancelOrder&&canCancelOrder(currentCancelOrder)} onClose={()=>setCancelFor(null)} onRevalidate={()=>loadOrders({silent:true})} onSuccess={async()=>{showToast('Order cancelled.');setCancelFor(null);await loadOrders({silent:true});}}/>}
     </div>
   );
 }

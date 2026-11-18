@@ -44,11 +44,15 @@ import { setPublishableKey, getPublishableKey } from '../../../../shared/lib/pay
 // Tests must be deterministic regardless of frontend/.env: the real
 // VITE_PAYMONGO_PUBLIC_KEY must never enable secure entry here.
 beforeEach(() => {
+  // Paid period is current; the newer pending row is an upcoming renewal.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-10T04:00:00.000Z'));
   vi.stubEnv('VITE_PAYMONGO_PUBLIC_KEY', '');
   vi.stubEnv('VITE_PAYMONGO_PUBLISHABLE_KEY', '');
   setPublishableKey('');
 });
 afterEach(() => {
+  vi.useRealTimers();
   vi.unstubAllEnvs();
 });
 

@@ -4,6 +4,7 @@
 // Delete reuses DELETE /shop-owner/auctions/:id (own scheduled auction, no bids).
 // Supabase Realtime (own shop scope) patches rows without refresh.
 import { useState, useEffect, useMemo, useRef } from 'react';
+import { Trash2 } from 'lucide-react';
 import { SubmitListingModal } from '../components/SubmitListingModal';
 import { apiFetch } from '../../../shared/lib/apiClient';
 import { useToast } from '../../../shared/components/Toast';
@@ -253,13 +254,6 @@ export default function MyListings({ listings: propListings, onSubmit, onResubmi
           <option value="paused">Paused</option>
           <option value="ended">Ended</option>
         </select>
-        <button
-          type="button"
-          className="mls-btn mls-btn--gold mls-btn--toolbar"
-          onClick={() => { setEditing(null); setOpen(true); }}
-        >
-          + New Listing
-        </button>
       </div>
 
       {loading ? (
@@ -320,7 +314,17 @@ export default function MyListings({ listings: propListings, onSubmit, onResubmi
                   <div className="mls-card__price">{peso(l.price)}</div>
                   <div className="mls-card__actions">
                     <button type="button" className="mls-btn mls-btn--view" onClick={() => setDetails(l)} aria-label={`View details for ${l.name}`}>👁 View details</button>
-                    <button type="button" className="mls-btn mls-btn--icon mls-btn--danger" onClick={() => canDelete && setDeleting(l)} disabled={!canDelete} aria-label={`Delete ${l.name}`} title={canDelete ? 'Delete this listing' : 'This listing cannot be deleted because it already has bids.'}>🗑</button>
+                    <button
+                      type="button"
+                      className="mls-btn mls-btn--icon mls-btn--danger"
+                      onClick={() => canDelete && setDeleting(l)}
+                      disabled={!canDelete}
+                      aria-label="Delete listing"
+                      aria-description={canDelete ? undefined : DELETE_BLOCKED_MESSAGE}
+                      title="Delete listing"
+                    >
+                      <Trash2 size={20} aria-hidden="true" />
+                    </button>
                   </div>
                 </div>
               </article>

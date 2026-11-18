@@ -10,6 +10,8 @@ import { fileURLToPath } from 'url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dbDir = path.join(__dirname, '../db');
 
+const { receiveEvent, processEvent } = vi.hoisted(() => ({receiveEvent:vi.fn(),processEvent:vi.fn()}));
+vi.mock('../services/paymentEvidence.js', () => ({receivePaymentEvent:receiveEvent,processPaymentEvent:processEvent}));
 const poolQuery = vi.fn();
 const poolConnect = vi.fn();
 vi.mock('../db/pool.js', () => ({
@@ -339,16 +341,16 @@ describe('C4 PayMongo webhook verification', () => {
     expect(verifyWebhookSignature(raw, '')).toBe(false);
   });
 
-  it('valid signature accepted (bare hex)', () => {
+  it('legacy bare-body signature is rejected', () => {
     process.env.PAYMONGO_WEBHOOK_SECRET = 's3cret';
     const sig = hmac('s3cret', raw);
-    expect(verifyWebhookSignature(raw, sig)).toBe(true);
+    expect(verifyWebhookSignature(raw, sig)).toBe(false);
   });
 
-  it('valid signature accepted (v1= prefixed list)', () => {
+  it('legacy v1 signature is rejected', () => {
     process.env.PAYMONGO_WEBHOOK_SECRET = 's3cret';
     const sig = `t=123,v1=${hmac('s3cret', raw)}`;
-    expect(verifyWebhookSignature(raw, sig)).toBe(true);
+    expect(verifyWebhookSignature(raw, sig)).toBe(false);
   });
 
   it('substring/forged signatures rejected (no includes() bypass)', () => {
@@ -393,34 +395,18 @@ describe('C4 PayMongo webhook verification', () => {
     expect(body).not.toContain('super_secret_value_xyz');
   });
 
-  it('valid signed webhook still processes (idempotent paid already)', async () => {
-    process.env.PAYMONGO_WEBHOOK_SECRET = 's3cret';
-    const body = {
-      data: {
-        id: 'cs_ok',
-        attributes: {
-          type: 'checkout.payment.paid',
-          data: { id: PAYMENT_ID, attributes: { status: 'paid', payments: [{ attributes: { status: 'paid' } }] } },
-        },
-      },
-    };
-    const rawOk = JSON.stringify(body);
-    poolQuery.mockImplementation(async (sql) => {
-      if (sql.includes('FROM payments WHERE checkout_session_id')) {
-        return { rows: [{ id: PAYMENT_ID, order_id: ORDER_ID, customer_id: BUYER_A, status: 'paid' }] };
-      }
-      return { rows: [] };
-    });
-    const res = mockRes();
-    await paymongoWebhook(
-      {
-        rawBody: rawOk,
-        body,
-        headers: { 'paymongo-signature': `t=1,v1=${hmac('s3cret', rawOk)}` },
-      },
-      res
-    );
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ already_paid: true }));
+  it('valid signed webhook acknowledges durable receipt', async () => {
+    process.env.PAYMONGO_WEBHOOK_SECRET='fixture-secret';
+    const body={data:{id:'evt_fixture',attributes:{type:'checkout_session.payment.paid',livemode:false,data:{id:'cs_fixture',attributes:{}}}}};
+    const rawBody=JSON.stringify(body), t=String(Math.floor(Date.now()/1000));
+    const te=crypto.createHmac('sha256','fixture-secret').update(`${t}.${rawBody}`).digest('hex');
+    const req={body,rawBody,headers:{'paymongo-signature':`t=${t},te=${te},li=`}};
+    const res=mockRes();
+    receiveEvent.mockResolvedValue({id:'receipt-1'});processEvent.mockResolvedValue();
+    await paymongoWebhook(req,res);
+    expect(receiveEvent).toHaveBeenCalledWith({body,rawBody});
+    expect(processEvent).toHaveBeenCalledWith('receipt-1');
+    expect(res.json).toHaveBeenCalledWith({received:true,event_id:'receipt-1'});
   });
 });
 
@@ -897,121 +883,29 @@ describe('H3 stale winner payment race', () => {
     expect(orderUpdates.length).toBe(0);
   });
 
-  it('webhook: winner A payment after reassignment to B does not mark order paid', async () => {
-    process.env.PAYMONGO_WEBHOOK_SECRET = 's3cret';
-    const body = {
-      data: {
-        id: 'cs_stale',
-        attributes: {
-          type: 'checkout.payment.paid',
-          data: {
-            id: PAYMENT_ID,
-            attributes: {
-              status: 'paid',
-              payments: [{ attributes: { status: 'paid' } }],
-              reference_number: PAYMENT_ID,
-            },
-          },
-        },
-      },
-    };
-    const rawBody = JSON.stringify(body);
-    const paymentRow = {
-      id: PAYMENT_ID,
-      order_id: ORDER_ID,
-      customer_id: BUYER_A,
-      status: 'pending',
-      checkout_session_id: 'cs_stale',
-      provider_reference_id: PAYMENT_ID,
-    };
-    poolQuery.mockImplementation(async (sql) => {
-      if (sql.includes('FROM payments WHERE checkout_session_id')) return { rows: [paymentRow] };
-      if (sql.includes('SELECT * FROM orders WHERE id=$1')) {
-        // Order reassigned to winner B
-        return { rows: [{ id: ORDER_ID, buyer_id: BUYER_B, status: 'pending' }] };
-      }
-      return { rows: [], rowCount: 0 };
-    });
-    const res = mockRes();
-    await paymongoWebhook(
-      {
-        rawBody,
-        body,
-        headers: { 'paymongo-signature': `t=1,v1=${crypto.createHmac('sha256', 's3cret').update(rawBody).digest('hex')}` },
-      },
-      res
-    );
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ stale: true, reason: 'BUYER_MISMATCH' }));
-    const paidUpdates = poolQuery.mock.calls.filter(([sql]) => /UPDATE payments SET status='paid'/.test(sql));
-    expect(paidUpdates.length).toBe(0);
+  it('webhook processing failure retains durable receipt for retry', async () => {
+    process.env.PAYMONGO_WEBHOOK_SECRET='fixture-secret';
+    const body={data:{id:'evt_fixture',attributes:{type:'checkout_session.payment.paid',livemode:false,data:{id:'cs_fixture',attributes:{}}}}};
+    const rawBody=JSON.stringify(body), t=String(Math.floor(Date.now()/1000));
+    const te=crypto.createHmac('sha256','fixture-secret').update(`${t}.${rawBody}`).digest('hex');
+    const req={body,rawBody,headers:{'paymongo-signature':`t=${t},te=${te},li=`}};
+    const res=mockRes();
+    receiveEvent.mockResolvedValue({id:'receipt-late'});processEvent.mockRejectedValue(new Error('retry processing'));
+    await paymongoWebhook(req,res);
+    expect(res.json).toHaveBeenCalledWith({received:true,event_id:'receipt-late'});
+    expect(poolQuery.mock.calls.filter(([sql])=>/UPDATE orders/.test(sql))).toHaveLength(0);
   });
 
-  it('webhook: winner B valid payment still works', async () => {
-    process.env.PAYMONGO_WEBHOOK_SECRET = 's3cret';
-    const body = {
-      data: {
-        id: 'cs_valid',
-        attributes: {
-          type: 'checkout.payment.paid',
-          data: {
-            id: PAYMENT_ID,
-            attributes: {
-              status: 'paid',
-              payments: [{ attributes: { status: 'paid' } }],
-            },
-          },
-        },
-      },
-    };
-    const rawBody = JSON.stringify(body);
-    const paymentRow = {
-      id: PAYMENT_ID,
-      order_id: ORDER_ID,
-      customer_id: BUYER_B,
-      status: 'pending',
-      checkout_session_id: 'cs_valid',
-    };
-    // settlePaidPaymentWithOrderLock opens its own transaction client.
-    poolConnect.mockResolvedValue({
-      query: (...args) => poolQuery(...args),
-      release: vi.fn(),
-    });
-    poolQuery.mockImplementation(async (sql) => {
-      if (sql.includes('FROM payments WHERE checkout_session_id')) return { rows: [paymentRow] };
-      if (sql.includes('SELECT * FROM orders WHERE id=$1')) {
-        return { rows: [{ id: ORDER_ID, buyer_id: BUYER_B, status: 'pending' }] };
-      }
-      // Shared settlement (services/paymentRaceGuard.js): lock the order row,
-      // then claim the payment inside the same transaction.
-      if (/BEGIN|COMMIT|ROLLBACK/i.test(String(sql).trim())) return { rows: [], rowCount: 0 };
-      if (sql.includes('FROM public.orders WHERE id = $1 FOR UPDATE')) {
-        return { rows: [{ id: ORDER_ID, buyer_id: BUYER_B, status: 'pending', amount: 5000 }], rowCount: 1 };
-      }
-      if (sql.includes("FROM public.payments WHERE order_id = $1 AND status = 'paid'")) {
-        return { rows: [], rowCount: 0 };
-      }
-      if (sql.includes('UPDATE public.payments')) {
-        return { rows: [{ id: PAYMENT_ID }], rowCount: 1 };
-      }
-      return { rows: [], rowCount: 0 };
-    });
-    const res = mockRes();
-    await paymongoWebhook(
-      {
-        rawBody,
-        body,
-        headers: { 'paymongo-signature': `t=1,v1=${crypto.createHmac('sha256', 's3cret').update(rawBody).digest('hex')}` },
-      },
-      res
-    );
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ received: true }));
-    expect(res.json).not.toHaveBeenCalledWith(expect.objectContaining({ stale: true }));
-    // The paid transition now happens inside the shared order-locked settlement
-    // (services/paymentRaceGuard.js), in the same transaction that locked the
-    // order row — so a concurrent winner rotation cannot interleave.
-    const settledUpdates = poolQuery.mock.calls.filter(([sql]) => /UPDATE public\.payments/.test(String(sql)));
-    expect(settledUpdates.length).toBe(1);
-    expect(poolQuery.mock.calls.some(([sql]) => /FROM public\.orders WHERE id = \$1 FOR UPDATE/.test(String(sql)))).toBe(true);
+  it('webhook refuses to acknowledge when receipt storage fails', async () => {
+    process.env.PAYMONGO_WEBHOOK_SECRET='fixture-secret';
+    const body={data:{id:'evt_fixture',attributes:{type:'checkout_session.payment.paid',livemode:false,data:{id:'cs_fixture',attributes:{}}}}};
+    const rawBody=JSON.stringify(body), t=String(Math.floor(Date.now()/1000));
+    const te=crypto.createHmac('sha256','fixture-secret').update(`${t}.${rawBody}`).digest('hex');
+    const req={body,rawBody,headers:{'paymongo-signature':`t=${t},te=${te},li=`}};
+    const res=mockRes();
+    receiveEvent.mockRejectedValue(new Error('DB offline'));
+    await paymongoWebhook(req,res);
+    expect(res.status).toHaveBeenCalledWith(503);
   });
 });
 

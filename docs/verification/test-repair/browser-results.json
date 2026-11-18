@@ -1,0 +1,45 @@
+{
+  "checks": [
+    {
+      "name": "Native browser Storage is available",
+      "passed": true
+    },
+    {
+      "name": "Calendar Today returns to the selected current day",
+      "passed": true
+    },
+    {
+      "name": "Zero bid increment blocks navigation",
+      "passed": true
+    },
+    {
+      "name": "Valid increment reaches Review and persists draft",
+      "passed": true
+    },
+    {
+      "name": "Reload restores the saved increment",
+      "passed": true
+    },
+    {
+      "name": "Relist has two steps and no creation fields",
+      "passed": true
+    },
+    {
+      "name": "Relist preserves inherited bidding rules",
+      "passed": true
+    },
+    {
+      "name": "Relist draft uses a separate namespace",
+      "passed": true
+    },
+    {
+      "name": "Relist reload restores Review",
+      "passed": true
+    }
+  ],
+  "errors": [],
+  "externalRequests": [],
+  "realApplicationComponents": true,
+  "componentMocks": false,
+  "submissionAttempted": false
+}

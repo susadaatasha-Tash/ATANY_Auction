@@ -1,0 +1,29 @@
+{
+  "rendered_states": [
+    "active pending without payment",
+    "payment confirmation",
+    "unavailable actions",
+    "cancelled",
+    "expired",
+    "invoice",
+    "mobile payment"
+  ],
+  "no_horizontal_dialog_overflow": true,
+  "recorded_render_javascript_errors": 0,
+  "completed_interaction_checks": {
+    "provider_error_displayed": true,
+    "background_scroll_locked": true,
+    "nested_payment_lower_inert": true,
+    "empty_cancel_reason_disabled": true,
+    "keep_order_preserved_order": true,
+    "fixture_cancellation_updated_details": true,
+    "card_payment_focus_restored": true,
+    "scroll_unlocked_after_card_modal_close": true
+  },
+  "limitations": [
+    "Actual components with isolated auth/API/realtime fixture I/O, not authenticated full-stack E2E.",
+    "Successful provider redirect verified by unit-test location spy, not a real provider transaction.",
+    "Further nested focus checks were not performed after browser interaction approval was declined."
+  ],
+  "database_mode": "Existing disposable schema only. No migration file was executed."
+}

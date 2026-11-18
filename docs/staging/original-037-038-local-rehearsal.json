@@ -1,0 +1,826 @@
+{
+  "scope": "disposable-local-only",
+  "started_at": "2026-11-18T18:17:52.245Z",
+  "checks": {
+    "socket_only": true,
+    "before_backup": {
+      "restored": true,
+      "matching": {
+        "data": "59968e63df8f854c5dac5198c686071bebf38bcd5460620543fe8b7489c45b2a",
+        "sequences": "8b21cdccfe7912076a68615cfc7570adcec504faec800c283520f315d879c2fe",
+        "schema": "11d3068703efb2eb15c4bc9f5334810e168364f8fc76087f0f80ab72bf02aa89"
+      },
+      "archive_sha256": "5e38b87885cdd7339a2098493e7cd3df512b12a970dcf46d1007c9c5512c2288",
+      "elapsed_ms": 1437
+    },
+    "runner_037_error": "55P04",
+    "runner_037_rolled_back": true,
+    "migration_037": "passed: psql -f with statement autocommit",
+    "migration_038_rollback": true,
+    "migration_038": "passed: atomic psql -1 -f",
+    "rerun_same_schema": true,
+    "enums": [
+      {
+        "typname": "order_status",
+        "enumlabel": "pending"
+      },
+      {
+        "typname": "order_status",
+        "enumlabel": "ready_pickup"
+      },
+      {
+        "typname": "order_status",
+        "enumlabel": "completed"
+      },
+      {
+        "typname": "order_status",
+        "enumlabel": "preparing"
+      },
+      {
+        "typname": "order_status",
+        "enumlabel": "expired"
+      },
+      {
+        "typname": "order_status",
+        "enumlabel": "cancelled"
+      },
+      {
+        "typname": "payment_status",
+        "enumlabel": "pending"
+      },
+      {
+        "typname": "payment_status",
+        "enumlabel": "processing"
+      },
+      {
+        "typname": "payment_status",
+        "enumlabel": "paid"
+      },
+      {
+        "typname": "payment_status",
+        "enumlabel": "failed"
+      },
+      {
+        "typname": "payment_status",
+        "enumlabel": "cancelled"
+      },
+      {
+        "typname": "payment_status",
+        "enumlabel": "expired"
+      }
+    ],
+    "constraints": [
+      {
+        "relation": "orders",
+        "conname": "orders_amount_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL amount"
+      },
+      {
+        "relation": "orders",
+        "conname": "orders_auction_id_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "definition": "FOREIGN KEY (auction_id) REFERENCES auctions(id)"
+      },
+      {
+        "relation": "orders",
+        "conname": "orders_branch_id_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "definition": "FOREIGN KEY (branch_id) REFERENCES branches(id)"
+      },
+      {
+        "relation": "orders",
+        "conname": "orders_buyer_id_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "definition": "FOREIGN KEY (buyer_id) REFERENCES users(id)"
+      },
+      {
+        "relation": "orders",
+        "conname": "orders_cancelled_by_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "definition": "FOREIGN KEY (cancelled_by) REFERENCES users(id) ON DELETE SET NULL"
+      },
+      {
+        "relation": "orders",
+        "conname": "orders_id_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL id"
+      },
+      {
+        "relation": "orders",
+        "conname": "orders_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relation": "orders",
+        "conname": "orders_status_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL status"
+      },
+      {
+        "relation": "orders",
+        "conname": "orders_transaction_code_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL transaction_code"
+      },
+      {
+        "relation": "payment_operations",
+        "conname": "payment_operations_actor_id_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "definition": "FOREIGN KEY (actor_id) REFERENCES users(id)"
+      },
+      {
+        "relation": "payment_operations",
+        "conname": "payment_operations_actor_id_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL actor_id"
+      },
+      {
+        "relation": "payment_operations",
+        "conname": "payment_operations_context_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL context"
+      },
+      {
+        "relation": "payment_operations",
+        "conname": "payment_operations_created_at_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL created_at"
+      },
+      {
+        "relation": "payment_operations",
+        "conname": "payment_operations_id_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL id"
+      },
+      {
+        "relation": "payment_operations",
+        "conname": "payment_operations_kind_check",
+        "contype": "c",
+        "convalidated": true,
+        "definition": "CHECK ((kind = ANY (ARRAY['checkout'::text, 'cancel'::text])))"
+      },
+      {
+        "relation": "payment_operations",
+        "conname": "payment_operations_kind_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL kind"
+      },
+      {
+        "relation": "payment_operations",
+        "conname": "payment_operations_order_id_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "definition": "FOREIGN KEY (order_id) REFERENCES orders(id)"
+      },
+      {
+        "relation": "payment_operations",
+        "conname": "payment_operations_order_id_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL order_id"
+      },
+      {
+        "relation": "payment_operations",
+        "conname": "payment_operations_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relation": "payment_operations",
+        "conname": "payment_operations_state_check",
+        "contype": "c",
+        "convalidated": true,
+        "definition": "CHECK ((state = ANY (ARRAY['running'::text, 'unknown'::text, 'completed'::text, 'failed'::text])))"
+      },
+      {
+        "relation": "payment_operations",
+        "conname": "payment_operations_state_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL state"
+      },
+      {
+        "relation": "payment_operations",
+        "conname": "payment_operations_updated_at_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL updated_at"
+      },
+      {
+        "relation": "payment_reconciliations",
+        "conname": "payment_reconciliations_collection_id_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "definition": "FOREIGN KEY (collection_id) REFERENCES provider_collections(id)"
+      },
+      {
+        "relation": "payment_reconciliations",
+        "conname": "payment_reconciliations_collection_id_key",
+        "contype": "u",
+        "convalidated": true,
+        "definition": "UNIQUE (collection_id)"
+      },
+      {
+        "relation": "payment_reconciliations",
+        "conname": "payment_reconciliations_created_at_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL created_at"
+      },
+      {
+        "relation": "payment_reconciliations",
+        "conname": "payment_reconciliations_event_id_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "definition": "FOREIGN KEY (event_id) REFERENCES payment_webhook_events(id)"
+      },
+      {
+        "relation": "payment_reconciliations",
+        "conname": "payment_reconciliations_evidence_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL evidence"
+      },
+      {
+        "relation": "payment_reconciliations",
+        "conname": "payment_reconciliations_id_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL id"
+      },
+      {
+        "relation": "payment_reconciliations",
+        "conname": "payment_reconciliations_order_id_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "definition": "FOREIGN KEY (order_id) REFERENCES orders(id)"
+      },
+      {
+        "relation": "payment_reconciliations",
+        "conname": "payment_reconciliations_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relation": "payment_reconciliations",
+        "conname": "payment_reconciliations_reason_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL reason"
+      },
+      {
+        "relation": "payment_reconciliations",
+        "conname": "payment_reconciliations_state_check",
+        "contype": "c",
+        "convalidated": true,
+        "definition": "CHECK ((state = ANY (ARRAY['open'::text, 'reviewed'::text, 'resolved'::text])))"
+      },
+      {
+        "relation": "payment_reconciliations",
+        "conname": "payment_reconciliations_state_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL state"
+      },
+      {
+        "relation": "payment_webhook_events",
+        "conname": "payment_webhook_events_event_type_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL event_type"
+      },
+      {
+        "relation": "payment_webhook_events",
+        "conname": "payment_webhook_events_id_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL id"
+      },
+      {
+        "relation": "payment_webhook_events",
+        "conname": "payment_webhook_events_livemode_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL livemode"
+      },
+      {
+        "relation": "payment_webhook_events",
+        "conname": "payment_webhook_events_next_attempt_at_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL next_attempt_at"
+      },
+      {
+        "relation": "payment_webhook_events",
+        "conname": "payment_webhook_events_payload_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL payload"
+      },
+      {
+        "relation": "payment_webhook_events",
+        "conname": "payment_webhook_events_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relation": "payment_webhook_events",
+        "conname": "payment_webhook_events_provider_event_id_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL provider_event_id"
+      },
+      {
+        "relation": "payment_webhook_events",
+        "conname": "payment_webhook_events_provider_livemode_provider_event_id_key",
+        "contype": "u",
+        "convalidated": true,
+        "definition": "UNIQUE (provider, livemode, provider_event_id)"
+      },
+      {
+        "relation": "payment_webhook_events",
+        "conname": "payment_webhook_events_provider_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL provider"
+      },
+      {
+        "relation": "payment_webhook_events",
+        "conname": "payment_webhook_events_raw_body_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL raw_body"
+      },
+      {
+        "relation": "payment_webhook_events",
+        "conname": "payment_webhook_events_received_at_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL received_at"
+      },
+      {
+        "relation": "payment_webhook_events",
+        "conname": "payment_webhook_events_state_check",
+        "contype": "c",
+        "convalidated": true,
+        "definition": "CHECK ((state = ANY (ARRAY['received'::text, 'processed'::text, 'review'::text])))"
+      },
+      {
+        "relation": "payment_webhook_events",
+        "conname": "payment_webhook_events_state_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL state"
+      },
+      {
+        "relation": "payments",
+        "conname": "payments_amount_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL amount"
+      },
+      {
+        "relation": "payments",
+        "conname": "payments_created_at_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL created_at"
+      },
+      {
+        "relation": "payments",
+        "conname": "payments_currency_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL currency"
+      },
+      {
+        "relation": "payments",
+        "conname": "payments_customer_id_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "definition": "FOREIGN KEY (customer_id) REFERENCES users(id) ON DELETE CASCADE"
+      },
+      {
+        "relation": "payments",
+        "conname": "payments_customer_id_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL customer_id"
+      },
+      {
+        "relation": "payments",
+        "conname": "payments_id_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL id"
+      },
+      {
+        "relation": "payments",
+        "conname": "payments_order_id_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "definition": "FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE"
+      },
+      {
+        "relation": "payments",
+        "conname": "payments_order_id_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL order_id"
+      },
+      {
+        "relation": "payments",
+        "conname": "payments_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relation": "payments",
+        "conname": "payments_provider_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL provider"
+      },
+      {
+        "relation": "payments",
+        "conname": "payments_status_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL status"
+      },
+      {
+        "relation": "payments",
+        "conname": "payments_updated_at_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL updated_at"
+      },
+      {
+        "relation": "provider_collections",
+        "conname": "provider_collections_amount_centavos_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL amount_centavos"
+      },
+      {
+        "relation": "provider_collections",
+        "conname": "provider_collections_currency_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL currency"
+      },
+      {
+        "relation": "provider_collections",
+        "conname": "provider_collections_evidence_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL evidence"
+      },
+      {
+        "relation": "provider_collections",
+        "conname": "provider_collections_id_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL id"
+      },
+      {
+        "relation": "provider_collections",
+        "conname": "provider_collections_livemode_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL livemode"
+      },
+      {
+        "relation": "provider_collections",
+        "conname": "provider_collections_order_id_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "definition": "FOREIGN KEY (order_id) REFERENCES orders(id)"
+      },
+      {
+        "relation": "provider_collections",
+        "conname": "provider_collections_payment_id_fkey",
+        "contype": "f",
+        "convalidated": true,
+        "definition": "FOREIGN KEY (payment_id) REFERENCES payments(id)"
+      },
+      {
+        "relation": "provider_collections",
+        "conname": "provider_collections_pkey",
+        "contype": "p",
+        "convalidated": true,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "relation": "provider_collections",
+        "conname": "provider_collections_provider_livemode_provider_payment_id_key",
+        "contype": "u",
+        "convalidated": true,
+        "definition": "UNIQUE (provider, livemode, provider_payment_id)"
+      },
+      {
+        "relation": "provider_collections",
+        "conname": "provider_collections_provider_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL provider"
+      },
+      {
+        "relation": "provider_collections",
+        "conname": "provider_collections_provider_payment_id_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL provider_payment_id"
+      },
+      {
+        "relation": "provider_collections",
+        "conname": "provider_collections_received_at_not_null",
+        "contype": "n",
+        "convalidated": true,
+        "definition": "NOT NULL received_at"
+      }
+    ],
+    "indexes": [
+      {
+        "relation": "orders",
+        "name": "idx_orders_cancelled_by",
+        "indisunique": false,
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE INDEX idx_orders_cancelled_by ON public.orders USING btree (cancelled_by) WHERE (status = 'cancelled'::order_status)"
+      },
+      {
+        "relation": "orders",
+        "name": "idx_orders_payment_deadline_pending",
+        "indisunique": false,
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE INDEX idx_orders_payment_deadline_pending ON public.orders USING btree (payment_deadline) WHERE (status = 'pending'::order_status)"
+      },
+      {
+        "relation": "orders",
+        "name": "idx_orders_pending_deadline",
+        "indisunique": false,
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE INDEX idx_orders_pending_deadline ON public.orders USING btree (payment_deadline) WHERE ((status = 'pending'::order_status) AND (payment_deadline IS NOT NULL))"
+      },
+      {
+        "relation": "orders",
+        "name": "orders_auction_id_unique",
+        "indisunique": true,
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE UNIQUE INDEX orders_auction_id_unique ON public.orders USING btree (auction_id) WHERE (auction_id IS NOT NULL)"
+      },
+      {
+        "relation": "orders",
+        "name": "orders_pkey",
+        "indisunique": true,
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE UNIQUE INDEX orders_pkey ON public.orders USING btree (id)"
+      },
+      {
+        "relation": "orders",
+        "name": "orders_transaction_code_unique",
+        "indisunique": true,
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE UNIQUE INDEX orders_transaction_code_unique ON public.orders USING btree (transaction_code) WHERE (transaction_code IS NOT NULL)"
+      },
+      {
+        "relation": "payment_operations",
+        "name": "payment_operations_one_active",
+        "indisunique": true,
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE UNIQUE INDEX payment_operations_one_active ON public.payment_operations USING btree (order_id) WHERE (state = ANY (ARRAY['running'::text, 'unknown'::text]))"
+      },
+      {
+        "relation": "payment_operations",
+        "name": "payment_operations_pkey",
+        "indisunique": true,
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE UNIQUE INDEX payment_operations_pkey ON public.payment_operations USING btree (id)"
+      },
+      {
+        "relation": "payment_reconciliations",
+        "name": "payment_reconciliations_collection_id_key",
+        "indisunique": true,
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE UNIQUE INDEX payment_reconciliations_collection_id_key ON public.payment_reconciliations USING btree (collection_id)"
+      },
+      {
+        "relation": "payment_reconciliations",
+        "name": "payment_reconciliations_event_reason",
+        "indisunique": true,
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE UNIQUE INDEX payment_reconciliations_event_reason ON public.payment_reconciliations USING btree (event_id, reason) WHERE (collection_id IS NULL)"
+      },
+      {
+        "relation": "payment_reconciliations",
+        "name": "payment_reconciliations_open",
+        "indisunique": false,
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE INDEX payment_reconciliations_open ON public.payment_reconciliations USING btree (created_at) WHERE (state = 'open'::text)"
+      },
+      {
+        "relation": "payment_reconciliations",
+        "name": "payment_reconciliations_pkey",
+        "indisunique": true,
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE UNIQUE INDEX payment_reconciliations_pkey ON public.payment_reconciliations USING btree (id)"
+      },
+      {
+        "relation": "payment_webhook_events",
+        "name": "payment_webhook_events_pending",
+        "indisunique": false,
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE INDEX payment_webhook_events_pending ON public.payment_webhook_events USING btree (received_at) WHERE (state = 'received'::text)"
+      },
+      {
+        "relation": "payment_webhook_events",
+        "name": "payment_webhook_events_pkey",
+        "indisunique": true,
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE UNIQUE INDEX payment_webhook_events_pkey ON public.payment_webhook_events USING btree (id)"
+      },
+      {
+        "relation": "payment_webhook_events",
+        "name": "payment_webhook_events_provider_livemode_provider_event_id_key",
+        "indisunique": true,
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE UNIQUE INDEX payment_webhook_events_provider_livemode_provider_event_id_key ON public.payment_webhook_events USING btree (provider, livemode, provider_event_id)"
+      },
+      {
+        "relation": "payments",
+        "name": "idx_payments_checkout",
+        "indisunique": true,
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE UNIQUE INDEX idx_payments_checkout ON public.payments USING btree (checkout_session_id) WHERE (checkout_session_id IS NOT NULL)"
+      },
+      {
+        "relation": "payments",
+        "name": "idx_payments_customer",
+        "indisunique": false,
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE INDEX idx_payments_customer ON public.payments USING btree (customer_id)"
+      },
+      {
+        "relation": "payments",
+        "name": "idx_payments_one_paid_per_order",
+        "indisunique": true,
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE UNIQUE INDEX idx_payments_one_paid_per_order ON public.payments USING btree (order_id) WHERE (status = 'paid'::payment_status)"
+      },
+      {
+        "relation": "payments",
+        "name": "idx_payments_order",
+        "indisunique": false,
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE INDEX idx_payments_order ON public.payments USING btree (order_id)"
+      },
+      {
+        "relation": "payments",
+        "name": "idx_payments_provider_ref",
+        "indisunique": true,
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE UNIQUE INDEX idx_payments_provider_ref ON public.payments USING btree (provider_reference_id) WHERE (provider_reference_id IS NOT NULL)"
+      },
+      {
+        "relation": "payments",
+        "name": "idx_payments_status",
+        "indisunique": false,
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE INDEX idx_payments_status ON public.payments USING btree (status)"
+      },
+      {
+        "relation": "payments",
+        "name": "payments_pkey",
+        "indisunique": true,
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE UNIQUE INDEX payments_pkey ON public.payments USING btree (id)"
+      },
+      {
+        "relation": "provider_collections",
+        "name": "provider_collections_pkey",
+        "indisunique": true,
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE UNIQUE INDEX provider_collections_pkey ON public.provider_collections USING btree (id)"
+      },
+      {
+        "relation": "provider_collections",
+        "name": "provider_collections_provider_livemode_provider_payment_id_key",
+        "indisunique": true,
+        "indisvalid": true,
+        "indisready": true,
+        "definition": "CREATE UNIQUE INDEX provider_collections_provider_livemode_provider_payment_id_key ON public.provider_collections USING btree (provider, livemode, provider_payment_id)"
+      }
+    ],
+    "rls": [
+      {
+        "relname": "payment_operations",
+        "relrowsecurity": true,
+        "relforcerowsecurity": false,
+        "anon_access": false,
+        "client_access": false
+      },
+      {
+        "relname": "payment_reconciliations",
+        "relrowsecurity": true,
+        "relforcerowsecurity": false,
+        "anon_access": false,
+        "client_access": false
+      },
+      {
+        "relname": "payment_webhook_events",
+        "relrowsecurity": true,
+        "relforcerowsecurity": false,
+        "anon_access": false,
+        "client_access": false
+      },
+      {
+        "relname": "provider_collections",
+        "relrowsecurity": true,
+        "relforcerowsecurity": false,
+        "anon_access": false,
+        "client_access": false
+      }
+    ],
+    "default_deny_with_grants": true,
+    "runtime_role": {
+      "rolname": "atany_runtime",
+      "rolsuper": false,
+      "rolbypassrls": false
+    },
+    "integration_tests": "passed; see integration-tests.log",
+    "readonly_local_audits": "passed; synthetic catalog and aggregate payment audit only",
+    "after_backup": {
+      "restored": true,
+      "matching": {
+        "data": "856d5171ce7ecbaed276fc140723a0a4b7a5a10dc3378132ee1c79d2b7ab1b94",
+        "sequences": "30bc8d5dd7abc62ce6757e728ba75d6279e14da96bda5f699451370698062c6b",
+        "schema": "19719c25cbb233d5f1f73b0eadd0095ffafdbf0815c4d42506bb5fd315f48721"
+      },
+      "archive_sha256": "f0f7de1f5f5a1dfc755e0550bd4209e5e16ef8031efccb598fd04e85509a6af8",
+      "elapsed_ms": 1517
+    },
+    "winner_tests": "passed on separate migrated restored synthetic database"
+  },
+  "migrations": {
+    "037": "b2c5502221bd41535ccd062ca80b26f6a8b276e0740c41906091b593b133fb86",
+    "038": "a6d0c9bd721b64bbda7b69994ac7afa301f5bec1405b21fa4dfd0d6e39f67c29"
+  },
+  "postgresql": "18.6 (Homebrew)",
+  "baseline": {
+    "setup_ddl_sha256": "2beb95ef5f285ce70e2a42fd0edc00e79375553fb65758954c2817b2c0102524",
+    "dependencies": [
+      "015_order_payment_flow.sql",
+      "016_billing_paymongo_checkout.sql",
+      "020_orders_unique_auction.sql",
+      "021_auction_winner_payment_deadline.sql",
+      "022_notifications_auction_id.sql",
+      "034_winner_fallback_hardening.sql"
+    ]
+  },
+  "completed_at": "2026-11-18T18:18:17.949Z",
+  "cluster_stopped": true
+}

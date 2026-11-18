@@ -1,5 +1,5 @@
 // frontend/src/roles/admin/lib/__tests__/subscriptionSelectors.test.js
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import {
   buildPlanTiers,
   canRetryCharge,
@@ -10,6 +10,13 @@ import {
 } from '../subscriptionSelectors';
 import { getPlanForAmount, normalizeSubscriptionStatus } from '../subscriptionStatus';
 import { SUBSCRIPTION_PLANS } from '../subscriptionPlans';
+
+// Paid fixtures are active on this date; overdue fixtures have already ended.
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-10T04:00:00.000Z'));
+});
+afterEach(() => vi.useRealTimers());
 
 const sample = [
   {

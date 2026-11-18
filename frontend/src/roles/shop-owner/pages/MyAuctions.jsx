@@ -6,7 +6,6 @@ import { CreateAuctionModal } from '../components/CreateAuctionModal';
 import { CreateAuctionWizard } from '../components/CreateAuctionWizard';
 import { RelistWizard } from '../components/RelistWizard';
 import { Modal } from '../../../shared/components/Modal';
-import SellerAuctionCalendar from '../components/SellerAuctionCalendar';
 import { socket } from '../../../shared/lib/socketClient';
 import { formatOpensIn } from '../../../shared/hooks/useAuctionCountdown';
 import '../my-auctions.css';
@@ -194,7 +193,6 @@ export default function MyAuctions() {
   const [catOpen, setCatOpen] = useState(false);
   const catWrapRef = useRef(null);
   const [q, setQ] = useState('');
-  const [viewMode, setViewMode] = useState('list');
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(null);
   const [createSession, setCreateSession] = useState(0);
@@ -203,26 +201,6 @@ export default function MyAuctions() {
   const [relistTarget, setRelistTarget] = useState(null);
   const [busyKey, setBusyKey] = useState(null);
   const [endingBusy, setEndingBusy] = useState(false);
-  // Calendar → List focus: timeline click returns to List and flashes the card.
-  const [focusId, setFocusId] = useState(null);
-  const handleSelectCalendarAuction = useCallback((auction) => {
-    if (!auction?.id) return;
-    setStatusFilter('all');
-    setSelectedCategory(null);
-    setQ('');
-    setViewMode('list');
-    setFocusId(String(auction.id));
-  }, []);
-  useEffect(() => {
-    if (!focusId) return;
-    const t = setTimeout(() => {
-      try {
-        document.querySelector(`[data-testid="auction-card-${focusId}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      } catch {}
-    }, 60);
-    const c = setTimeout(() => setFocusId(null), 2600);
-    return () => { clearTimeout(t); clearTimeout(c); };
-  }, [focusId, viewMode]);
   const showToast = useToast();
 
   const fetchAll = useCallback(async () => {
@@ -485,7 +463,6 @@ export default function MyAuctions() {
           if (prev.auctions.some((a) => String(a.id) === String(newAuction.id))) return prev;
           return { ...prev, auctions: [newAuction, ...prev.auctions] };
         });
-        setFocusId(String(newAuction.id));
       }
       setStatusFilter('scheduled');
       setSelectedCategory(null);
@@ -529,19 +506,13 @@ export default function MyAuctions() {
           </div>
         </div>
         <div className="mauc-toolbar__right">
-          <div className="mauc-toggle" role="tablist" aria-label="View mode">
-            <button className={`mauc-toggle__btn ${viewMode === 'list' ? 'is-active' : ''}`} onClick={() => setViewMode('list')} aria-selected={viewMode === 'list'} aria-pressed={viewMode === 'list'}>☰ List</button>
-            <button className={`mauc-toggle__btn ${viewMode === 'calendar' ? 'is-active' : ''}`} onClick={() => setViewMode('calendar')} aria-selected={viewMode === 'calendar'} aria-pressed={viewMode === 'calendar'} aria-label="Calendar view">📅 Calendar</button>
-          </div>
+          <button className="mauc-btn" aria-pressed="true">☰ List</button>
           <button className="btn btn-primary" onClick={() => { setEditing(null); setCreateSession(n => n + 1); setOpen(true); }}>+ Create Auction</button>
         </div>
       </div>
 
       <div className="mauc-summary">Your lots <b style={{ background: '#f3f0ea', padding: '2px 8px', borderRadius: 999, marginLeft: 6 }}>{totalLots} lot{totalLots === 1 ? '' : 's'}</b></div>
 
-      {viewMode === 'calendar' ? (
-        <SellerAuctionCalendar auctions={allAuctions} onSelectAuction={handleSelectCalendarAuction} />
-      ) : (
       <>
       {/* Status + category filter row: pills left, Category trigger far right */}
       <div className="mauc-filterbar">
@@ -616,25 +587,25 @@ export default function MyAuctions() {
               {groups.live.length > 0 && (
                 <div className="mauc-section">
                   <div className="mauc-section__head"><span className="dot" style={{ background: '#2e9a55' }} aria-hidden="true" /> Live now <span className="count">{groups.live.length}</span></div>
-                  {groups.live.map(a => <div key={a.id} className={focusId === String(a.id) ? 'mauc-flash' : undefined}><AuctionCard auction={a} onAction={handleAction} onViewResult={setResultAuction} busyKey={busyKey} onScheduledEnd={handleScheduledEnd} /></div>)}
+                  {groups.live.map(a => <div key={a.id}><AuctionCard auction={a} onAction={handleAction} onViewResult={setResultAuction} busyKey={busyKey} onScheduledEnd={handleScheduledEnd} /></div>)}
                 </div>
               )}
               {groups.paused.length > 0 && (
                 <div className="mauc-section">
                   <div className="mauc-section__head"><span className="dot" style={{ background: '#8a919c' }} aria-hidden="true" /> Paused <span className="count">{groups.paused.length}</span></div>
-                  {groups.paused.map(a => <div key={a.id} className={focusId === String(a.id) ? 'mauc-flash' : undefined}><AuctionCard auction={a} onAction={handleAction} onViewResult={setResultAuction} busyKey={busyKey} onScheduledEnd={handleScheduledEnd} /></div>)}
+                  {groups.paused.map(a => <div key={a.id}><AuctionCard auction={a} onAction={handleAction} onViewResult={setResultAuction} busyKey={busyKey} onScheduledEnd={handleScheduledEnd} /></div>)}
                 </div>
               )}
               {groups.scheduled.length > 0 && (
                 <div className="mauc-section">
                   <div className="mauc-section__head"><span className="dot" style={{ background: '#c4a265' }} aria-hidden="true" /> Scheduled <span className="count">{groups.scheduled.length}</span></div>
-                  {groups.scheduled.map(a => <div key={a.id} className={focusId === String(a.id) ? 'mauc-flash' : undefined}><AuctionCard auction={a} onAction={handleAction} onViewResult={setResultAuction} busyKey={busyKey} onScheduledEnd={handleScheduledEnd} /></div>)}
+                  {groups.scheduled.map(a => <div key={a.id}><AuctionCard auction={a} onAction={handleAction} onViewResult={setResultAuction} busyKey={busyKey} onScheduledEnd={handleScheduledEnd} /></div>)}
                 </div>
               )}
               {groups.ended.length > 0 && (
                 <div className="mauc-section">
                   <div className="mauc-section__head"><span className="dot" style={{ background: '#142a4a' }} aria-hidden="true" /> Ended <span className="count">{groups.ended.length}</span></div>
-                  {groups.ended.map(a => <div key={a.id} className={focusId === String(a.id) ? 'mauc-flash' : undefined}><AuctionCard auction={a} onAction={handleAction} onViewResult={setResultAuction} busyKey={busyKey} onScheduledEnd={handleScheduledEnd} /></div>)}
+                  {groups.ended.map(a => <div key={a.id}><AuctionCard auction={a} onAction={handleAction} onViewResult={setResultAuction} busyKey={busyKey} onScheduledEnd={handleScheduledEnd} /></div>)}
                 </div>
               )}
               <div style={{ fontSize: 11, color: '#8a919c', padding: '4px 2px' }}>Showing {filtered.length} of {totalLots} lot{totalLots === 1 ? '' : 's'}</div>
@@ -671,7 +642,7 @@ export default function MyAuctions() {
         </div>
       </div>
       </>
-      )}
+
 
       {/* Create/Edit modals */}
       {editing?.id ? (

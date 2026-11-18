@@ -18,7 +18,7 @@ const sections = [
   { label: 'BRANCH OPERATIONS', items: [
     { to: '/admin/branches', name: 'Branches', icon: <Building2 size={17} /> },
     { to: '/admin/users', name: 'Users & Roles', icon: <Sparkles size={17} /> },
-    { to: '/admin/transactions', name: 'Orders', icon: <Receipt size={17} /> },
+    { to: '/admin/orders', name: 'Orders', icon: <Receipt size={17} /> },
   ]},
   { label: 'PLATFORM MANAGEMENT', items: [
     { to: '/admin/billing', name: 'Subscriptions', icon: <Sparkles size={17} /> },
@@ -30,6 +30,7 @@ const sections = [
 const titles = {
   '/admin': ['Dashboard'],
   '/admin/users': ['Users & Roles'],
+  '/admin/orders': ['Orders'],
   '/admin/transactions': ['Orders'],
   '/admin/analytics': ['Reports'],
   '/admin/security': ['Security Alerts'],
@@ -87,11 +88,7 @@ export default function AdminLayout() {
             onSidebarToggle={() => setSidebarCollapsed((v) => !v)}
             user={{ initials, name: displayName, role: 'Administrator' }}
             onSignOut={signOut}
-            /* No notification bell in the Admin portal by design. The shared
-               PortalPageHeader still renders rightExtra for Customer and Seller,
-               and the Admin header's right group keeps the profile/avatar chip
-               flush right (justify-content: space-between), so removing the bell
-               leaves no orphan gap, badge or hitbox. */
+            eyebrow={titleKey === '/admin/orders' ? 'Manage and monitor all customer orders and transactions across branches.' : undefined}
             settingsTo="/admin"
           />
         )}

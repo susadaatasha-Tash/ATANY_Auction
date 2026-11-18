@@ -16,5 +16,13 @@ services:
         sync: false
       - key: PAYMONGO_SECRET_KEY
         sync: false
+      - key: PAYMONGO_PUBLIC_KEY
+        sync: false
+      - key: PAYMONGO_WEBHOOK_SECRET
+        sync: false
+      - key: GROQ_MODEL
+        sync: false
+      - key: NODE_ENV
+        value: production
       - key: FRONTEND_URL
         value: https://your-frontend.vercel.app

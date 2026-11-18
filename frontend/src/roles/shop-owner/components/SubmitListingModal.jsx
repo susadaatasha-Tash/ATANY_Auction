@@ -1,6 +1,8 @@
 // frontend/src/roles/shop-owner/components/SubmitListingModal.jsx
-// Port of shop-owner-dashboard.html:474-513 listingModal
-// POST /shop-owner/listings -> products.status=pending (spec 4.3). Admin approves via PUT /admin/products/:id
+// Create OR edit & resubmit a product listing.
+// create: POST /shop-owner/listings -> products.status=pending (spec 4.3).
+// edit:   PUT /shop-owner/listings/:id -> flips a rejected item back to pending.
+// Admin approves via PUT /admin/products/:id
 import { useState, useEffect, useMemo } from 'react';
 import { Modal } from '../../../shared/components/Modal';
 import { apiFetch } from '../../../shared/lib/apiClient';

@@ -1,7 +1,7 @@
 // backend/src/tests/subscriptionHardening.test.js
 // FINAL HARDENING: idempotent apply, duplicate upgrade protection, proration edges,
 // admin sync metrics, security ownership, structured limit conflicts.
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const poolQuery = vi.fn();
 vi.mock('../db/pool.js', () => ({
@@ -58,6 +58,9 @@ function paidRecord(overrides = {}) {
 }
 
 beforeEach(() => {
+  // Halfway through the fixed October billing period, independent of run date.
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-16T12:00:00.000Z'));
   poolQuery.mockReset();
   poolQuery.mockResolvedValue({ rows: [] });
   process.env.PAYMONGO_SECRET_KEY = process.env.PAYMONGO_SECRET_KEY || 'sk_test_dummy';
@@ -72,6 +75,8 @@ beforeEach(() => {
     }),
   }));
 });
+
+afterEach(() => vi.useRealTimers());
 
 describe('proration edge cases (integer centavos, never negative)', () => {
   const periodStart = '2026-10-01T00:00:00.000Z';
@@ -149,6 +154,8 @@ describe('proration edge cases (integer centavos, never negative)', () => {
       periodEnd,
     });
     expect(cents).toBeGreaterThan(0);
+    expect(cents).toBe(672000); // Half of the ₱13,440 monthly-to-annual difference.
+    expect(Number.isInteger(cents)).toBe(true);
   });
 
   it('annual → monthly is a scheduled downgrade (zero now)', () => {

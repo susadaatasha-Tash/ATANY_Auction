@@ -1,0 +1,38 @@
+backend-full.log
+Test Files  44 passed (44)
+      Tests  831 passed | 16 skipped (847)
+   Start at  08:30:50
+   Duration  4.07s (transform 526ms, setup 0ms, collect 1.29s, tests 1.72s, environment 4ms, prepare 1.36s)
+
+frontend-full.log
+Test Files  60 passed (60)
+      Tests  771 passed (771)
+   Start at  08:25:16
+   Duration  14.07s (transform 3.68s, setup 3.52s, collect 13.87s, tests 46.46s, environment 20.54s, prepare 4.15s)
+
+payment-regression.log
+Test Files  9 passed (9)
+      Tests  265 passed (265)
+   Start at  08:31:21
+   Duration  2.10s (transform 209ms, setup 1ms, collect 412ms, tests 707ms, environment 1ms, prepare 265ms)
+
+frontend-regression.log
+Test Files  8 passed (8)
+      Tests  72 passed (72)
+   Start at  08:27:00
+   Duration  2.21s (transform 753ms, setup 477ms, collect 1.89s, tests 2.34s, environment 3.00s, prepare 630ms)
+
+frontend-build.log
+
+computing gzip size...
+dist/index.html                                        1.42 kB │ gzip:   0.71 kB
+dist/assets/landing-page-background-BEime_34.webp     69.72 kB
+dist/assets/Login_bg-B4Cizs-y.jpg                    105.54 kB
+dist/assets/customer-banner-ring-DWax2c-u.jpg      1,471.07 kB
+dist/assets/seller-banner-jewelry-BYnutkOj.jpg     1,884.43 kB
+dist/assets/index-C8bimVEf.css                       322.55 kB │ gzip:  59.13 kB
+dist/assets/vendor-BBNsCnv5.js                       164.64 kB │ gzip:  53.71 kB
+dist/assets/supabase-3Te545q_.js                     227.01 kB │ gzip:  58.86 kB
+dist/assets/charts-CVwmPd94.js                       406.66 kB │ gzip: 109.76 kB
+dist/assets/index-DRTbF00g.js                        863.18 kB │ gzip: 225.90 kB
+✓ built in 9.26s

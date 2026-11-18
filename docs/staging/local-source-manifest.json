@@ -1,0 +1,242 @@
+{
+  "review_date": "2026-11-18",
+  "scope": "Local source inventory only; no database inspected or migrated.",
+  "migration_count": 38,
+  "database_execution_performed": false,
+  "installed_client_tools": {
+    "postgresql": "18.6",
+    "supabase_cli": "2.117.0"
+  },
+  "files": [
+    {
+      "path": "backend/src/db/schema.sql",
+      "sha256": "05d19814b98c34fe0c7b537fd1e54c19e86aa6f1fb6bb3a9263b6202b679bb7e",
+      "runner_checksum_prefix": "05d19814b98c34fe"
+    },
+    {
+      "path": "backend/src/db/setup_complete.sql",
+      "sha256": "ab01610c97362c4d7ac1b63442143e5f5786a9345dea682bf571e6f96710242b",
+      "runner_checksum_prefix": "ab01610c97362c4d"
+    },
+    {
+      "path": "backend/src/db/migrate.js",
+      "sha256": "c3aaa49103b419d0df973db010a7c7553791436949e524e3ccc72dd31d01264c",
+      "runner_checksum_prefix": "c3aaa49103b419d0"
+    },
+    {
+      "path": "backend/src/db/pool.js",
+      "sha256": "bb3bfa19b03f5b7abd3413a13efb4cc302d7eae1c1ef01f7126a217ebc671b2e",
+      "runner_checksum_prefix": "bb3bfa19b03f5b7a"
+    },
+    {
+      "path": "backend/src/db/dbGuard.js",
+      "sha256": "6604e3629e2600a05f6b802a6afd6dc020067e3a454d6b8a46a08db4398b07ed",
+      "runner_checksum_prefix": "6604e3629e2600a0"
+    },
+    {
+      "path": "backend/src/tests/winnerExpirationDb.test.js",
+      "sha256": "f6a90b88ef7522b48649af0a0f7c98f246333e57ac327af505d5365d777bbace",
+      "runner_checksum_prefix": "f6a90b88ef7522b4"
+    },
+    {
+      "path": "backend/src/tests/paymentSafetyDb.test.js",
+      "sha256": "baffe026aa10abd312cbd362c54508835e2989ee26c8fd27c51cab623c848f15",
+      "runner_checksum_prefix": "baffe026aa10abd3"
+    },
+    {
+      "path": "backend/scripts/test-payment-safety.sh",
+      "sha256": "583fca68a3e787feb2a0d99e78fa56ada68f24ee0e27518ba39a9cbde7c3565a",
+      "runner_checksum_prefix": "583fca68a3e787fe"
+    },
+    {
+      "path": "backend/src/db/migrations/001_seed_branches.sql",
+      "sha256": "ddd6d7409178e89185a817177e8ec37cadf0c884e445a178119902b00da5021a",
+      "runner_checksum_prefix": "ddd6d7409178e891"
+    },
+    {
+      "path": "backend/src/db/migrations/002_seed_demo.sql",
+      "sha256": "dd1bb37f6329e6ec8ac62132f149f2ea8e5052ea72e6f569eca06d74ef0b1cc3",
+      "runner_checksum_prefix": "dd1bb37f6329e6ec"
+    },
+    {
+      "path": "backend/src/db/migrations/003_shop_branches_single_select.sql",
+      "sha256": "09e0dc03fdb4c2d2c5728719b7df8658e94b5808722648c93b9a0a2c1e7a1606",
+      "runner_checksum_prefix": "09e0dc03fdb4c2d2"
+    },
+    {
+      "path": "backend/src/db/migrations/004_transaction_code.sql",
+      "sha256": "8308796fca87e3ba9490ec8d844d821f27ac918f9f33aa0647698e0179577d71",
+      "runner_checksum_prefix": "8308796fca87e3ba"
+    },
+    {
+      "path": "backend/src/db/migrations/005_auction_code.sql",
+      "sha256": "c20e51033c6b052995ae47aaf96ac67f7b4c7a9e984648bcede56e2a19fe39b1",
+      "runner_checksum_prefix": "c20e51033c6b0529"
+    },
+    {
+      "path": "backend/src/db/migrations/006_fix_rls_insecure_user_metadata.sql",
+      "sha256": "d4f82b60244cfe635e0babee42f1aa63683dfc10fb0576247c486a3e866d2eb7",
+      "runner_checksum_prefix": "d4f82b60244cfe63"
+    },
+    {
+      "path": "backend/src/db/migrations/007_fix_search_path_triggers.sql",
+      "sha256": "541e436f1c36cd68030546dbcc9912df97782137d4cd1d69c2ff79cb73b32a91",
+      "runner_checksum_prefix": "541e436f1c36cd68"
+    },
+    {
+      "path": "backend/src/db/migrations/008_fix_is_admin_rls_advisory.sql",
+      "sha256": "6c7045a630bca0907863401f47173798444f7e7f556eb99825de6503448e1f19",
+      "runner_checksum_prefix": "6c7045a630bca090"
+    },
+    {
+      "path": "backend/src/db/migrations/009_fix_is_admin_advisory.sql",
+      "sha256": "27a80875970d839302993165d11f1eb4042400075d15be1825b38f1b3fc9535a",
+      "runner_checksum_prefix": "27a80875970d8393"
+    },
+    {
+      "path": "backend/src/db/migrations/010_support_requests.sql",
+      "sha256": "17c8dec4a468a5cdc138665c18c887bc345aafec21b9762c115c39d938ad47b4",
+      "runner_checksum_prefix": "17c8dec4a468a5cd"
+    },
+    {
+      "path": "backend/src/db/migrations/011_auction_reminders.sql",
+      "sha256": "d03c673c0f5216710de43a79963e101efd92d9a7236d211d68d1b2403b03d4fe",
+      "runner_checksum_prefix": "d03c673c0f521671"
+    },
+    {
+      "path": "backend/src/db/migrations/012_new_tables_and_features.sql",
+      "sha256": "e51ac96235d19f68abb721b1fbbb11cea30a03e3005648f14c7b979ad199fba1",
+      "runner_checksum_prefix": "e51ac96235d19f68"
+    },
+    {
+      "path": "backend/src/db/migrations/013_remove_manager_role.sql",
+      "sha256": "20f27fcf52a3cda7a8303eb02542d2ebdedf1e437432cfd1568653318987e11b",
+      "runner_checksum_prefix": "20f27fcf52a3cda7"
+    },
+    {
+      "path": "backend/src/db/migrations/014_davao_branch_setup.sql",
+      "sha256": "a8b0baf10486af43d72758d881f638b6f155f8c27c870f72eba28c3072f06c1c",
+      "runner_checksum_prefix": "a8b0baf10486af43"
+    },
+    {
+      "path": "backend/src/db/migrations/015_order_payment_flow.sql",
+      "sha256": "c48f3f78bcb0cc08d72dfc0eec1bb6c07c70536ce02f2a253d566deb5ed83955",
+      "runner_checksum_prefix": "c48f3f78bcb0cc08"
+    },
+    {
+      "path": "backend/src/db/migrations/016_billing_paymongo_checkout.sql",
+      "sha256": "04090daf2202803e935f5e03061b9a9fa0f0dcbe6a828d2d8a9aeb2f6b6bfe36",
+      "runner_checksum_prefix": "04090daf2202803e"
+    },
+    {
+      "path": "backend/src/db/migrations/017_billing_subscription_periods.sql",
+      "sha256": "78637f0c06a0377c71511d13c246818496094236c02c13befe75eab60a2d3ae1",
+      "runner_checksum_prefix": "78637f0c06a0377c"
+    },
+    {
+      "path": "backend/src/db/migrations/018_branch_image_url.sql",
+      "sha256": "bb68b35767b9b5041fa05c82d35dccdf1960a18ad2220260cc403638edb9532c",
+      "runner_checksum_prefix": "bb68b35767b9b504"
+    },
+    {
+      "path": "backend/src/db/migrations/019_favorites.sql",
+      "sha256": "f911ec7ed9f8365c9453c57b18ed8985030b4caad6279ef146426055457732db",
+      "runner_checksum_prefix": "f911ec7ed9f8365c"
+    },
+    {
+      "path": "backend/src/db/migrations/020_orders_unique_auction.sql",
+      "sha256": "e7f7b1368e26e45e5bafef5a10128bc9c39918c9d7c8c223f793c1be0eddbb01",
+      "runner_checksum_prefix": "e7f7b1368e26e45e"
+    },
+    {
+      "path": "backend/src/db/migrations/021_auction_winner_payment_deadline.sql",
+      "sha256": "0d4206156333273fa53bee0d6351cf120a720815b601b125a4a351c628ee10bd",
+      "runner_checksum_prefix": "0d4206156333273f"
+    },
+    {
+      "path": "backend/src/db/migrations/022_notifications_auction_id.sql",
+      "sha256": "34f2096801ee071a402730ecb69ebf7fcfcc8dece8b2a27f365a018a8e012fe4",
+      "runner_checksum_prefix": "34f2096801ee071a"
+    },
+    {
+      "path": "backend/src/db/migrations/023_chatbot_sessions.sql",
+      "sha256": "10d880e6048437199873f4e725e861085020e7369180ae065c0da2260bd3413b",
+      "runner_checksum_prefix": "10d880e604843719"
+    },
+    {
+      "path": "backend/src/db/migrations/024_chatbot_sessions_realtime.sql",
+      "sha256": "e361fe26ff35d0685da76776f2d190335e424b0413c50673eb20e4170610c936",
+      "runner_checksum_prefix": "e361fe26ff35d068"
+    },
+    {
+      "path": "backend/src/db/migrations/025_billing_plan_code.sql",
+      "sha256": "cda32afc1125e59a743538d604bc982028d4633a9e237e07f173a91e51436365",
+      "runner_checksum_prefix": "cda32afc1125e59a"
+    },
+    {
+      "path": "backend/src/db/migrations/026_subscription_plan_change.sql",
+      "sha256": "89401fa3d008f0cd828135fa2bf412903a87814edb85dfd1a27500ac56cf10db",
+      "runner_checksum_prefix": "89401fa3d008f0cd"
+    },
+    {
+      "path": "backend/src/db/migrations/027_subscription_hardening.sql",
+      "sha256": "26d997b0e33af5907724643a05cd5c71ff736ba3fb78603afed26b137fe5e9a9",
+      "runner_checksum_prefix": "26d997b0e33af590"
+    },
+    {
+      "path": "backend/src/db/migrations/028_users_privilege_guard.sql",
+      "sha256": "44ccd035170e7a11a3f467e3e590e4da0e9a26efe1290c1fdcd1289d37142b3c",
+      "runner_checksum_prefix": "44ccd035170e7a11"
+    },
+    {
+      "path": "backend/src/db/migrations/029_products_proposed_schedule.sql",
+      "sha256": "393b83b7993590667dc170610a62459f49c8fbf1e4b3aad16a262ee6b6729fe5",
+      "runner_checksum_prefix": "393b83b799359066"
+    },
+    {
+      "path": "backend/src/db/migrations/030_auction_pause_support.sql",
+      "sha256": "becb3ef93977a4ff091b099957790490501ecda7312059afc9625e33958492a3",
+      "runner_checksum_prefix": "becb3ef93977a4ff"
+    },
+    {
+      "path": "backend/src/db/migrations/031_auction_minimum_bid_increment.sql",
+      "sha256": "5c0e6f505dfdd2feefcdfcf39660c700b8f28a46ae53bb10f72ec6cf2e485e85",
+      "runner_checksum_prefix": "5c0e6f505dfdd2fe"
+    },
+    {
+      "path": "backend/src/db/migrations/032_auction_viewers.sql",
+      "sha256": "017b17c5399cb58ed14288bb1c1fd1d1bd979360437b00143aff6bf84b58ab90",
+      "runner_checksum_prefix": "017b17c5399cb58e"
+    },
+    {
+      "path": "backend/src/db/migrations/033_billing_payment_method_type.sql",
+      "sha256": "ff70240b7168938429ceab79a93dfbc917f6f3a107c27c10c7b2a6222fd8b569",
+      "runner_checksum_prefix": "ff70240b71689384"
+    },
+    {
+      "path": "backend/src/db/migrations/034_winner_fallback_hardening.sql",
+      "sha256": "d117cca2283e0a30bdf8c6872c4afa329703db42bb52fb62846177c88604dc5f",
+      "runner_checksum_prefix": "d117cca2283e0a30"
+    },
+    {
+      "path": "backend/src/db/migrations/035_customer_profile_phone.sql",
+      "sha256": "adf2b3ffa0a5180ce8f9af19912f8dfeda307dc9064b410977bd301ce8a419c3",
+      "runner_checksum_prefix": "adf2b3ffa0a5180c"
+    },
+    {
+      "path": "backend/src/db/migrations/036_support_request_attachment.sql",
+      "sha256": "6998c7abe0d7ea74c59ff21c439f5a67a005180fbe7f0b0075d734abe1c2d598",
+      "runner_checksum_prefix": "6998c7abe0d7ea74"
+    },
+    {
+      "path": "backend/src/db/migrations/037_order_cancellation.sql",
+      "sha256": "b2c5502221bd41535ccd062ca80b26f6a8b276e0740c41906091b593b133fb86",
+      "runner_checksum_prefix": "b2c5502221bd4153"
+    },
+    {
+      "path": "backend/src/db/migrations/038_payment_safety.sql",
+      "sha256": "a6d0c9bd721b64bbda7b69994ac7afa301f5bec1405b21fa4dfd0d6e39f67c29",
+      "runner_checksum_prefix": "a6d0c9bd721b64bb"
+    }
+  ]
+}

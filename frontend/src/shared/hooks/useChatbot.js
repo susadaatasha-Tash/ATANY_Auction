@@ -30,14 +30,15 @@ function getRuleReply(text, mode = 'customer') {
   return null;
 }
 
-function getStorageKey(mode, userId) {
+function getStorageKey(mode, userId, orderId) {
   const scope = userId || 'guest';
-  return `atany_chat_${mode}_${scope}`;
+  const orderScope = orderId ? `_order_${orderId}` : '';
+  return `atany_chat_${mode}_${scope}${orderScope}`;
 }
 
-function loadMessages(mode, userId) {
+function loadMessages(mode, userId, orderId) {
   try {
-    const raw = localStorage.getItem(getStorageKey(mode, userId));
+    const raw = localStorage.getItem(getStorageKey(mode, userId, orderId));
     if (!raw) return null;
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length > 0) return parsed;
@@ -45,13 +46,14 @@ function loadMessages(mode, userId) {
   return null;
 }
 
-function saveMessages(mode, userId, messages) {
+function saveMessages(mode, userId, messages, orderId) {
   try {
-    localStorage.setItem(getStorageKey(mode, userId), JSON.stringify(messages));
+    localStorage.setItem(getStorageKey(mode, userId, orderId), JSON.stringify(messages));
   } catch {}
 }
 
-export function useChatbot(mode = 'customer', userId = null) {
+export function useChatbot(mode = 'customer', userId = null, highlightOrderId = null) {
+  const orderId = highlightOrderId;
   const initialText = mode === 'seller'
     ? "Hi! I'm the ATANY seller assistant. Ask me about submitting items, approval times, scheduling, payouts, or your sales."
     : "Hi! I'm the ATANY assistant. Ask me about bidding, branches, payments, or your account.";
@@ -59,11 +61,21 @@ export function useChatbot(mode = 'customer', userId = null) {
   const initialMessages = [{ who: 'bot', text: initialText, suggestions: [] }];
 
   const [messages, setMessages] = useState(() => {
-    const saved = loadMessages(mode, userId);
+    const saved = loadMessages(mode, userId, orderId);
     return saved || initialMessages;
   });
   const [loading, setLoading] = useState(false);
   const didRestore = useRef(false);
+  const didHighlight = useRef(false);
+
+  // When a highlightOrderId is provided (e.g., from winning notification click),
+  // automatically ask about that order
+  useEffect(() => {
+    if (orderId && !didHighlight.current) {
+      didHighlight.current = true;
+      sendMessage(`What item did I win? My order reference is ${orderId}.`);
+    }
+  }, [orderId]);
 
   // Persist messages to localStorage whenever they change (skip first render if loaded from storage)
   useEffect(() => {
@@ -71,13 +83,13 @@ export function useChatbot(mode = 'customer', userId = null) {
       didRestore.current = true;
       return;
     }
-    saveMessages(mode, userId, messages);
-  }, [messages, mode, userId]);
+    saveMessages(mode, userId, messages, orderId);
+  }, [messages, mode, userId, orderId]);
 
   const clearHistory = useCallback(() => {
-    try { localStorage.removeItem(getStorageKey(mode, userId)); } catch {}
+    try { localStorage.removeItem(getStorageKey(mode, userId, orderId)); } catch {}
     setMessages([...initialMessages]);
-  }, [mode, userId]);
+  }, [mode, userId, orderId]);
 
   const sendMessage = useCallback(async (text) => {
     if (!text.trim()) return;
@@ -95,7 +107,7 @@ export function useChatbot(mode = 'customer', userId = null) {
         headers: { 'Content-Type': 'application/json' },
         // userId lets the server attribute this turn to the caller's chatbot session
         // (validated server-side; guests send null). No change to local history behavior.
-        body: JSON.stringify({ message: text, query: text, history, mode, userId: userId || null }),
+        body: JSON.stringify({ message: text, query: text, history, mode, userId: userId || null, orderId: orderId || null }),
       });
       if (res.ok) {
         const data = await res.json();
@@ -133,7 +145,7 @@ export function useChatbot(mode = 'customer', userId = null) {
       setMessages((m) => [...m, { who: 'bot', text: fallback, suggestions: [] }]);
       setLoading(false);
     }, 380);
-  }, [messages, mode, userId]);
+  }, [messages, mode, userId, orderId]);
 
   const quickReplies = mode === 'seller'
     ? ['How do I submit an item?', 'How long does approval take?', 'When do I get paid?', 'Edit a rejected item?']
