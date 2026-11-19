@@ -14,6 +14,7 @@ const LOCK_KEYS = {
   payment_reminder: 910004,
   billing_jobs: 910005,
   subscription_scheduled: 910006,
+  payment_evidence: 910007,
 };
 
 export function jobLockKey(name) {
@@ -28,6 +29,12 @@ export function jobLockKey(name) {
  */
 export async function runExclusiveJob(name, fn, { lockKey } = {}) {
   const key = lockKey ?? jobLockKey(name);
+
+  // Prevent jobs from using missing or invalid lock keys
+  if (!Number.isSafeInteger(key)) {
+    throw new Error(`[jobLock] Unknown lock key for job: ${name}`);
+  }
+
   let direct = true;
   try {
     direct = typeof isDirectPg === 'function' ? !!isDirectPg() : true;
@@ -50,7 +57,17 @@ export async function runExclusiveJob(name, fn, { lockKey } = {}) {
       console.warn(`[jobLock] ${name} skipped — REST fallback cannot hold advisory locks`);
       return { skipped: true, reason: 'DB_UNAVAILABLE' };
     }
+    const session = await client.query(`
+  SELECT pg_backend_pid() AS pid,
+         current_setting('application_name') AS app
+`);
+
+console.log(
+  `[jobLock] ${name} attempting lock`,
+  { pid: session.rows[0]?.pid, app: session.rows[0]?.app, key }
+);
     const { rows } = await client.query('SELECT pg_try_advisory_lock($1) AS locked', [key]);
+
     acquired = !!rows[0]?.locked;
     if (!acquired) {
       console.warn(`[jobLock] ${name} skipped — lock held by another instance`);
@@ -58,9 +75,20 @@ export async function runExclusiveJob(name, fn, { lockKey } = {}) {
     }
     const result = await fn(client);
     return { skipped: false, result };
-  } finally {
+    } finally {
     if (acquired) {
-      try { await client.query('SELECT pg_advisory_unlock($1)', [key]); } catch (e) {
+      try {
+        const unlock = await client.query(`
+          SELECT
+            pg_backend_pid() AS pid,
+            pg_advisory_unlock($1) AS unlocked
+        `, [key]);
+
+        console.log(`[jobLock] ${name} unlock result:`, {
+          pid: unlock.rows[0]?.pid,
+          unlocked: unlock.rows[0]?.unlocked
+        });
+      } catch (e) {
         console.error(`[jobLock] ${name} unlock failed:`, e.message);
       }
     }
