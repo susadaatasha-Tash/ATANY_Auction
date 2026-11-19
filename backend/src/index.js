@@ -50,6 +50,12 @@ if (envCheck.ok && envCheck.mode === 'production') {
 }
 
 const app = express();
+app.get('/', (req, res) => {
+  res.json({
+    message: 'ATANY Auction API is running',
+    status: 'online'
+  });
+});
 const corsOrigin = (origin, callback) => {
   if (!origin || /^http:\/\/localhost:\d+$/.test(origin)) return callback(null, true);
   // Allowed non-localhost origins: FRONTEND_URL plus optional comma-separated
